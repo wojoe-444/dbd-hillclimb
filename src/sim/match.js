@@ -114,11 +114,13 @@ export class Match {
         crawled: false, ranTick: -9, mendTick: -9, healSlots: mkSlots(cfg.survivor.maxHealers), mendSlots: mkSlots(cfg.unhook.mendHelpers),
         intNext: 0, intCd: cfg.intent.minCooldownS, intLast: -1e9,
         vault: null, curAct: null, curTgt: null, prog: 0, hitT: -1e9, bodyT: 0, ghostT: 0, gruntT: 0, scratchT: 0, outcome: null, cause: null, tOut: -1, repairS: 0, repairC: 0, leverS: 0,
+        camYaw: 0, camX: spawns[i].x, camZ: spawns[i].z, camTick: -1,
         seesHunter: false, trLayer: 0, trPend: 0, trPendT: 0, seesMate: [false, false, false, false], gSeen: new Uint8Array(G), pSeen: new Uint8Array(P),
         mem: { lastHunter: null, lastSeen: [null, null, null, null], gens: this.gens.map(() => ({ progress: 0, done: false, workers: null, seenT: -1, known: false })), pal: new Uint8Array(P) },
         inbox: [], inboxRead: 0, lastAction: IDLE, nav: null, brain: null, api: null, ctx: null, spawn: spawns[i],
       });
     }
+    for (const sv of this.survivors) sv.camYaw = sv.face;   // the camera starts looking where the body faces
     this.marks = [];
     this.chaseTgt = -1; this.chaseSeenT = 0;      // engine-level chase state (config.chase): at most one chased survivor
     this.chaseId = 0;                             // increments on every chaseStart (window blocker counts per chase)
@@ -343,16 +345,23 @@ export class Match {
         H.seen[i] = false; s.seesHunter = false;
         const sm = s.seesMate; sm[0] = sm[1] = sm[2] = sm[3] = false;
       }
+      const cam = cfg.survivor.camera && cfg.survivor.camera.enabled;
       for (let i = 0; i < 4; i++) {
         const s = S[i];
         if (s.st >= S_DEAD) continue;
         const dx = s.x - H.x, dz = s.z - H.z, d2 = dx * dx + dz * dz;
         if (d2 <= range2) {
-          const vis = rayVis(md, H.x, H.z, s.x, s.z, semi, thr);
+          const vis = rayVis(md, H.x, H.z, s.x, s.z, semi, thr);      // the hunter sees the survivor's BODY
           if (vis >= thr) {
-            s.seesHunter = true;                     // survivors are 360 deg
+            if (!cam) s.seesHunter = true;           // old model: survivors see 360 deg from the body (symmetric)
             if (d2 < 1e-6 || (dx * hfx + dz * hfz) >= Math.sqrt(d2) * cosH) H.seen[i] = true;
           }
+        }
+        if (cam) {                                   // camera model: from the camera, in its FOV (+ body awareness)
+          this._camPos(s);
+          s.seesHunter = this._camSees(s, H.x, H.z);
+          for (let j = 0; j < 4; j++) { const o = S[j]; if (j !== i && o.st < S_DEAD) s.seesMate[j] = this._camSees(s, o.x, o.z); }
+          continue;
         }
         for (let j = i + 1; j < 4; j++) {
           const o = S[j];
@@ -388,12 +397,75 @@ export class Match {
     for (let i = 0; i < 4; i++) {
       const s = S[i];
       if (s.st >= S_DEAD || (tick + i) % sc.staticPerceptionEvery !== 0) continue;
-      const fm = this._featMask(s.x, s.z);
+      const camOn = cfg.survivor.camera && cfg.survivor.camera.enabled;
+      if (camOn) this._camPos(s);
+      const fm = camOn ? this._featMask(s.camX, s.camZ) : this._featMask(s.x, s.z);
       if (fm === null) continue;
       const gm = fm.g, pm = fm.p;
-      for (let g = 0; g < this.gens.length; g++) s.gSeen[g] = (gm >>> this.gens[g].ci) & 1;
-      for (let p = 0; p < s.pSeen.length; p++) s.pSeen[p] = (pm >>> p) & 1;
+      if (!camOn) {
+        for (let g = 0; g < this.gens.length; g++) s.gSeen[g] = (gm >>> this.gens[g].ci) & 1;
+        for (let p = 0; p < s.pSeen.length; p++) s.pSeen[p] = (pm >>> p) & 1;
+        continue;
+      }
+      // camera: visible from the camera's cell (cached masks) AND inside the FOV cone; or within body awareness
+      const ca = cfg.survivor.camera, aw2 = ca.bodyAwareM * ca.bodyAwareM;
+      for (let g = 0; g < this.gens.length; g++) {
+        const ge = this.gens[g];
+        s.gSeen[g] = ((((gm >>> ge.ci) & 1) === 1 && this._inCone(s, ge.x, ge.z)) || (ge.x - s.x) ** 2 + (ge.z - s.z) ** 2 <= aw2) ? 1 : 0;
+      }
+      for (let p = 0; p < s.pSeen.length; p++) {
+        const pa = md.pallets[p];
+        s.pSeen[p] = ((((pm >>> p) & 1) === 1 && this._inCone(s, pa.cx, pa.cz)) || (pa.cx - s.x) ** 2 + (pa.cz - s.z) ** 2 <= aw2) ? 1 : 0;
+      }
     }
+  }
+
+  // ---- survivor camera (README "Survivor camera") ----
+  // yaw: turns toward the action's look point (else the movement direction, else stays) at <= turnRateDegS
+  _camTurn(s, A) {
+    const ca = this.cfg.survivor.camera;
+    let want = null;
+    if (A && A.look) { const lx = A.look.x - s.x, lz = A.look.z - s.z; if (lx * lx + lz * lz > 1e-6) want = Math.atan2(lz, lx); }
+    else if (s.vx * s.vx + s.vz * s.vz > 0.09) want = Math.atan2(s.vz, s.vx);
+    if (want === null) return;
+    let d = want - s.camYaw; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+    const mx = ca.turnRateDegS * DEG * this.dt;
+    s.camYaw += Math.max(-mx, Math.min(mx, d));
+    if (s.camYaw > Math.PI) s.camYaw -= 2 * Math.PI; else if (s.camYaw < -Math.PI) s.camYaw += 2 * Math.PI;
+    s.camTick = -1;
+  }
+  // position: body - backM along the look direction + shoulder offset, marched from the body and stopped short of the
+  // first opaque cell (tall obstacle / outside); pushed in closer than minM => at the body. Cached per tick.
+  _camPos(s) {
+    if (s.camTick === this.tick) return;
+    s.camTick = this.tick;
+    const ca = this.cfg.survivor.camera, md = this.md, W = md.w, Hh = md.h;
+    const lx = Math.cos(s.camYaw), lz = Math.sin(s.camYaw), px = -lz * ca.side, pz = lx * ca.side;
+    const tx = s.x - lx * ca.backM + px * ca.shoulderM, tz = s.z - lz * ca.backM + pz * ca.shoulderM;
+    const dx = tx - s.x, dz = tz - s.z, L = Math.sqrt(dx * dx + dz * dz);
+    const n = Math.max(1, Math.ceil(L / 0.1));
+    let free = L;
+    for (let k = 1; k <= n; k++) {
+      const f = k / n, x = s.x + dx * f, z = s.z + dz * f, i = Math.floor(x), j = Math.floor(z);
+      if (i < 0 || j < 0 || i >= W || j >= Hh || md.sight[j * W + i] < 0) { free = Math.max(0, L * (k - 1) / n - ca.wallMarginM); break; }
+    }
+    if (free < ca.minM) { s.camX = s.x; s.camZ = s.z; return; }
+    const f = free / L;
+    s.camX = s.x + dx * f; s.camZ = s.z + dz * f;
+  }
+  _inCone(s, x, z) {
+    const dx = x - s.camX, dz = z - s.camZ, d2 = dx * dx + dz * dz;
+    if (d2 < 1e-6) return true;
+    return dx * Math.cos(s.camYaw) + dz * Math.sin(s.camYaw) >= Math.sqrt(d2) * Math.cos(this.cfg.survivor.camera.fovDeg * 0.5 * DEG);
+  }
+  // does survivor s perceive point (x,z): body awareness (360 deg, LOS from the body) or camera (range, FOV, LOS)
+  _camSees(s, x, z) {
+    const sc = this.cfg.sight, ca = this.cfg.survivor.camera, thr = sc.visThreshold, semi = sc.semiTransparency;
+    const bx = x - s.x, bz = z - s.z;
+    if (bx * bx + bz * bz <= ca.bodyAwareM * ca.bodyAwareM && rayVis(this.md, s.x, s.z, x, z, semi, thr) >= thr) return true;
+    const dx = x - s.camX, dz = z - s.camZ;
+    if (dx * dx + dz * dz > sc.range * sc.range || !this._inCone(s, x, z)) return false;
+    return rayVis(this.md, s.camX, s.camZ, x, z, semi, thr) >= thr;
   }
 
   // Which generator candidates / pallets are visible from the centre of the cell containing (x,z). Pure function of
@@ -452,6 +524,12 @@ export class Match {
     return out;
   }
 
+  _camObs(s) {
+    if (!(this.cfg.survivor.camera && this.cfg.survivor.camera.enabled)) return null;
+    this._camPos(s);
+    return { x: s.camX, z: s.camZ, yaw: s.camYaw };
+  }
+
   _seesLever(a, g) { return this._seesPoint(a, g.lx, g.lz); }
 
   _obsSurvivor(s) {
@@ -465,6 +543,7 @@ export class Match {
       deepWoundS: s.dwT >= 0 ? s.dwT : null, mendProgress: s.dwT >= 0 ? s.mendP : null,
       protectedS: s.protT > 0 ? s.protT : null, elusiveS: s.elusT > 0 ? s.elusT : null, chased: this.chaseTgt === s.id,
       intentCooldownS: Math.max(0, s.intNext - this.t),
+      cam: this._camObs(s),
     };
     const hud = this._hudCopy();
     const downedAuras = [];
@@ -552,6 +631,7 @@ export class Match {
   _seesPoint(a, x, z) {
     const sc = this.cfg.sight, dx = x - a.x, dz = z - a.z, d2 = dx * dx + dz * dz;
     if (d2 <= sc.adjacentReach * sc.adjacentReach) return true;
+    if (a !== this.hunter && this.cfg.survivor.camera && this.cfg.survivor.camera.enabled) { this._camPos(a); return this._camSees(a, x, z); }
     if (d2 > sc.range * sc.range) return false;
     if (a === this.hunter && (dx * Math.cos(a.face) + dz * Math.sin(a.face)) < Math.sqrt(d2) * Math.cos(sc.hunterFovDeg * 0.5 * DEG)) return false;
     return rayVis(this.md, a.x, a.z, x, z, sc.semiTransparency, sc.visThreshold) >= sc.visThreshold;
@@ -876,6 +956,7 @@ export class Match {
       const s = S[(this.tick + k) & 3];
       this._survivorAct(s, s.lastAction);
     }
+    if (cfg.survivor.camera && cfg.survivor.camera.enabled) for (const s of S) if (s.st < S_DEAD) this._camTurn(s, s.lastAction);
     this._finishGens();
     this._hunterAct(H.lastAction);
     if (H.carrying >= 0) { const c = S[H.carrying]; c.x = H.x; c.z = H.z; c.vx = H.vx; c.vz = H.vz; }

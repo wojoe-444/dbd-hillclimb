@@ -39,7 +39,7 @@ What a survivor can learn (everything else is hidden):
 | **downed auras** (`obs.downedAuras`) | `[{id, x, z}]` live positions of all downed teammates (not carried, not yourself). |
 | **dying survivor's auras** (`obs.mateAuras`) | only while you are downed: `[{id, x, z, state}]` live positions of every teammate still in the match (reciprocal of downed auras; report §3). `null` otherwise. Does not update `lastSeen`. |
 | **chase** | `hud[j].chased` and `self.chased` (chase music) from the engine chase state (below). |
-| teammate positions | otherwise only if seen by the same sight model used for the hunter (360°, range 75 m, semi-transparency): `teammates` = position + visible state. `obs.lastSeen[j]` is the survivor's own memory of the last sighting (HUD/aura info does not update it). |
+| teammate positions | otherwise only if seen (survivor camera vision, see "Survivor camera"; range 75 m, semi-transparency): `teammates` = position + visible state. `obs.lastSeen[j]` is the survivor's own memory of the last sighting (HUD/aura info does not update it). |
 | generators | **no gen auras: a survivor only knows the generators it has found.** `obs.gens[i]` has `known:false` and `id`, `x`, `z`, `slots` = `null` until this survivor has perceived the gen once (seen per the per-cell gen visibility, or within `sight.adjacentReach` = 2 m) or a `genDone` announcement gave its position; after that they stay known (`slots` = usable repair side points). Survivor `ctx.map.generators` has the same length/order but **every entry is `null`** (the id would otherwise reveal the spot via `generatorCandidates`, which stays public as static geometry: the candidate wrecks are visible map features). Progress, *who is working*, `regressing` and `slotsTaken` (busy sides) only for gens currently seen (or adjacent); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `slotsTaken:null`, `seenT`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. (A teammate's HUD `activityProgress` shows *how far* their gen is, not *which* gen.) |
 | exit gates | `powered`/`open` are public; lever `progress` only while you perceive the lever (same sight rule, or within 2 m); open gates report `progress: 1`. |
 | pallets | state (`up/dropped/broken`) only for pallets currently seen/adjacent, else last-seen (initially `up`). |
@@ -152,6 +152,7 @@ meaningful actions are `act: 'selfUnhook'` (when offered) and `intent`. An excep
   moveDir: {x,z} | null,     // raw steering (normalised); {0,0} = stand
   walk: bool,                // survivors: 2.26 m/s, no scratch marks, slow (quiet) vaults
   face: {x,z}?,              // POINT to look at (hunter vision cone / attack direction follows facing)
+  look: {x,z}?,              // survivors: POINT the camera should look toward (see "Survivor camera"); absent = movement direction
   act: null | 'repair' | 'heal' | 'rescue' | 'mend' | 'dropPallet' | 'openGate' | 'wiggle' | 'selfUnhook'          // survivor
            | 'attack' | 'pickup' | 'hook' | 'drop' | 'breakPallet' | 'kickGen' | 'openGate',                           // hunter
   target: id?,               // gen id / pallet id / hook id / gate id (string) or survivor id (number); default = nearest valid
@@ -193,7 +194,7 @@ can't vault. Characters are circles r = 0.4 m that collide with each other (see 
 Survivor `obs`:
 ```js
 { t, tick,
-  self: { id,x,z,vx,vz,facing,state,hookCount,hookStage,hookStages,hookTimerS,boosted,vaulting,act,progress,
+  self: { id,x,z,vx,vz,facing,cam /* {x,z,yaw} camera, null if camera off */,state,hookCount,hookStage,hookStages,hookTimerS,boosted,vaulting,act,progress,
           bleedS /* remaining cumulative bleed-out budget while downed/carried, else null */, healProgress, wiggle,
           deepWoundS /* null if none */, mendProgress /* 0..1, null if no Deep Wound */,
           protectedS /* remaining Endurance+Haste, null if none */, elusiveS /* remaining Elusive, null if none */,
@@ -280,11 +281,34 @@ Obs objects are freshly allocated every call and owned by the receiving brain.
   carrying 3.68, hit cooldown 0.575 × …, see config).
 * **Sight**: tall obstacles (height ≥ eyeHeight) and cells outside the outline are opaque. Low obstacles, windows, pallets (up/dropped/broken) and
   generators are semi-transparent: each distinct one a ray crosses multiplies visibility by `sight.semiTransparency` (0.6; a multi-cell obstacle counts once;
-  start/end cells excluded). **A target is "seen" iff in range (75 m), in the cone (hunter 100°; survivors 360°) and visibility ≥ `sight.visThreshold` (0.5)** —
+  start/end cells excluded). **A target is "seen" iff in range (75 m), in the cone (hunter 100° from its body; survivors: the camera's 100° FOV from the camera position, see "Survivor camera") and visibility ≥ `sight.visThreshold` (0.5)** —
   deterministic, no RNG. So one semi-transparent obstacle is see-through, two are not. Dynamic sight (hunter↔survivors↔survivors) refreshes every
   `perceptionEvery` = 2 ticks; generators/pallets use per-cell cached visibility masks (from the cell centre), shared across matches.
 * **Entity blocker** [S]: a survivor's 3rd vault of the same window **within the same chase** (while that survivor is the chase target) blocks
   that window for that survivor only, for 30 s; vaults outside a chase don't count and a new chase restarts the count (`obs.blockedWindows`).
+
+## Survivor camera (`config.survivor.camera`)
+
+Survivors play with a 3rd-person camera behind and slightly above them; what they perceive comes from the **camera**, not
+the body. `camera.enabled: false` restores the old model (360° rays from the body; symmetric survivor-survivor sight).
+
+* **Yaw**: each tick the camera turns toward the action's `look` point (if absent: the movement direction while moving,
+  else it keeps its yaw) at most `turnRateDegS` (720°/s). It starts at the body's initial facing. The body's `facing` is
+  unaffected (movement / `face`).
+* **Position**: body − `backM` (2.75 m) along the look direction + `shoulderM` (0.5 m) to the right (`side` +1; −1 = left).
+  The segment body → that point is marched in 0.1 m steps and the camera stops `wallMarginM` (0.3 m) short of the first opaque
+  cell (tall obstacle / outside the outline) — it never passes through walls, it gets pushed in. Pushed in closer than
+  `minM` (0.5 m) → the camera sits at the body. Low obstacles don't push it (it's above them).
+* **Perception** (hunter, teammates, generators, pallets, gate levers): a target is perceived if it is inside the camera's
+  horizontal FOV cone (`fovDeg` 100, centred on the yaw, apex at the camera), within range of the camera and visible from the
+  camera (same semi-transparency rule; gens/pallets via the per-cell cached masks of the camera's cell) — **or** within
+  `bodyAwareM` (2.5 m) of the body with line of sight from the body (360°, things touching you). Generator adjacency
+  (`sight.adjacentReach`) and lever adjacency still count. Terror radius, HUD, notifications, auras are unchanged.
+* So a survivor can **peek**: body behind a tall corner (out of the hunter's sight), camera past the corner looking at the
+  hunter. The hunter's perception is unchanged: it sees survivor **bodies** (its 100° cone from its body).
+* Obs: `self.cam = {x, z, yaw}` (null when the camera is off); `obs.hunter` / `teammates` = what the camera (or body
+  awareness) perceives. Survivor-survivor sight is no longer symmetric.
+* Cost: camera position + rays only on perception ticks (`perceptionEvery`, `staticPerceptionEvery`); the yaw update is O(1).
 
 ## Collision (`config.collision`, user rules)
 

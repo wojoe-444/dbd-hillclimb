@@ -114,8 +114,8 @@ test('terror radius: 3 equal layers, enter lag 0.5 s, layer-change lag 2.5 s, no
   place(m.survivors[0], 45.5, 30.5); run(m, 6); ok(o.terror === null, 'leaving the radius noticed after 0.5 s');
 });
 
-test('perception: detection is cone-limited for the hunter, 360 for survivors, blocked by walls', () => {
-  const { m, ctl } = mk();
+test('perception (survivor.camera.enabled = false): cone-limited for the hunter, 360 for survivors, blocked by walls', () => {
+  const { m, ctl } = mk({ config: { survivor: { camera: { enabled: false } } } });
   let hObs = null, sObs = null;
   ctl.H = o => (hObs = o, {}); ctl.S[0] = o => (sObs = o, {});
   place(m.hunter, 30.5, 26.5); m.hunter.face = 0;            // facing +x
@@ -134,7 +134,53 @@ test('perception: detection is cone-limited for the hunter, 360 for survivors, b
   ok(sObs.hunter === null && sObs.lastHunter !== null, 'survivor loses sight: hunter=null, lastHunter kept');
   place(m.survivors[0], 46.5, 30.5); run(m, 6);
   ok(sObs.terror === null, 'terror null when far (>32 m)');
+  ok(sObs.self.cam === null, 'camera off: self.cam is null');
   ok((Math.hypot(sObs.lastHunter.x - 30.5, sObs.lastHunter.z - 26.5) < 12.5 || Math.hypot(sObs.lastHunter.x - 5.5, sObs.lastHunter.z - 12.5) < 0.5) && sObs.lastHunter.t < 2, 'lastHunter has last seen position/time');
+});
+
+test('survivor camera: clamped by walls, FOV-limited, body awareness, peeking around a corner', () => {
+  const { m, ctl } = mk();
+  let sObs = null, hObs = null;
+  const look = { pt: null };
+  ctl.H = o => (hObs = o, {}); ctl.S[0] = o => (sObs = o, look.pt ? { look: look.pt } : {});
+  for (let i = 1; i < 4; i++) place(m.survivors[i], 2.5 + i, 34.5);
+  // clamping: inside the house (west wall cells x = 10), looking east: the camera behind is pushed in by the wall
+  place(m.hunter, 44.5, 33.5); place(m.survivors[0], 12.6, 12.5); look.pt = { x: 16.5, z: 12.5 };
+  run(m, 5);
+  let c = sObs.self.cam;
+  ok(c && Math.abs(c.yaw) < 0.05, 'camera yaw turned to the look point (east)');
+  ok(c.x >= 11.0 - 1e-9 && Math.hypot(c.x - 12.6, c.z - 12.5) < 2.75 - 0.5, 'camera clamped short of the wall (x ' + c.x.toFixed(2) + ')');
+  place(m.survivors[0], 11.4, 12.5); run(m, 2); c = sObs.self.cam;
+  ok(c.x === 11.4 && c.z === 12.5, 'wall right behind: pushed in closer than minM -> camera at the body');
+  // open ground: free camera 2.75 m behind + 0.5 m shoulder offset
+  place(m.survivors[0], 38.5, 26.5); look.pt = { x: 45.5, z: 26.5 }; run(m, 2); c = sObs.self.cam;
+  near(Math.hypot(c.x - 38.5, c.z - 26.5), Math.hypot(2.75, 0.5), 1e-6, 'free camera: 2.75 m back + 0.5 m shoulder');
+  // FOV: hunter 8 m behind the look direction is not seen; turning the camera around reveals it
+  place(m.hunter, 30.5, 26.5); m.hunter.face = 0; run(m, 4);
+  ok(sObs.hunter === null, 'hunter behind the camera (outside the 100 deg FOV) is not seen');
+  ok(hObs.survivors.some(x => x.id === 0), '... while the hunter (facing the survivor) sees its body');
+  look.pt = { x: 30.5, z: 26.5 }; run(m, 1);
+  ok(sObs.hunter === null, 'camera turns at a limited rate (not instantly)');
+  run(m, 4);
+  ok(sObs.hunter !== null, 'after turning, the hunter is seen');
+  // body awareness: 2 m behind is always perceived
+  look.pt = { x: 45.5, z: 26.5 }; run(m, 5); place(m.hunter, 36.5, 26.5); run(m, 3);
+  ok(sObs.hunter !== null, 'hunter within bodyAwareM (2.5 m) is perceived even behind the camera');
+  // peeking: body just past the north end of the tall wall x = 34 (z 10..14), hunter behind the wall; looking
+  // south-west the camera sits north of the wall end and sees the hunter, while the hunter cannot see the body
+  place(m.hunter, 28.5, 12.5); m.hunter.face = 0; place(m.survivors[0], 35.5, 10.5);
+  look.pt = { x: 35.5 + 5 * Math.cos(120 * Math.PI / 180), z: 10.5 + 5 * Math.sin(120 * Math.PI / 180) };
+  run(m, 6);
+  ok(!hObs.survivors.some(x => x.id === 0), 'peek: the hunter (facing the survivor) cannot see its body behind the wall');
+  ok(sObs.hunter !== null && Math.abs(sObs.hunter.x - 28.5) < 1e-9, 'peek: the camera past the corner sees the hunter');
+  ok(sObs.self.cam.z < 10 && sObs.self.cam.x > 34, 'peek: camera is north of the wall end');
+  // switch: camera off -> 360 deg from the body, hunter behind the wall unseen
+  const t = mk({ config: { survivor: { camera: { enabled: false } } } });
+  let o2 = null; t.ctl.S[0] = o => (o2 = o, {});
+  place(t.m.hunter, 28.5, 12.5); place(t.m.survivors[0], 35.5, 10.5); run(t.m, 3);
+  ok(o2.hunter === null && o2.self.cam === null, 'camera off: body-origin vision cannot peek (hunter unseen), no self.cam');
+  place(t.m.hunter, 30.5, 26.5); place(t.m.survivors[0], 38.5, 26.5); run(t.m, 3);
+  ok(o2.hunter !== null, 'camera off: 360 deg (hunter behind seen)');
 });
 
 test('solo queue: teammate positions only by sight (HUD states only); gens progress only if seen', () => {
@@ -153,7 +199,7 @@ test('solo queue: teammate positions only by sight (HUD states only); gens progr
   const keys = Object.keys(obs[0]).sort().join();
   const allowed = 'blockedWindows,downedAuras,endgame,gates,gatesPowered,gens,gensDone,gensNeeded,hud,hunter,lastHunter,lastSeen,mateAuras,newNotifications,notifications,pallets,self,t,teammates,terror,tick';
   ok(keys === allowed, 'survivor obs has exactly the perceived-info + HUD keys: ' + keys);
-  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,chased,deepWoundS,elusiveS,facing,healProgress,hookCount,hookStage,hookStages,hookTimerS,id,intentCooldownS,mendProgress,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
+  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,cam,chased,deepWoundS,elusiveS,facing,healProgress,hookCount,hookStage,hookStages,hookTimerS,id,intentCooldownS,mendProgress,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
   ok(!('hookCount' in (obs[0].gens[0])) && !obs[0].gens.some(g => 'hooked' in g), 'no hidden state in gens');
   // survivor 1 is downed far away: survivor 0 gets it only through the HUD + downed aura, not through sight memory
   m.survivors[1].st = DOWNED; m.survivors[1].bleedT = 100; run(m, 3);

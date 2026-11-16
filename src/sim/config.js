@@ -38,6 +38,18 @@ export const defaultConfig = {
   },
 
   survivor: {
+    // 3rd-person camera vision (README "Survivor camera"). enabled:false = the old 360-degree body-origin vision.
+    camera: {
+      enabled: true,
+      backM: 2.75,          // camera distance behind the body, opposite the look direction
+      shoulderM: 0.5,       // sideways offset ...
+      side: 1,              // ... to the right of the look direction (+1) or the left (-1)
+      minM: 0.5,            // pushed in closer than this to the body (a wall right behind): the camera sits at the body
+      wallMarginM: 0.3,     // stop this far short of the first opaque cell when pushed in by a wall
+      fovDeg: 100,          // horizontal field of view centred on the look direction
+      turnRateDegS: 720,    // max camera yaw rate
+      bodyAwareM: 2.5,      // always-on 360-degree awareness around the body (things touching you)
+    },
     runSpeed: 4.0,
     walkSpeed: 2.26,        // walking leaves no scratch marks
     crawlSpeed: 0.7,

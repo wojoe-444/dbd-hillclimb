@@ -21,11 +21,27 @@ export function survivorBrain(ctx) {
   const EC = 8, EW = Math.ceil(ctx.map.w / EC), EH = Math.ceil(ctx.map.h / EC);
   const visited = new Uint8Array(EW * EH);
   let exploreTo = null, exploreT = -99;
+  // camera (survivor.camera): look at a visible hunter; otherwise along the movement, with a glance behind every 3 s,
+  // and a slow sweep while standing still (repairing / healing) so teammates and the hunter get noticed
+  let sweep = 0;
+  const withLook = (obs, a) => {
+    const me = obs.self;
+    if (!a || a.look || !obs.self.cam) return a;
+    let yaw;
+    if (obs.hunter) yaw = Math.atan2(obs.hunter.z - me.z, obs.hunter.x - me.x);
+    else {
+      const v = hyp(me.vx, me.vz), phase = obs.t % 3;
+      if (v > 0.5) yaw = Math.atan2(me.vz, me.vx) + (phase > 2.4 ? Math.PI : 0);
+      else { sweep += Math.PI / 20; yaw = sweep; }      // ~1 turn per 4 s
+    }
+    return { ...a, look: { x: me.x + 5 * Math.cos(yaw), z: me.z + 5 * Math.sin(yaw) } };
+  };
   const slots = makeSlotPicker(ctx.config.reach.repairSlot);
   let holdUntil = -1;          // stand still (accept a heal) until this time
 
   return {
-    decide(obs, api) {
+    decide(obs, api) { return withLook(obs, this.decideInner(obs, api)); },
+    decideInner(obs, api) {
       const me = obs.self, nav = api.nav, h = obs.hunter;
       // hooked: the minimal hooked obs; take the Resolve self-unhook the moment it is offered, else ask for help
       if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : { intent: 'help' };
