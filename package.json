@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:sim": "node scripts/test-sim.js",
+    "bench:sim": "node scripts/bench.js"
+  }
+}
