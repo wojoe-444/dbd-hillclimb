@@ -147,12 +147,28 @@ function buildDynamic(m) {
   }
   for (const p of m.md.pallets) {
     const w = p.x1 - p.x0, d = p.z1 - p.z0;
-    const up = box(p.axis === 'x' ? 0.25 : w, 1.4, p.axis === 'x' ? d : 0.25, mat(0xd99a3a));
-    up.position.set(p.x0 + w / 2 + (p.axis === 'x' ? 0.35 : 0), 0.7, p.z0 + d / 2 + (p.axis === 'z' ? 0.35 : 0));
-    const down = box(w, 0.3, d, mat(0xd99a3a));
-    down.position.set(p.x0 + w / 2, 0.15, p.z0 + d / 2);
-    dyn.add(up, down);
-    v.pallets.push({ up, down });
+    const cx = p.x0 + w / 2, cz = p.z0 + d / 2;
+    // UPRIGHT: tall pale-yellow board leaning at the side of the gap, plus a yellow floor marker across the gap
+    const up = new THREE.Group();
+    const board = box(p.axis === 'x' ? 0.2 : w, 2.0, p.axis === 'x' ? d : 0.2, mat(0xf2d24b, { emissive: 0x3a3000 }));
+    board.position.set(cx + (p.axis === 'x' ? 0.4 : 0), 1.0, cz + (p.axis === 'z' ? 0.4 : 0));
+    const mark = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0xf2d24b, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
+    mark.rotation.x = -Math.PI / 2; mark.position.set(cx, 0.04, cz);
+    up.add(board, mark);
+    // DROPPED: thick red-orange slab filling the gap (blocks the hunter) with a glowing top
+    const down = box(w, 0.55, d, mat(0xff5a1f, { emissive: 0x5a1400 }));
+    down.position.set(cx, 0.28, cz);
+    // BROKEN: a few dark splinters on the floor
+    const broken = new THREE.Group();
+    const splMat = mat(0x5a4632);
+    for (let k = 0; k < 5; k++) {
+      const sp = box(0.5, 0.08, 0.12, splMat);
+      sp.position.set(cx + (k - 2) * 0.22 * (p.axis === 'x' ? 0.3 : 1), 0.05, cz + (k - 2) * 0.22 * (p.axis === 'z' ? 0.3 : 1) + ((k % 2) - 0.5) * 0.3);
+      sp.rotation.y = k * 1.1;
+      broken.add(sp);
+    }
+    dyn.add(up, down, broken);
+    v.pallets.push({ up, down, broken });
   }
   for (let i = 0; i < 4; i++) { const a = makeActor(survColors[i], 1.7); dyn.add(a); v.survivors.push(a); }
   const h = makeActor(0xd8313b, 2.2);
@@ -206,7 +222,7 @@ function sync() {
     o.mesh.material.emissive.setHex(g.done ? 0x886622 : 0x000000);
     o.light.intensity = g.done ? 25 : p * 6;
   });
-  m.ps.forEach((s, i) => { v.pallets[i].up.visible = s === 0; v.pallets[i].down.visible = s === 1; });
+  m.ps.forEach((s, i) => { const q = v.pallets[i]; q.up.visible = s === 0; q.down.visible = s === 1; q.broken.visible = s === 2; });
   // survivors face: sim facing angle a means direction (cos a, sin a) in x/z
   const place = (obj, x, z, face) => { obj.position.set(x, 0, z); obj.rotation.y = Math.PI / 2 - face; };
   m.survivors.forEach((s, i) => {
