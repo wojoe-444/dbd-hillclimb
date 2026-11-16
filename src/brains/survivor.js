@@ -19,7 +19,8 @@ export const survivorSpace = {
   mendRiskDist:  [0, 40, 16],    // only mend Deep Wound if the hunter isn't seen within this
   holdMaxS:      [0, 20, 4],     // max time to hold at a loop entry while the hunter isn't pressing us (seen + approaching)
   // ---- HUD-driven teamwork (solo queue: no comms, but the HUD shows states / gens / chases / hooks / downed auras) ----
-  ...rescueSpace,                // rescue utility (closest / stage urgency / camping / busy hunter / claims / own risk) + chaseFromHookW: rescue.js
+  ...rescueSpace,
+  ...healSpace,                  // heal handshake (healer says "healing", patient pauses) + slug pick-up priorities: healplan.js                // rescue utility (closest / stage urgency / camping / busy hunter / claims / own risk) + chaseFromHookW: rescue.js
   trustChase:    [0, 1, 0.6],    // >0.5: don't abandon my gen on terror while another survivor is being chased
   downedStillDist: [0, 40, 12],  // downed: lie still (auto-recover to 95%) unless the hunter is seen within this; then crawl away
   seekHeal:      [0, 1, 0.4],    // >0.5: when injured, walk to a visible healthy teammate and stand still to be healed
@@ -82,6 +83,7 @@ import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
 import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } from './lookahead.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
+import { healSpace, makeHealPlanner } from './healplan.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -188,6 +190,7 @@ export function makeSurvivor(P) {
     const beliefOn = P.hideThreat <= 1 || P.genThreatW > 0;   // otherwise only the terror trend is tracked
     const beliefFull = beliefOn || P.rescueCampFear > 0;       // the rescue's camp estimate needs the full belief update
     const rescue = makeRescuePlanner(ctx, P, belief);          // hooked teammates, teammate whereabouts, rescue utility
+    const heal = makeHealPlanner(ctx, P, rescue.tracker);      // heal / pick-up choice + healer <-> patient handshake
     // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
     const CAM = ctx.config.survivor.camera || { enabled: false };
     const camAt = (x, z, yaw) => {
@@ -748,6 +751,7 @@ export function makeSurvivor(P) {
       loops,
       belief,
       rescue,
+      heal,
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -821,6 +825,7 @@ export function makeSurvivor(P) {
         // ---- HUD bookkeeping ----
         const hud = obs.hud || null;
         rescue.update(obs);
+        heal.update(obs);
         const otherChased = !!hud && hud.some((x) => x.id !== me.id && x.chased);
 
         // ---- threat state ----
@@ -926,6 +931,10 @@ export function makeSurvivor(P) {
           if (ra) return ra;
         }
 
+        // ---- injured: a visible teammate said "healing" and is coming to me -> pause and be healed (healplan.js) ----
+        const pa = heal.patient(obs);
+        if (pa) return pa;
+
         // ---- injured: go get healed by a visible healthy teammate ----
         if (me.state === 'injured' && P.seekHeal > 0.5 && !h) {
           const mate = obs.teammates.filter((t) => t.state === 'healthy').sort((a, b) => d2(a, me) - d2(b, me))[0];
@@ -935,17 +944,10 @@ export function makeSurvivor(P) {
           }
         }
 
-        // ---- heal teammates ----
-        if (me.state === 'healthy' && P.altruism > 0.15) {
-          const cands = [...obs.teammates];
-          for (const a of obs.downedAuras || []) if (!cands.some((t) => t.id === a.id)) cands.push({ id: a.id, x: a.x, z: a.z, state: 'downed' });
-          for (const tm of cands) {
-            if (hud && hud[tm.id] && hud[tm.id].beingHealed && !(me.act === 'heal')) continue;   // someone's on it
-            if ((tm.state === 'injured' || tm.state === 'downed') && d2(tm, me) < P.healDist) {
-              if (d2(tm, me) <= 1.5) return holdProtection ? {} : { act: 'heal', target: tm.id };
-              return { moveTo: approach(tm, me) };
-            }
-          }
+        // ---- heal teammates / pick up downed ones (priorities, threat, gen progress, handshake: healplan.js) ----
+        if (P.altruism > 0.15) {
+          const ha = heal.healer(obs, { healDist: P.healDist, holdProtection, say });
+          if (ha) return ha;
         }
 
         // ---- generators (only the ones I've found) vs exploring for more ----
