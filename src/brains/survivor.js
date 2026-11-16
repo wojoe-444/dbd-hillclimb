@@ -414,8 +414,7 @@ export function makeSurvivor(P) {
       if (obs.hunter) return obs.hunter;
       const lh = obs.lastHunter;
       if (lh && obs.t - lh.t < 3) { const k = Math.min(1.5, obs.t - lh.t); return { x: lh.x + (lh.vx || 0) * k, z: lh.z + (lh.vz || 0) * k, vx: lh.vx, vz: lh.vz }; }
-      if (beliefOn) { const e = belief.expectedPos(); if (e) return { ...e, vx: 0, vz: 0 }; }
-      return lh;
+      return lh;   // (no belief guess here: fleeing from a wrong guess measured worse)
     };
     function chooseCircuit(obs, api, me, hp, h, extra) {
       const vl = vaultsLeft(obs), ps = palletState(obs), R = P.loopTravelMaxM;
@@ -554,9 +553,10 @@ export function makeSurvivor(P) {
           // running crossing (a real leg leads into it): keep the momentum for a fast vault while the hunter is on us;
           // hold crossing (zero leg: mind-game at one anchor): wait at the entry until the hunter is close
           const kk = circ.seq.length, legIn = loops.L(circ.seq[(circ.i - 1 + kk) % kk] ^ 1, c);
-          const running = legIn >= 2 && dhm < 20;
+          // the first crossing of a new plan with the hunter on me is a running crossing too (no stop-and-hold)
+          const running = (legIn >= 2 || circ.crossed === 0) && dhm < 20;
           // lane alignment: approach from the run-up point (on the axis, 2 m out) when there's time, so the vault is fast
-          const A = runupPt(c);
+          const A = null;   // run-up detours measured worse (docs: diag-infloop ablation); kept off
           const vH = routes.hunterSpeed(me.chased ? obs.t - blT0 : 0);
           const lead = (dt) => -(vH * dt) * Math.sign((hp.x - a.c.x) * (loops.sidePt[c ^ 1].x - Pt.x) + (hp.z - a.c.z) * (loops.sidePt[c ^ 1].z - Pt.z) || 1);
           const isUp = a.kind === 'p' && obs.pallets[a.i] === 'up';
