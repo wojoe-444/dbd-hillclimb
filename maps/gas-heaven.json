@@ -42,159 +42,6 @@
   "eyeHeight": 1.6,
   "obstacles": [
     {
-      "id": "m-nw",
-      "x": 50,
-      "z": 14,
-      "w": 4,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-n",
-      "x": 57,
-      "z": 14,
-      "w": 9,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-ne",
-      "x": 67,
-      "z": 14,
-      "w": 8,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-w-n",
-      "x": 50,
-      "z": 15,
-      "w": 1,
-      "d": 7,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-w-s",
-      "x": 50,
-      "z": 25,
-      "w": 1,
-      "d": 9,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-e-n",
-      "x": 74,
-      "z": 15,
-      "w": 1,
-      "d": 8,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-e-mid",
-      "x": 74,
-      "z": 24,
-      "w": 1,
-      "d": 4,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-e-s",
-      "x": 74,
-      "z": 31,
-      "w": 1,
-      "d": 3,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-sw",
-      "x": 50,
-      "z": 34,
-      "w": 6,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-s-mid",
-      "x": 57,
-      "z": 34,
-      "w": 7,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-s-p-left",
-      "x": 67,
-      "z": 34,
-      "w": 2,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-se",
-      "x": 71,
-      "z": 34,
-      "w": 4,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-inner-w-n",
-      "x": 60,
-      "z": 20,
-      "w": 1,
-      "d": 5,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-inner-w-s",
-      "x": 60,
-      "z": 26,
-      "w": 1,
-      "d": 3,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-inner-n",
-      "x": 61,
-      "z": 20,
-      "w": 7,
-      "d": 1,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-inner-e",
-      "x": 67,
-      "z": 21,
-      "w": 1,
-      "d": 6,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
-      "id": "m-inner-tail",
-      "x": 67,
-      "z": 28,
-      "w": 1,
-      "d": 2,
-      "height": 3.5,
-      "kind": "wall"
-    },
-    {
       "id": "b1-bar",
       "x": 8,
       "z": 60,
@@ -814,33 +661,63 @@
       "d": 1,
       "height": 3.2,
       "kind": "wall"
+    },
+    {
+      "id": "tl-t-bar",
+      "x": 60,
+      "z": 16,
+      "w": 12,
+      "d": 1,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "tl-t-stem-n",
+      "x": 65,
+      "z": 17,
+      "w": 1,
+      "d": 3,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "tl-t-stem-s",
+      "x": 65,
+      "z": 21,
+      "w": 1,
+      "d": 8,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "tl-l-up-n",
+      "x": 53,
+      "z": 22,
+      "w": 1,
+      "d": 7,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "tl-l-up-s",
+      "x": 53,
+      "z": 30,
+      "w": 1,
+      "d": 3,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "tl-l-foot",
+      "x": 53,
+      "z": 33,
+      "w": 9,
+      "d": 1,
+      "height": 3.5,
+      "kind": "wall"
     }
   ],
   "windows": [
-    {
-      "id": "w-m-n",
-      "x": 66,
-      "z": 14,
-      "axis": "z"
-    },
-    {
-      "id": "w-m-e",
-      "x": 74,
-      "z": 23,
-      "axis": "x"
-    },
-    {
-      "id": "w-m-s",
-      "x": 56,
-      "z": 34,
-      "axis": "z"
-    },
-    {
-      "id": "w-m-i",
-      "x": 60,
-      "z": 25,
-      "axis": "x"
-    },
     {
       "id": "w-b1",
       "x": 8,
@@ -870,23 +747,21 @@
       "x": 36,
       "z": 82,
       "axis": "x"
+    },
+    {
+      "id": "w-tl-t",
+      "x": 65,
+      "z": 20,
+      "axis": "x"
+    },
+    {
+      "id": "w-tl-l",
+      "x": 53,
+      "z": 29,
+      "axis": "x"
     }
   ],
   "pallets": [
-    {
-      "id": "p-m-s",
-      "x": 69,
-      "z": 34,
-      "axis": "z",
-      "length": 2
-    },
-    {
-      "id": "p-m-i",
-      "x": 67,
-      "z": 27,
-      "axis": "x",
-      "length": 1
-    },
     {
       "id": "p-b1",
       "x": 13,
