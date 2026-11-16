@@ -1,0 +1,4583 @@
+{
+  "sourceHead": "27157b588fcdec95090bccab08fd2745c5193fcc",
+  "date": "2026-11-16",
+  "seeds": [
+    1000,
+    1031
+  ],
+  "mapPool": "maps/gas-heaven",
+  "variants": 32,
+  "notes": [
+    "All fitness uses current worker BP plus time-weighted survival and chase share.",
+    "Episode follow-up available only for default/on; null is unmeasured or inapplicable.",
+    "Scratch-associated sightings are not causal finds.",
+    "Scratch-channel intervention sets scratchRange=0; one exactly colocated observation survives in default."
+  ],
+  "testSim": {
+    "passed": 1559,
+    "failed": 0
+  },
+  "matchup64": {
+    "kills": 3.5625,
+    "escapes": 0.4375,
+    "gens": 3.15625,
+    "hooks": 7.46875,
+    "durationPrinted": 417.51
+  },
+  "legacyV13": {
+    "championSha256": "6e437fedd5e7356a6cf4226ef0ba26eac8624ff15ecdbe3fb5a9f8ab35c3aa64",
+    "seeds": [
+      1000,
+      1023
+    ],
+    "oldFitness": [
+      0.132,
+      0.07
+    ],
+    "gens": [
+      2.458,
+      1.125
+    ],
+    "kills": [
+      3.75,
+      4
+    ],
+    "foundRestored": 469,
+    "orderedHeuristic": {
+      "belief": 113,
+      "recentRepair": 71,
+      "scratch": 245,
+      "injured": 20,
+      "other": 20
+    },
+    "hiddenBeliefMass": 0.475,
+    "naiveLastSeenHit": 0.477
+  },
+  "runs": [
+    {
+      "variant": "default",
+      "summary": {
+        "n": 32,
+        "fit": 0.28297569715711784,
+        "survival": 0.3114932725694445,
+        "gens": 3.125,
+        "kills": 3.59375,
+        "duration": 418.42500000000007,
+        "hides": 0,
+        "peeks": 5.65625,
+        "standingS": 38657.79999999824,
+        "repairS": 12403.900000000727,
+        "time": {
+          "hide:walk": 341.2999999999998,
+          "hide:still": 240.79999999999964,
+          "sneak:run": 427.69999999999953,
+          "sneak:repair": 32.599999999999966,
+          "sneak:still": 0.30000000000000004,
+          "hide:run": 0.1
+        },
+        "episodes": {
+          "hide": {
+            "n": 639,
+            "unseenStart": 141,
+            "found": 68,
+            "seenWithin10S": 125,
+            "unseenFollowupCensored": 1,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 341.29999999999967,
+            "ranS": 0.1,
+            "censored": 0
+          },
+          "sneak": {
+            "n": 217,
+            "unseenStart": 206,
+            "found": 2,
+            "seenWithin10S": 79,
+            "unseenFollowupCensored": 2,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 0,
+            "ranS": 427.70000000000016,
+            "censored": 0
+          }
+        },
+        "departures": {
+          "n": 650,
+          "unseenStart": 403,
+          "found": 177,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null,
+          "firstWalk": 123,
+          "firstRun": 525,
+          "still": 2,
+          "sameGenWithin10S": 79,
+          "walkedS": 162.49999999999994,
+          "ranS": 4575.399999999999,
+          "censored": 0
+        },
+        "threatenedDepartures": {
+          "n": 377,
+          "unseenStart": 178,
+          "found": 110,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null,
+          "firstWalk": 67,
+          "firstRun": 309,
+          "still": 1,
+          "sameGenWithin10S": 40,
+          "walkedS": 65.00000000000001,
+          "ranS": 2609.2999999999993,
+          "censored": 0
+        },
+        "stealthDepartures": {
+          "n": 130,
+          "unseenStart": 30,
+          "found": 23,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null,
+          "firstWalk": 123,
+          "firstRun": 7,
+          "still": 0,
+          "sameGenWithin10S": 55,
+          "walkedS": 130.8,
+          "ranS": 484.49999999999955,
+          "censored": 0
+        },
+        "newSightings": 2920,
+        "scratchAssociatedSightings": 2278,
+        "stealthSightings": {
+          "n": 278,
+          "scratchAssociated": 177,
+          "gruntAssociated": 1,
+          "recentRepair": 116
+        }
+      },
+      "rows": [
+        {
+          "seed": 1000,
+          "map": "gas-heaven-v008",
+          "fit": 0.17766571180555563,
+          "survival": 0.18849305555555573,
+          "gens": 1,
+          "kills": 4,
+          "duration": 331.6,
+          "standingS": 888.6000000001335,
+          "repairS": 183.19999999999388,
+          "time": {
+            "hide:walk": 14.799999999999963,
+            "hide:still": 13.299999999999969,
+            "sneak:run": 22.000000000000043,
+            "sneak:repair": 6.199999999999994
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 93,
+          "scratchAssociatedSightings": 77
+        },
+        {
+          "seed": 1001,
+          "map": "gas-heaven-v009",
+          "fit": 0.24547031249999987,
+          "survival": 0.2559027777777777,
+          "gens": 2,
+          "kills": 4,
+          "duration": 463.8,
+          "standingS": 1230.0999999999767,
+          "repairS": 358.20000000001295,
+          "time": {
+            "hide:walk": 5.099999999999998,
+            "hide:still": 5.899999999999995,
+            "sneak:run": 18.9,
+            "sneak:repair": 0.7999999999999999
+          },
+          "hides": 0,
+          "peeks": 3,
+          "newSightings": 95,
+          "scratchAssociatedSightings": 77
+        },
+        {
+          "seed": 1002,
+          "map": "gas-heaven-v010",
+          "fit": 0.48294019097222207,
+          "survival": 0.5658888888888889,
+          "gens": 5,
+          "kills": 2,
+          "duration": 520.9,
+          "standingS": 1554.8999999996813,
+          "repairS": 483.8000000000415,
+          "time": {
+            "hide:walk": 20.800000000000026,
+            "sneak:run": 18.099999999999987,
+            "hide:still": 9.099999999999984
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 116,
+          "scratchAssociatedSightings": 78
+        },
+        {
+          "seed": 1003,
+          "map": "gas-heaven-v011",
+          "fit": 0.35463237847222195,
+          "survival": 0.4100624999999999,
+          "gens": 5,
+          "kills": 3,
+          "duration": 405.3,
+          "standingS": 1195.4000000000083,
+          "repairS": 468.400000000038,
+          "time": {
+            "hide:walk": 24.00000000000007,
+            "hide:still": 17.299999999999976,
+            "sneak:run": 7.099999999999991
+          },
+          "hides": 0,
+          "peeks": 12,
+          "newSightings": 98,
+          "scratchAssociatedSightings": 66
+        },
+        {
+          "seed": 1004,
+          "map": "gas-heaven-v012",
+          "fit": 0.1852877604166666,
+          "survival": 0.20907638888888902,
+          "gens": 2,
+          "kills": 4,
+          "duration": 298.7,
+          "standingS": 899.800000000136,
+          "repairS": 288.9999999999972,
+          "time": {
+            "hide:walk": 13.699999999999967,
+            "hide:still": 10.999999999999977,
+            "sneak:run": 15.59999999999996
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 70,
+          "scratchAssociatedSightings": 54
+        },
+        {
+          "seed": 1005,
+          "map": "gas-heaven-v013",
+          "fit": 0.1437606770833333,
+          "survival": 0.1782499999999999,
+          "gens": 0,
+          "kills": 4,
+          "duration": 280.9,
+          "standingS": 683.6000000000869,
+          "repairS": 142.1999999999962,
+          "time": {
+            "sneak:run": 20.50000000000002,
+            "hide:walk": 4.5,
+            "hide:still": 4.5,
+            "sneak:repair": 0.7999999999999999
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 65,
+          "scratchAssociatedSightings": 45
+        },
+        {
+          "seed": 1006,
+          "map": "gas-heaven-v014",
+          "fit": 0.11710538194444438,
+          "survival": 0.138048611111111,
+          "gens": 1,
+          "kills": 4,
+          "duration": 196.8,
+          "standingS": 558.8000000000585,
+          "repairS": 214.99999999999207,
+          "time": {
+            "hide:walk": 0.7,
+            "sneak:run": 0.30000000000000004
+          },
+          "hides": 0,
+          "peeks": 0,
+          "newSightings": 33,
+          "scratchAssociatedSightings": 27
+        },
+        {
+          "seed": 1007,
+          "map": "gas-heaven-v015",
+          "fit": 0.21434062499999995,
+          "survival": 0.20996527777777774,
+          "gens": 3,
+          "kills": 4,
+          "duration": 366.5,
+          "standingS": 1026.400000000162,
+          "repairS": 312.00000000000244,
+          "time": {
+            "hide:walk": 13.399999999999968,
+            "hide:still": 3.700000000000002,
+            "sneak:repair": 12.79999999999997,
+            "sneak:run": 10.599999999999978
+          },
+          "hides": 0,
+          "peeks": 5,
+          "newSightings": 84,
+          "scratchAssociatedSightings": 65
+        },
+        {
+          "seed": 1008,
+          "map": "gas-heaven-v016",
+          "fit": 0.25823020833333316,
+          "survival": 0.2697638888888888,
+          "gens": 3,
+          "kills": 4,
+          "duration": 455.3,
+          "standingS": 1385.799999999835,
+          "repairS": 427.30000000002866,
+          "time": {
+            "hide:walk": 15.59999999999996,
+            "hide:still": 11.199999999999976,
+            "sneak:run": 18.699999999999996
+          },
+          "hides": 0,
+          "peeks": 8,
+          "newSightings": 112,
+          "scratchAssociatedSightings": 97
+        },
+        {
+          "seed": 1009,
+          "map": "gas-heaven-v017",
+          "fit": 0.3846201388888889,
+          "survival": 0.40987499999999977,
+          "gens": 5,
+          "kills": 3,
+          "duration": 472.8,
+          "standingS": 1289.099999999923,
+          "repairS": 509.7000000000474,
+          "time": {
+            "hide:walk": 10.399999999999979,
+            "sneak:run": 7.39999999999999,
+            "hide:still": 4.300000000000001
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 90,
+          "scratchAssociatedSightings": 64
+        },
+        {
+          "seed": 1010,
+          "map": "gas-heaven-v018",
+          "fit": 0.26846180555555554,
+          "survival": 0.2848333333333334,
+          "gens": 2,
+          "kills": 4,
+          "duration": 500.1,
+          "standingS": 1359.2999999998592,
+          "repairS": 370.2000000000157,
+          "time": {
+            "hide:walk": 10.899999999999977,
+            "hide:still": 8.499999999999986,
+            "sneak:run": 14.199999999999966
+          },
+          "hides": 0,
+          "peeks": 6,
+          "newSightings": 122,
+          "scratchAssociatedSightings": 108
+        },
+        {
+          "seed": 1011,
+          "map": "gas-heaven-v019",
+          "fit": 0.2540465277777777,
+          "survival": 0.2449444444444444,
+          "gens": 3,
+          "kills": 4,
+          "duration": 487,
+          "standingS": 1337.0999999998794,
+          "repairS": 495.80000000004424,
+          "time": {
+            "sneak:run": 12.599999999999971,
+            "hide:walk": 8.099999999999987,
+            "hide:still": 7.599999999999989,
+            "sneak:repair": 0.1,
+            "sneak:still": 0.30000000000000004
+          },
+          "hides": 0,
+          "peeks": 6,
+          "newSightings": 111,
+          "scratchAssociatedSightings": 74
+        },
+        {
+          "seed": 1012,
+          "map": "gas-heaven-v020",
+          "fit": 0.1596892361111112,
+          "survival": 0.2098958333333335,
+          "gens": 1,
+          "kills": 4,
+          "duration": 292.7,
+          "standingS": 844.5000000001235,
+          "repairS": 210.09999999999235,
+          "time": {
+            "hide:walk": 4.799999999999999
+          },
+          "hides": 0,
+          "peeks": 0,
+          "newSightings": 58,
+          "scratchAssociatedSightings": 46
+        },
+        {
+          "seed": 1013,
+          "map": "gas-heaven-v021",
+          "fit": 0.2834107638888886,
+          "survival": 0.26564583333333325,
+          "gens": 4,
+          "kills": 4,
+          "duration": 515.4,
+          "standingS": 1491.7999999997387,
+          "repairS": 483.50000000004144,
+          "time": {
+            "sneak:run": 19.300000000000004,
+            "hide:walk": 15.89999999999996,
+            "hide:still": 10.499999999999979,
+            "sneak:repair": 0.7
+          },
+          "hides": 0,
+          "peeks": 8,
+          "newSightings": 121,
+          "scratchAssociatedSightings": 103
+        },
+        {
+          "seed": 1014,
+          "map": "gas-heaven-v022",
+          "fit": 0.26131154513888877,
+          "survival": 0.25512499999999994,
+          "gens": 3,
+          "kills": 4,
+          "duration": 452.1,
+          "standingS": 1341.7999999998751,
+          "repairS": 428.50000000002893,
+          "time": {
+            "sneak:run": 11.199999999999976,
+            "hide:walk": 8.199999999999987,
+            "hide:still": 4.5,
+            "sneak:repair": 0.2
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 95,
+          "scratchAssociatedSightings": 63
+        },
+        {
+          "seed": 1015,
+          "map": "gas-heaven-v023",
+          "fit": 0.2203611979166667,
+          "survival": 0.23415972222222237,
+          "gens": 2,
+          "kills": 4,
+          "duration": 438.6,
+          "standingS": 1141.3000000000575,
+          "repairS": 345.20000000001,
+          "time": {
+            "hide:walk": 11.899999999999974,
+            "hide:still": 1.8000000000000005,
+            "sneak:run": 16.79999999999997
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 79,
+          "scratchAssociatedSightings": 69
+        },
+        {
+          "seed": 1016,
+          "map": "gas-heaven-v024",
+          "fit": 0.2802957465277773,
+          "survival": 0.28516666666666657,
+          "gens": 5,
+          "kills": 4,
+          "duration": 434.8,
+          "standingS": 1407.999999999815,
+          "repairS": 538.5000000000539,
+          "time": {
+            "hide:walk": 13.599999999999968,
+            "hide:still": 5.699999999999996,
+            "sneak:run": 11.799999999999974
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 99,
+          "scratchAssociatedSightings": 73
+        },
+        {
+          "seed": 1017,
+          "map": "gas-heaven-v025",
+          "fit": 0.2992532118055554,
+          "survival": 0.290201388888889,
+          "gens": 4,
+          "kills": 4,
+          "duration": 494.5,
+          "standingS": 1456.0999999997712,
+          "repairS": 411.100000000025,
+          "time": {
+            "sneak:run": 18.19999999999999,
+            "sneak:repair": 2.3000000000000007,
+            "hide:walk": 2.500000000000001,
+            "hide:still": 7.499999999999989
+          },
+          "hides": 0,
+          "peeks": 3,
+          "newSightings": 99,
+          "scratchAssociatedSightings": 77
+        },
+        {
+          "seed": 1018,
+          "map": "gas-heaven-v026",
+          "fit": 0.45032352430555533,
+          "survival": 0.5957013888888889,
+          "gens": 5,
+          "kills": 2,
+          "duration": 404.3,
+          "standingS": 1323.5999999998917,
+          "repairS": 487.00000000004223,
+          "time": {
+            "hide:walk": 9.599999999999982,
+            "sneak:run": 14.199999999999966,
+            "hide:still": 4.000000000000002
+          },
+          "hides": 0,
+          "peeks": 2,
+          "newSightings": 72,
+          "scratchAssociatedSightings": 61
+        },
+        {
+          "seed": 1019,
+          "map": "gas-heaven-v027",
+          "fit": 0.2770534722222221,
+          "survival": 0.2870069444444445,
+          "gens": 4,
+          "kills": 4,
+          "duration": 495,
+          "standingS": 1370.9999999998486,
+          "repairS": 410.8000000000249,
+          "time": {
+            "hide:walk": 19.200000000000003,
+            "hide:still": 9.099999999999984,
+            "sneak:run": 23.800000000000068,
+            "sneak:repair": 0.7999999999999999
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 108,
+          "scratchAssociatedSightings": 85
+        },
+        {
+          "seed": 1020,
+          "map": "gas-heaven-v028",
+          "fit": 0.30034843749999973,
+          "survival": 0.32838888888888884,
+          "gens": 4,
+          "kills": 4,
+          "duration": 535.9,
+          "standingS": 1505.699999999726,
+          "repairS": 375.900000000017,
+          "time": {
+            "hide:walk": 11.099999999999977,
+            "sneak:run": 13.299999999999969,
+            "hide:still": 8.799999999999985,
+            "sneak:repair": 5.099999999999998
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 121,
+          "scratchAssociatedSightings": 101
+        },
+        {
+          "seed": 1021,
+          "map": "gas-heaven-v029",
+          "fit": 0.26176223958333317,
+          "survival": 0.26225694444444436,
+          "gens": 4,
+          "kills": 4,
+          "duration": 490.3,
+          "standingS": 1405.0999999998176,
+          "repairS": 411.7000000000251,
+          "time": {
+            "hide:walk": 15.399999999999961,
+            "sneak:run": 20.100000000000016,
+            "hide:still": 16.399999999999963
+          },
+          "hides": 0,
+          "peeks": 8,
+          "newSightings": 119,
+          "scratchAssociatedSightings": 93
+        },
+        {
+          "seed": 1022,
+          "map": "gas-heaven-v030",
+          "fit": 0.23532291666666652,
+          "survival": 0.21875,
+          "gens": 3,
+          "kills": 4,
+          "duration": 398.1,
+          "standingS": 1161.9000000000387,
+          "repairS": 404.90000000002357,
+          "time": {
+            "sneak:run": 8.599999999999985,
+            "hide:walk": 10.799999999999978,
+            "hide:still": 9.199999999999983,
+            "sneak:repair": 0.30000000000000004
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 84,
+          "scratchAssociatedSightings": 65
+        },
+        {
+          "seed": 1023,
+          "map": "gas-heaven-v031",
+          "fit": 0.5060440104166664,
+          "survival": 0.5991388888888889,
+          "gens": 5,
+          "kills": 2,
+          "duration": 483.1,
+          "standingS": 1527.1999999997065,
+          "repairS": 500.20000000004524,
+          "time": {
+            "sneak:run": 15.299999999999962,
+            "hide:walk": 6.999999999999991,
+            "hide:still": 7.29999999999999
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 84,
+          "scratchAssociatedSightings": 63
+        },
+        {
+          "seed": 1024,
+          "map": "gas-heaven-v000",
+          "fit": 0.2540733506944442,
+          "survival": 0.24688888888888894,
+          "gens": 3,
+          "kills": 4,
+          "duration": 443.1,
+          "standingS": 1255.5999999999535,
+          "repairS": 426.40000000002846,
+          "time": {
+            "hide:walk": 10.499999999999979,
+            "sneak:run": 12.399999999999972,
+            "hide:still": 10.09999999999998,
+            "hide:run": 0.1
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 111,
+          "scratchAssociatedSightings": 91
+        },
+        {
+          "seed": 1025,
+          "map": "gas-heaven-v001",
+          "fit": 0.17842282986111108,
+          "survival": 0.19852777777777775,
+          "gens": 0,
+          "kills": 4,
+          "duration": 334.9,
+          "standingS": 853.7000000001256,
+          "repairS": 181.79999999999396,
+          "time": {
+            "hide:walk": 6.399999999999993,
+            "hide:still": 15.199999999999962,
+            "sneak:run": 0.6
+          },
+          "hides": 0,
+          "peeks": 5,
+          "newSightings": 81,
+          "scratchAssociatedSightings": 65
+        },
+        {
+          "seed": 1026,
+          "map": "gas-heaven-v002",
+          "fit": 0.24244210069444444,
+          "survival": 0.26317361111111115,
+          "gens": 2,
+          "kills": 4,
+          "duration": 392.6,
+          "standingS": 1190.200000000013,
+          "repairS": 352.40000000001163,
+          "time": {
+            "sneak:run": 9.499999999999982,
+            "hide:walk": 5.099999999999998,
+            "hide:still": 4.6
+          },
+          "hides": 0,
+          "peeks": 3,
+          "newSightings": 80,
+          "scratchAssociatedSightings": 69
+        },
+        {
+          "seed": 1027,
+          "map": "gas-heaven-v003",
+          "fit": 0.20494392361111097,
+          "survival": 0.1913472222222221,
+          "gens": 3,
+          "kills": 4,
+          "duration": 351.3,
+          "standingS": 984.5000000001553,
+          "repairS": 356.00000000001245,
+          "time": {
+            "hide:walk": 4.300000000000001,
+            "hide:still": 3.2000000000000015,
+            "sneak:run": 16.79999999999997,
+            "sneak:repair": 2.500000000000001
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 72,
+          "scratchAssociatedSightings": 58
+        },
+        {
+          "seed": 1028,
+          "map": "gas-heaven-v004",
+          "fit": 0.3670087673611109,
+          "survival": 0.41513194444444446,
+          "gens": 5,
+          "kills": 3,
+          "duration": 471.4,
+          "standingS": 1304.8999999999087,
+          "repairS": 556.0000000000579,
+          "time": {
+            "hide:walk": 7.29999999999999,
+            "hide:still": 4.300000000000001,
+            "sneak:run": 13.799999999999967
+          },
+          "hides": 0,
+          "peeks": 6,
+          "newSightings": 76,
+          "scratchAssociatedSightings": 55
+        },
+        {
+          "seed": 1029,
+          "map": "gas-heaven-v005",
+          "fit": 0.49310763888888864,
+          "survival": 0.6125902777777779,
+          "gens": 5,
+          "kills": 2,
+          "duration": 415,
+          "standingS": 1355.099999999863,
+          "repairS": 492.6000000000435,
+          "time": {
+            "hide:walk": 5.099999999999998,
+            "hide:still": 5.1999999999999975,
+            "sneak:run": 14.899999999999963
+          },
+          "hides": 0,
+          "peeks": 3,
+          "newSightings": 85,
+          "scratchAssociatedSightings": 67
+        },
+        {
+          "seed": 1030,
+          "map": "gas-heaven-v006",
+          "fit": 0.45378975694444434,
+          "survival": 0.5915694444444446,
+          "gens": 5,
+          "kills": 2,
+          "duration": 318.7,
+          "standingS": 1128.5000000000691,
+          "repairS": 492.70000000004353,
+          "time": {
+            "hide:walk": 6.5999999999999925,
+            "sneak:run": 7.599999999999989,
+            "hide:still": 4.200000000000001
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 70,
+          "scratchAssociatedSightings": 52
+        },
+        {
+          "seed": 1031,
+          "map": "gas-heaven-v007",
+          "fit": 0.2396959201388888,
+          "survival": 0.252013888888889,
+          "gens": 1,
+          "kills": 4,
+          "duration": 448.1,
+          "standingS": 1198.4000000000055,
+          "repairS": 283.79999999999603,
+          "time": {
+            "hide:walk": 24.00000000000007,
+            "hide:still": 12.79999999999997,
+            "sneak:run": 13.499999999999968
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 117,
+          "scratchAssociatedSightings": 90
+        }
+      ]
+    },
+    {
+      "variant": "on",
+      "summary": {
+        "n": 32,
+        "fit": 0.21877609320746522,
+        "survival": 0.24118359374999998,
+        "gens": 2.09375,
+        "kills": 3.90625,
+        "duration": 375.53125000000006,
+        "hides": 14.90625,
+        "peeks": 18.9375,
+        "standingS": 34261.60000000002,
+        "repairS": 9835.200000000295,
+        "time": {
+          "hide:walk": 1117.8000000000072,
+          "hide:still": 3439.7999999999574,
+          "hide:run": 24.599999999999998,
+          "sneak:run": 104.69999999999995,
+          "sneak:repair": 0.9999999999999999
+        },
+        "episodes": {
+          "hide": {
+            "n": 1292,
+            "unseenStart": 794,
+            "found": 146,
+            "seenWithin10S": 405,
+            "unseenFollowupCensored": 8,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 1117.8000000000022,
+            "ranS": 24.600000000000005,
+            "censored": 0
+          },
+          "sneak": {
+            "n": 61,
+            "unseenStart": 55,
+            "found": 2,
+            "seenWithin10S": 23,
+            "unseenFollowupCensored": 1,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 0,
+            "ranS": 104.7,
+            "censored": 0
+          }
+        },
+        "departures": {
+          "n": 548,
+          "unseenStart": 349,
+          "found": 150,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null,
+          "firstWalk": 172,
+          "firstRun": 368,
+          "still": 8,
+          "sameGenWithin10S": 69,
+          "walkedS": 363.89999999999986,
+          "ranS": 3116.0999999999985,
+          "censored": 0
+        },
+        "threatenedDepartures": {
+          "n": 336,
+          "unseenStart": 175,
+          "found": 102,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null,
+          "firstWalk": 131,
+          "firstRun": 198,
+          "still": 7,
+          "sameGenWithin10S": 39,
+          "walkedS": 266.99999999999983,
+          "ranS": 1741.5999999999995,
+          "censored": 0
+        },
+        "stealthDepartures": {
+          "n": 186,
+          "unseenStart": 72,
+          "found": 39,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null,
+          "firstWalk": 171,
+          "firstRun": 8,
+          "still": 7,
+          "sameGenWithin10S": 47,
+          "walkedS": 244.39999999999986,
+          "ranS": 632.1999999999995,
+          "censored": 0
+        },
+        "newSightings": 2610,
+        "scratchAssociatedSightings": 2040,
+        "stealthSightings": {
+          "n": 343,
+          "scratchAssociated": 238,
+          "gruntAssociated": 37,
+          "recentRepair": 112
+        }
+      },
+      "rows": [
+        {
+          "seed": 1000,
+          "map": "gas-heaven-v008",
+          "fit": 0.1645628472222222,
+          "survival": 0.21020138888888884,
+          "gens": 0,
+          "kills": 4,
+          "duration": 332.1,
+          "standingS": 920.5000000001407,
+          "repairS": 90.39999999999914,
+          "time": {
+            "hide:walk": 53.30000000000049,
+            "hide:still": 181.299999999994,
+            "hide:run": 3.0000000000000013,
+            "sneak:run": 2.0000000000000004
+          },
+          "hides": 22,
+          "peeks": 30,
+          "newSightings": 94,
+          "scratchAssociatedSightings": 68
+        },
+        {
+          "seed": 1001,
+          "map": "gas-heaven-v009",
+          "fit": 0.1742072048611112,
+          "survival": 0.19264583333333352,
+          "gens": 1,
+          "kills": 4,
+          "duration": 322.7,
+          "standingS": 909.1000000001382,
+          "repairS": 226.39999999999142,
+          "time": {
+            "hide:walk": 25.000000000000085,
+            "hide:still": 55.50000000000052,
+            "sneak:run": 5.799999999999995
+          },
+          "hides": 10,
+          "peeks": 15,
+          "newSightings": 70,
+          "scratchAssociatedSightings": 57
+        },
+        {
+          "seed": 1002,
+          "map": "gas-heaven-v010",
+          "fit": 0.23789548611111105,
+          "survival": 0.2534861111111112,
+          "gens": 2,
+          "kills": 4,
+          "duration": 433.5,
+          "standingS": 1277.9999999999332,
+          "repairS": 261.09999999999087,
+          "time": {
+            "hide:walk": 53.40000000000049,
+            "sneak:run": 5.4999999999999964,
+            "hide:still": 164.09999999999496,
+            "hide:run": 0.7,
+            "sneak:repair": 0.2
+          },
+          "hides": 18,
+          "peeks": 33,
+          "newSightings": 114,
+          "scratchAssociatedSightings": 88
+        },
+        {
+          "seed": 1003,
+          "map": "gas-heaven-v011",
+          "fit": 0.49284401041666664,
+          "survival": 0.5872361111111112,
+          "gens": 5,
+          "kills": 2,
+          "duration": 483.7,
+          "standingS": 1539.799999999695,
+          "repairS": 542.6000000000548,
+          "time": {
+            "hide:walk": 38.00000000000027,
+            "hide:still": 67.50000000000044,
+            "sneak:run": 1.4000000000000001
+          },
+          "hides": 14,
+          "peeks": 18,
+          "newSightings": 88,
+          "scratchAssociatedSightings": 68
+        },
+        {
+          "seed": 1004,
+          "map": "gas-heaven-v012",
+          "fit": 0.19975598958333318,
+          "survival": 0.2114513888888888,
+          "gens": 2,
+          "kills": 4,
+          "duration": 347.6,
+          "standingS": 963.2000000001505,
+          "repairS": 344.8000000000099,
+          "time": {
+            "hide:walk": 21.600000000000037,
+            "hide:still": 75.00000000000001,
+            "hide:run": 0.1,
+            "sneak:run": 2.500000000000001
+          },
+          "hides": 12,
+          "peeks": 20,
+          "newSightings": 78,
+          "scratchAssociatedSightings": 68
+        },
+        {
+          "seed": 1005,
+          "map": "gas-heaven-v013",
+          "fit": 0.1899532986111111,
+          "survival": 0.1994097222222222,
+          "gens": 1,
+          "kills": 4,
+          "duration": 402.8,
+          "standingS": 966.0000000001511,
+          "repairS": 184.5999999999938,
+          "time": {
+            "hide:still": 115.49999999999771,
+            "hide:walk": 28.600000000000136,
+            "sneak:run": 0.1
+          },
+          "hides": 16,
+          "peeks": 15,
+          "newSightings": 78,
+          "scratchAssociatedSightings": 56
+        },
+        {
+          "seed": 1006,
+          "map": "gas-heaven-v014",
+          "fit": 0.26146423611111086,
+          "survival": 0.26817361111111104,
+          "gens": 4,
+          "kills": 4,
+          "duration": 469.8,
+          "standingS": 1375.2999999998447,
+          "repairS": 479.60000000004055,
+          "time": {
+            "hide:walk": 32.700000000000195,
+            "hide:still": 141.79999999999623,
+            "sneak:run": 0.1
+          },
+          "hides": 18,
+          "peeks": 25,
+          "newSightings": 83,
+          "scratchAssociatedSightings": 67
+        },
+        {
+          "seed": 1007,
+          "map": "gas-heaven-v015",
+          "fit": 0.11483871527777775,
+          "survival": 0.14784722222222213,
+          "gens": 1,
+          "kills": 4,
+          "duration": 184.8,
+          "standingS": 621.3000000000727,
+          "repairS": 167.49999999999477,
+          "time": {
+            "hide:walk": 24.70000000000008,
+            "hide:still": 136.29999999999654,
+            "sneak:run": 4.100000000000001
+          },
+          "hides": 11,
+          "peeks": 14,
+          "newSightings": 52,
+          "scratchAssociatedSightings": 41
+        },
+        {
+          "seed": 1008,
+          "map": "gas-heaven-v016",
+          "fit": 0.23218993055555548,
+          "survival": 0.23395833333333338,
+          "gens": 3,
+          "kills": 4,
+          "duration": 430,
+          "standingS": 1182.8000000000197,
+          "repairS": 363.8000000000142,
+          "time": {
+            "hide:walk": 38.00000000000027,
+            "hide:still": 107.09999999999819,
+            "hide:run": 0.8999999999999999,
+            "sneak:run": 0.1
+          },
+          "hides": 16,
+          "peeks": 21,
+          "newSightings": 71,
+          "scratchAssociatedSightings": 52
+        },
+        {
+          "seed": 1009,
+          "map": "gas-heaven-v017",
+          "fit": 0.3237259548611109,
+          "survival": 0.31762499999999994,
+          "gens": 5,
+          "kills": 4,
+          "duration": 613.6,
+          "standingS": 1909.5999999993587,
+          "repairS": 513.6000000000482,
+          "time": {
+            "hide:walk": 60.800000000000594,
+            "hide:still": 349.3000000000109,
+            "hide:run": 3.4000000000000017,
+            "sneak:run": 6.8999999999999915
+          },
+          "hides": 37,
+          "peeks": 32,
+          "newSightings": 156,
+          "scratchAssociatedSightings": 141
+        },
+        {
+          "seed": 1010,
+          "map": "gas-heaven-v018",
+          "fit": 0.2159407118055555,
+          "survival": 0.260375,
+          "gens": 2,
+          "kills": 4,
+          "duration": 396,
+          "standingS": 1173.9000000000278,
+          "repairS": 280.4999999999953,
+          "time": {
+            "hide:walk": 42.80000000000034,
+            "hide:still": 89.99999999999916,
+            "sneak:run": 0.2
+          },
+          "hides": 14,
+          "peeks": 15,
+          "newSightings": 81,
+          "scratchAssociatedSightings": 61
+        },
+        {
+          "seed": 1011,
+          "map": "gas-heaven-v019",
+          "fit": 0.21369973958333327,
+          "survival": 0.24121527777777774,
+          "gens": 2,
+          "kills": 4,
+          "duration": 367.1,
+          "standingS": 1029.1000000001595,
+          "repairS": 287.2999999999968,
+          "time": {
+            "hide:still": 120.09999999999745,
+            "hide:walk": 40.400000000000304,
+            "sneak:run": 4.4
+          },
+          "hides": 17,
+          "peeks": 19,
+          "newSightings": 74,
+          "scratchAssociatedSightings": 54
+        },
+        {
+          "seed": 1012,
+          "map": "gas-heaven-v020",
+          "fit": 0.20583333333333326,
+          "survival": 0.21281249999999996,
+          "gens": 2,
+          "kills": 4,
+          "duration": 377.8,
+          "standingS": 1084.0000000001096,
+          "repairS": 378.6000000000176,
+          "time": {
+            "hide:walk": 14.299999999999965,
+            "hide:still": 104.69999999999833,
+            "sneak:run": 7.599999999999989,
+            "sneak:repair": 0.7
+          },
+          "hides": 14,
+          "peeks": 10,
+          "newSightings": 81,
+          "scratchAssociatedSightings": 62
+        },
+        {
+          "seed": 1013,
+          "map": "gas-heaven-v021",
+          "fit": 0.26198454861111087,
+          "survival": 0.2616111111111111,
+          "gens": 4,
+          "kills": 4,
+          "duration": 428.6,
+          "standingS": 1313.399999999901,
+          "repairS": 525.700000000051,
+          "time": {
+            "hide:still": 80.79999999999968,
+            "hide:walk": 24.60000000000008,
+            "hide:run": 6.5999999999999925,
+            "sneak:run": 2.2000000000000006
+          },
+          "hides": 16,
+          "peeks": 11,
+          "newSightings": 108,
+          "scratchAssociatedSightings": 87
+        },
+        {
+          "seed": 1014,
+          "map": "gas-heaven-v022",
+          "fit": 0.16652699652777775,
+          "survival": 0.1967916666666666,
+          "gens": 2,
+          "kills": 4,
+          "duration": 269.8,
+          "standingS": 845.2000000001236,
+          "repairS": 228.4999999999913,
+          "time": {
+            "hide:run": 0.7999999999999999,
+            "hide:walk": 41.00000000000031,
+            "hide:still": 114.69999999999776
+          },
+          "hides": 12,
+          "peeks": 14,
+          "newSightings": 55,
+          "scratchAssociatedSightings": 44
+        },
+        {
+          "seed": 1015,
+          "map": "gas-heaven-v023",
+          "fit": 0.2948946180555553,
+          "survival": 0.3480833333333333,
+          "gens": 4,
+          "kills": 4,
+          "duration": 567.3,
+          "standingS": 1730.9999999995212,
+          "repairS": 438.0000000000311,
+          "time": {
+            "hide:walk": 65.70000000000054,
+            "hide:still": 140.89999999999628,
+            "hide:run": 4.200000000000001,
+            "sneak:run": 18.39999999999999
+          },
+          "hides": 29,
+          "peeks": 37,
+          "newSightings": 132,
+          "scratchAssociatedSightings": 106
+        },
+        {
+          "seed": 1016,
+          "map": "gas-heaven-v024",
+          "fit": 0.11812274305555559,
+          "survival": 0.14208333333333334,
+          "gens": 1,
+          "kills": 4,
+          "duration": 194.8,
+          "standingS": 543.600000000055,
+          "repairS": 227.09999999999138,
+          "time": {
+            "hide:walk": 11.199999999999976,
+            "hide:still": 37.90000000000027,
+            "sneak:run": 0.4
+          },
+          "hides": 7,
+          "peeks": 7,
+          "newSightings": 32,
+          "scratchAssociatedSightings": 23
+        },
+        {
+          "seed": 1017,
+          "map": "gas-heaven-v025",
+          "fit": 0.17750989583333338,
+          "survival": 0.20867361111111116,
+          "gens": 1,
+          "kills": 4,
+          "duration": 330.6,
+          "standingS": 818.3000000001175,
+          "repairS": 269.4999999999928,
+          "time": {
+            "hide:still": 53.200000000000486,
+            "hide:walk": 16.29999999999996,
+            "sneak:run": 2.0000000000000004,
+            "sneak:repair": 0.1
+          },
+          "hides": 10,
+          "peeks": 12,
+          "newSightings": 47,
+          "scratchAssociatedSightings": 30
+        },
+        {
+          "seed": 1018,
+          "map": "gas-heaven-v026",
+          "fit": 0.23650451388888868,
+          "survival": 0.2617152777777777,
+          "gens": 3,
+          "kills": 4,
+          "duration": 392.9,
+          "standingS": 1206.0999999999985,
+          "repairS": 380.70000000001806,
+          "time": {
+            "hide:walk": 37.700000000000266,
+            "hide:still": 98.79999999999866,
+            "sneak:run": 1.9000000000000006
+          },
+          "hides": 16,
+          "peeks": 18,
+          "newSightings": 80,
+          "scratchAssociatedSightings": 61
+        },
+        {
+          "seed": 1019,
+          "map": "gas-heaven-v027",
+          "fit": 0.2747006944444442,
+          "survival": 0.2750555555555555,
+          "gens": 4,
+          "kills": 4,
+          "duration": 487.6,
+          "standingS": 1377.6999999998425,
+          "repairS": 432.90000000002993,
+          "time": {
+            "hide:walk": 53.70000000000049,
+            "hide:still": 175.09999999999434,
+            "hide:run": 0.7,
+            "sneak:run": 12.199999999999973
+          },
+          "hides": 22,
+          "peeks": 38,
+          "newSightings": 109,
+          "scratchAssociatedSightings": 80
+        },
+        {
+          "seed": 1020,
+          "map": "gas-heaven-v028",
+          "fit": 0.07606684027777783,
+          "survival": 0.11967361111111119,
+          "gens": 0,
+          "kills": 4,
+          "duration": 160.2,
+          "standingS": 434.1000000000302,
+          "repairS": 38.70000000000028,
+          "time": {
+            "hide:walk": 27.200000000000117,
+            "hide:still": 35.80000000000024
+          },
+          "hides": 5,
+          "peeks": 10,
+          "newSightings": 34,
+          "scratchAssociatedSightings": 22
+        },
+        {
+          "seed": 1021,
+          "map": "gas-heaven-v029",
+          "fit": 0.1667650173611111,
+          "survival": 0.20429166666666665,
+          "gens": 0,
+          "kills": 4,
+          "duration": 313.3,
+          "standingS": 769.6000000001064,
+          "repairS": 129.69999999999692,
+          "time": {
+            "hide:walk": 37.80000000000027,
+            "hide:still": 109.19999999999807,
+            "sneak:run": 3.900000000000002
+          },
+          "hides": 15,
+          "peeks": 11,
+          "newSightings": 68,
+          "scratchAssociatedSightings": 57
+        },
+        {
+          "seed": 1022,
+          "map": "gas-heaven-v030",
+          "fit": 0.21126744791666666,
+          "survival": 0.21583333333333332,
+          "gens": 1,
+          "kills": 4,
+          "duration": 459,
+          "standingS": 1077.4000000001156,
+          "repairS": 221.89999999999168,
+          "time": {
+            "hide:walk": 45.60000000000038,
+            "hide:still": 134.79999999999663,
+            "hide:run": 0.6,
+            "sneak:run": 0.9999999999999999
+          },
+          "hides": 16,
+          "peeks": 27,
+          "newSightings": 100,
+          "scratchAssociatedSightings": 76
+        },
+        {
+          "seed": 1023,
+          "map": "gas-heaven-v031",
+          "fit": 0.23349374999999983,
+          "survival": 0.2403194444444443,
+          "gens": 1,
+          "kills": 4,
+          "duration": 430.3,
+          "standingS": 1144.8000000000543,
+          "repairS": 328.9000000000063,
+          "time": {
+            "sneak:run": 4.799999999999999,
+            "hide:walk": 56.700000000000536,
+            "hide:still": 122.99999999999729
+          },
+          "hides": 18,
+          "peeks": 19,
+          "newSightings": 81,
+          "scratchAssociatedSightings": 68
+        },
+        {
+          "seed": 1024,
+          "map": "gas-heaven-v000",
+          "fit": 0.29383298611111097,
+          "survival": 0.29074999999999995,
+          "gens": 2,
+          "kills": 4,
+          "duration": 535.2,
+          "standingS": 1398.4999999998236,
+          "repairS": 383.9000000000188,
+          "time": {
+            "hide:walk": 46.700000000000394,
+            "sneak:run": 0.2,
+            "hide:still": 92.49999999999902,
+            "hide:run": 1.0999999999999999
+          },
+          "hides": 11,
+          "peeks": 18,
+          "newSightings": 124,
+          "scratchAssociatedSightings": 101
+        },
+        {
+          "seed": 1025,
+          "map": "gas-heaven-v001",
+          "fit": 0.16669973958333334,
+          "survival": 0.19080555555555567,
+          "gens": 2,
+          "kills": 4,
+          "duration": 282.2,
+          "standingS": 885.4000000001328,
+          "repairS": 243.89999999999043,
+          "time": {
+            "hide:walk": 33.500000000000206,
+            "hide:still": 119.79999999999747
+          },
+          "hides": 14,
+          "peeks": 19,
+          "newSightings": 73,
+          "scratchAssociatedSightings": 53
+        },
+        {
+          "seed": 1026,
+          "map": "gas-heaven-v002",
+          "fit": 0.19054904513888876,
+          "survival": 0.2071180555555555,
+          "gens": 2,
+          "kills": 4,
+          "duration": 308.6,
+          "standingS": 840.6000000001226,
+          "repairS": 315.10000000000315,
+          "time": {
+            "hide:walk": 11.599999999999975,
+            "hide:still": 29.700000000000152,
+            "sneak:run": 3.900000000000002
+          },
+          "hides": 7,
+          "peeks": 6,
+          "newSightings": 54,
+          "scratchAssociatedSightings": 42
+        },
+        {
+          "seed": 1027,
+          "map": "gas-heaven-v003",
+          "fit": 0.2205611979166664,
+          "survival": 0.21856944444444426,
+          "gens": 2,
+          "kills": 4,
+          "duration": 372.3,
+          "standingS": 1041.3000000001484,
+          "repairS": 365.20000000001454,
+          "time": {
+            "hide:walk": 25.700000000000095,
+            "hide:still": 65.50000000000055,
+            "hide:run": 1.7000000000000004,
+            "sneak:run": 4.799999999999999
+          },
+          "hides": 12,
+          "peeks": 16,
+          "newSightings": 67,
+          "scratchAssociatedSightings": 56
+        },
+        {
+          "seed": 1028,
+          "map": "gas-heaven-v004",
+          "fit": 0.1830206597222221,
+          "survival": 0.1983611111111111,
+          "gens": 2,
+          "kills": 4,
+          "duration": 312,
+          "standingS": 868.0000000001288,
+          "repairS": 224.8999999999915,
+          "time": {
+            "hide:walk": 26.0000000000001,
+            "hide:still": 101.29999999999852,
+            "sneak:run": 2.1000000000000005,
+            "hide:run": 0.7
+          },
+          "hides": 15,
+          "peeks": 24,
+          "newSightings": 80,
+          "scratchAssociatedSightings": 72
+        },
+        {
+          "seed": 1029,
+          "map": "gas-heaven-v005",
+          "fit": 0.18287612847222204,
+          "survival": 0.22863194444444435,
+          "gens": 1,
+          "kills": 4,
+          "duration": 297,
+          "standingS": 926.200000000142,
+          "repairS": 221.99999999999167,
+          "time": {
+            "hide:walk": 34.100000000000215,
+            "hide:still": 87.89999999999928,
+            "sneak:run": 0.9999999999999999,
+            "hide:run": 0.1
+          },
+          "hides": 15,
+          "peeks": 24,
+          "newSightings": 103,
+          "scratchAssociatedSightings": 73
+        },
+        {
+          "seed": 1030,
+          "map": "gas-heaven-v006",
+          "fit": 0.13309635416666662,
+          "survival": 0.1590555555555555,
+          "gens": 0,
+          "kills": 4,
+          "duration": 249.4,
+          "standingS": 635.3000000000759,
+          "repairS": 227.89999999999134,
+          "time": {
+            "hide:walk": 14.599999999999964,
+            "hide:still": 35.30000000000023,
+            "sneak:run": 2.400000000000001
+          },
+          "hides": 7,
+          "peeks": 10,
+          "newSightings": 47,
+          "scratchAssociatedSightings": 36
+        },
+        {
+          "seed": 1031,
+          "map": "gas-heaven-v007",
+          "fit": 0.38545034722222193,
+          "survival": 0.4140138888888888,
+          "gens": 5,
+          "kills": 3,
+          "duration": 464.4,
+          "standingS": 1452.4999999997744,
+          "repairS": 509.90000000004744,
+          "time": {
+            "hide:walk": 34.50000000000022,
+            "hide:still": 95.39999999999885,
+            "sneak:run": 2.800000000000001
+          },
+          "hides": 11,
+          "peeks": 18,
+          "newSightings": 96,
+          "scratchAssociatedSightings": 70
+        }
+      ]
+    },
+    {
+      "variant": "walk",
+      "summary": {
+        "n": 32,
+        "fit": 0.21375416124131938,
+        "survival": 0.24267903645833336,
+        "gens": 1.90625,
+        "kills": 3.90625,
+        "duration": 377.69375,
+        "hides": 14.9375,
+        "peeks": 17.1875,
+        "standingS": 33794.10000000003,
+        "repairS": 8637.200000000154,
+        "time": {
+          "hide:walk": 1073.7000000000069,
+          "hide:still": 3510.3999999999423,
+          "hide:run": 23.099999999999987,
+          "sneak:walk": 88.09999999999992,
+          "sneak:run": 18.200000000000006,
+          "sneak:still": 0.4,
+          "sneak:repair": 0.4
+        },
+        "episodes": {
+          "hide": {
+            "n": 1258,
+            "unseenStart": 756,
+            "found": 131,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 1073.7000000000028,
+            "ranS": 23.099999999999987,
+            "censored": 0
+          },
+          "sneak": {
+            "n": 67,
+            "unseenStart": 64,
+            "found": 3,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 88.09999999999997,
+            "ranS": 18.200000000000006,
+            "censored": 0
+          }
+        },
+        "departures": {
+          "n": 439,
+          "unseenStart": 284,
+          "found": 121,
+          "firstWalk": 149,
+          "firstRun": 283,
+          "still": 7,
+          "sameGenWithin10S": 35,
+          "walkedS": 492.5,
+          "ranS": 2461.699999999999,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "threatenedDepartures": {
+          "n": 252,
+          "unseenStart": 132,
+          "found": 78,
+          "firstWalk": 110,
+          "firstRun": 137,
+          "still": 5,
+          "sameGenWithin10S": 16,
+          "walkedS": 271.09999999999985,
+          "ranS": 1306.8,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "stealthDepartures": {
+          "n": 142,
+          "unseenStart": 56,
+          "found": 30,
+          "firstWalk": 129,
+          "firstRun": 8,
+          "still": 5,
+          "sameGenWithin10S": 25,
+          "walkedS": 201.19999999999993,
+          "ranS": 499.29999999999944,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "newSightings": 2525,
+        "scratchAssociatedSightings": 1905,
+        "stealthSightings": {
+          "n": 336,
+          "scratchAssociated": 194,
+          "gruntAssociated": 23,
+          "recentRepair": 104
+        }
+      },
+      "rows": [
+        {
+          "seed": 1000,
+          "map": "gas-heaven-v008",
+          "fit": 0.15469913194444426,
+          "survival": 0.17923611111111093,
+          "gens": 2,
+          "kills": 4,
+          "duration": 248.3,
+          "standingS": 809.3000000001155,
+          "repairS": 218.29999999999188,
+          "time": {
+            "hide:walk": 35.10000000000023,
+            "hide:still": 129.8999999999969,
+            "hide:run": 0.7999999999999999,
+            "sneak:walk": 4.4
+          },
+          "hides": 16,
+          "peeks": 20,
+          "newSightings": 60,
+          "scratchAssociatedSightings": 39
+        },
+        {
+          "seed": 1001,
+          "map": "gas-heaven-v009",
+          "fit": 0.1496643229166667,
+          "survival": 0.16681250000000003,
+          "gens": 1,
+          "kills": 4,
+          "duration": 271.9,
+          "standingS": 772.9000000001072,
+          "repairS": 246.69999999999027,
+          "time": {
+            "hide:walk": 22.200000000000045,
+            "hide:still": 75.3,
+            "sneak:walk": 9.199999999999983,
+            "hide:run": 0.1,
+            "sneak:run": 1.3
+          },
+          "hides": 13,
+          "peeks": 14,
+          "newSightings": 47,
+          "scratchAssociatedSightings": 36
+        },
+        {
+          "seed": 1002,
+          "map": "gas-heaven-v010",
+          "fit": 0.15114678819444444,
+          "survival": 0.18829166666666663,
+          "gens": 0,
+          "kills": 4,
+          "duration": 291.9,
+          "standingS": 808.1000000001152,
+          "repairS": 108.99999999999808,
+          "time": {
+            "hide:walk": 43.900000000000354,
+            "hide:still": 112.49999999999788,
+            "sneak:walk": 2.9000000000000012,
+            "hide:run": 0.7
+          },
+          "hides": 14,
+          "peeks": 21,
+          "newSightings": 75,
+          "scratchAssociatedSightings": 56
+        },
+        {
+          "seed": 1003,
+          "map": "gas-heaven-v011",
+          "fit": 0.28556831597222215,
+          "survival": 0.28650694444444447,
+          "gens": 4,
+          "kills": 4,
+          "duration": 537.1,
+          "standingS": 1503.0999999997284,
+          "repairS": 458.6000000000358,
+          "time": {
+            "hide:walk": 41.800000000000324,
+            "hide:still": 117.59999999999759,
+            "sneak:run": 1.7000000000000004,
+            "hide:run": 0.1
+          },
+          "hides": 18,
+          "peeks": 21,
+          "newSightings": 103,
+          "scratchAssociatedSightings": 76
+        },
+        {
+          "seed": 1004,
+          "map": "gas-heaven-v012",
+          "fit": 0.15376006944444442,
+          "survival": 0.18611111111111112,
+          "gens": 1,
+          "kills": 4,
+          "duration": 291.4,
+          "standingS": 747.2000000001013,
+          "repairS": 183.69999999999385,
+          "time": {
+            "hide:walk": 16.399999999999963,
+            "hide:still": 84.19999999999949,
+            "hide:run": 0.1,
+            "sneak:walk": 2.0000000000000004
+          },
+          "hides": 9,
+          "peeks": 9,
+          "newSightings": 52,
+          "scratchAssociatedSightings": 37
+        },
+        {
+          "seed": 1005,
+          "map": "gas-heaven-v013",
+          "fit": 0.21398185763888888,
+          "survival": 0.24248611111111118,
+          "gens": 2,
+          "kills": 4,
+          "duration": 397.7,
+          "standingS": 1078.6000000001145,
+          "repairS": 214.4999999999921,
+          "time": {
+            "hide:walk": 25.800000000000097,
+            "hide:still": 129.49999999999693,
+            "sneak:walk": 1.7000000000000004,
+            "hide:run": 0.1
+          },
+          "hides": 16,
+          "peeks": 12,
+          "newSightings": 73,
+          "scratchAssociatedSightings": 55
+        },
+        {
+          "seed": 1006,
+          "map": "gas-heaven-v014",
+          "fit": 0.17827647569444444,
+          "survival": 0.20543055555555556,
+          "gens": 1,
+          "kills": 4,
+          "duration": 379.2,
+          "standingS": 907.1000000001377,
+          "repairS": 198.499999999993,
+          "time": {
+            "hide:walk": 25.40000000000009,
+            "hide:still": 108.49999999999811,
+            "sneak:walk": 0.1
+          },
+          "hides": 16,
+          "peeks": 16,
+          "newSightings": 54,
+          "scratchAssociatedSightings": 42
+        },
+        {
+          "seed": 1007,
+          "map": "gas-heaven-v015",
+          "fit": 0.10330772569444446,
+          "survival": 0.1506805555555556,
+          "gens": 0,
+          "kills": 4,
+          "duration": 194.6,
+          "standingS": 584.8000000000644,
+          "repairS": 58.20000000000056,
+          "time": {
+            "hide:walk": 29.400000000000148,
+            "hide:still": 161.39999999999512,
+            "hide:run": 0.1,
+            "sneak:walk": 12.599999999999971
+          },
+          "hides": 14,
+          "peeks": 18,
+          "newSightings": 47,
+          "scratchAssociatedSightings": 38
+        },
+        {
+          "seed": 1008,
+          "map": "gas-heaven-v016",
+          "fit": 0.24406788194444445,
+          "survival": 0.256951388888889,
+          "gens": 2,
+          "kills": 4,
+          "duration": 481.2,
+          "standingS": 1269.9999999999404,
+          "repairS": 358.60000000001304,
+          "time": {
+            "hide:walk": 35.20000000000023,
+            "hide:still": 113.19999999999784,
+            "sneak:run": 3.600000000000002
+          },
+          "hides": 13,
+          "peeks": 21,
+          "newSightings": 95,
+          "scratchAssociatedSightings": 78
+        },
+        {
+          "seed": 1009,
+          "map": "gas-heaven-v017",
+          "fit": 0.24491701388888878,
+          "survival": 0.24396527777777766,
+          "gens": 3,
+          "kills": 4,
+          "duration": 441.3,
+          "standingS": 1267.4999999999427,
+          "repairS": 414.00000000002564,
+          "time": {
+            "hide:walk": 42.600000000000335,
+            "hide:still": 127.79999999999701,
+            "hide:run": 1.9000000000000006,
+            "sneak:walk": 3.900000000000002
+          },
+          "hides": 22,
+          "peeks": 16,
+          "newSightings": 72,
+          "scratchAssociatedSightings": 46
+        },
+        {
+          "seed": 1010,
+          "map": "gas-heaven-v018",
+          "fit": 0.22375451388888867,
+          "survival": 0.25100694444444427,
+          "gens": 3,
+          "kills": 4,
+          "duration": 384.4,
+          "standingS": 1168.100000000033,
+          "repairS": 362.10000000001384,
+          "time": {
+            "hide:walk": 36.40000000000025,
+            "hide:still": 114.69999999999776,
+            "sneak:walk": 0.7,
+            "hide:run": 0.2
+          },
+          "hides": 20,
+          "peeks": 20,
+          "newSightings": 74,
+          "scratchAssociatedSightings": 56
+        },
+        {
+          "seed": 1011,
+          "map": "gas-heaven-v019",
+          "fit": 0.19004192708333328,
+          "survival": 0.23290277777777768,
+          "gens": 1,
+          "kills": 4,
+          "duration": 337.6,
+          "standingS": 959.9000000001497,
+          "repairS": 247.49999999999022,
+          "time": {
+            "hide:still": 99.09999999999864,
+            "hide:walk": 25.600000000000094,
+            "sneak:walk": 0.30000000000000004,
+            "hide:run": 0.7
+          },
+          "hides": 16,
+          "peeks": 15,
+          "newSightings": 57,
+          "scratchAssociatedSightings": 42
+        },
+        {
+          "seed": 1012,
+          "map": "gas-heaven-v020",
+          "fit": 0.30333168402777766,
+          "survival": 0.34900694444444447,
+          "gens": 2,
+          "kills": 4,
+          "duration": 626.5,
+          "standingS": 1758.8999999994958,
+          "repairS": 351.70000000001147,
+          "time": {
+            "hide:walk": 59.400000000000574,
+            "hide:still": 279.299999999995,
+            "hide:run": 0.30000000000000004,
+            "sneak:walk": 11.399999999999975,
+            "sneak:still": 0.2
+          },
+          "hides": 33,
+          "peeks": 33,
+          "newSightings": 142,
+          "scratchAssociatedSightings": 113
+        },
+        {
+          "seed": 1013,
+          "map": "gas-heaven-v021",
+          "fit": 0.4792964409722221,
+          "survival": 0.598326388888889,
+          "gens": 5,
+          "kills": 2,
+          "duration": 444.6,
+          "standingS": 1465.6999999997624,
+          "repairS": 491.90000000004335,
+          "time": {
+            "hide:still": 86.29999999999937,
+            "hide:walk": 23.600000000000065,
+            "sneak:walk": 1.4000000000000001
+          },
+          "hides": 11,
+          "peeks": 13,
+          "newSightings": 115,
+          "scratchAssociatedSightings": 94
+        },
+        {
+          "seed": 1014,
+          "map": "gas-heaven-v022",
+          "fit": 0.24436527777777772,
+          "survival": 0.25287500000000007,
+          "gens": 2,
+          "kills": 4,
+          "duration": 451.7,
+          "standingS": 1223.299999999983,
+          "repairS": 307.70000000000147,
+          "time": {
+            "hide:walk": 30.000000000000156,
+            "hide:still": 158.89999999999526,
+            "sneak:walk": 4.300000000000001,
+            "sneak:run": 0.2,
+            "hide:run": 2.1000000000000005
+          },
+          "hides": 16,
+          "peeks": 17,
+          "newSightings": 96,
+          "scratchAssociatedSightings": 71
+        },
+        {
+          "seed": 1015,
+          "map": "gas-heaven-v023",
+          "fit": 0.27504374999999986,
+          "survival": 0.29775000000000007,
+          "gens": 4,
+          "kills": 4,
+          "duration": 521.1,
+          "standingS": 1487.3999999997427,
+          "repairS": 410.60000000002486,
+          "time": {
+            "hide:walk": 46.40000000000039,
+            "hide:still": 104.29999999999835,
+            "hide:run": 0.6,
+            "sneak:walk": 3.800000000000002
+          },
+          "hides": 15,
+          "peeks": 30,
+          "newSightings": 119,
+          "scratchAssociatedSightings": 80
+        },
+        {
+          "seed": 1016,
+          "map": "gas-heaven-v024",
+          "fit": 0.1497950520833334,
+          "survival": 0.1807430555555556,
+          "gens": 1,
+          "kills": 4,
+          "duration": 270,
+          "standingS": 711.9000000000933,
+          "repairS": 220.29999999999177,
+          "time": {
+            "hide:walk": 30.600000000000165,
+            "hide:still": 62.200000000000614
+          },
+          "hides": 9,
+          "peeks": 10,
+          "newSightings": 54,
+          "scratchAssociatedSightings": 33
+        },
+        {
+          "seed": 1017,
+          "map": "gas-heaven-v025",
+          "fit": 0.19459583333333336,
+          "survival": 0.2093680555555557,
+          "gens": 1,
+          "kills": 4,
+          "duration": 355.7,
+          "standingS": 976.3000000001534,
+          "repairS": 214.5999999999921,
+          "time": {
+            "hide:still": 102.49999999999845,
+            "hide:walk": 27.40000000000012,
+            "sneak:run": 0.6,
+            "sneak:repair": 0.1,
+            "hide:run": 0.4,
+            "sneak:walk": 3.600000000000002
+          },
+          "hides": 17,
+          "peeks": 16,
+          "newSightings": 74,
+          "scratchAssociatedSightings": 61
+        },
+        {
+          "seed": 1018,
+          "map": "gas-heaven-v026",
+          "fit": 0.14872465277777772,
+          "survival": 0.17476388888888883,
+          "gens": 1,
+          "kills": 4,
+          "duration": 263.9,
+          "standingS": 794.000000000112,
+          "repairS": 195.59999999999317,
+          "time": {
+            "hide:walk": 22.300000000000047,
+            "hide:still": 63.600000000000634,
+            "hide:run": 0.30000000000000004,
+            "sneak:walk": 0.2
+          },
+          "hides": 12,
+          "peeks": 10,
+          "newSightings": 60,
+          "scratchAssociatedSightings": 49
+        },
+        {
+          "seed": 1019,
+          "map": "gas-heaven-v027",
+          "fit": 0.21346423611111115,
+          "survival": 0.23897222222222225,
+          "gens": 2,
+          "kills": 4,
+          "duration": 410.6,
+          "standingS": 1190.6000000000126,
+          "repairS": 214.3999999999921,
+          "time": {
+            "hide:walk": 34.60000000000022,
+            "hide:still": 131.8999999999968,
+            "hide:run": 0.1,
+            "sneak:walk": 0.1
+          },
+          "hides": 15,
+          "peeks": 18,
+          "newSightings": 96,
+          "scratchAssociatedSightings": 73
+        },
+        {
+          "seed": 1020,
+          "map": "gas-heaven-v028",
+          "fit": 0.243775954861111,
+          "survival": 0.27509027777777784,
+          "gens": 4,
+          "kills": 4,
+          "duration": 408.6,
+          "standingS": 1231.2999999999756,
+          "repairS": 414.7000000000258,
+          "time": {
+            "hide:walk": 32.800000000000196,
+            "hide:still": 80.5999999999997,
+            "sneak:walk": 2.9000000000000012
+          },
+          "hides": 15,
+          "peeks": 16,
+          "newSightings": 86,
+          "scratchAssociatedSightings": 61
+        },
+        {
+          "seed": 1021,
+          "map": "gas-heaven-v029",
+          "fit": 0.17633454861111114,
+          "survival": 0.19720833333333343,
+          "gens": 1,
+          "kills": 4,
+          "duration": 344.7,
+          "standingS": 752.9000000001026,
+          "repairS": 156.69999999999538,
+          "time": {
+            "hide:walk": 41.60000000000032,
+            "hide:still": 67.60000000000043,
+            "sneak:walk": 0.30000000000000004
+          },
+          "hides": 12,
+          "peeks": 15,
+          "newSightings": 87,
+          "scratchAssociatedSightings": 66
+        },
+        {
+          "seed": 1022,
+          "map": "gas-heaven-v030",
+          "fit": 0.20862673611111116,
+          "survival": 0.23877777777777787,
+          "gens": 1,
+          "kills": 4,
+          "duration": 427.1,
+          "standingS": 1030.2000000001585,
+          "repairS": 197.99999999999304,
+          "time": {
+            "hide:walk": 41.40000000000032,
+            "hide:still": 110.19999999999801,
+            "sneak:run": 1.9000000000000006
+          },
+          "hides": 11,
+          "peeks": 24,
+          "newSightings": 84,
+          "scratchAssociatedSightings": 66
+        },
+        {
+          "seed": 1023,
+          "map": "gas-heaven-v031",
+          "fit": 0.20344375000000003,
+          "survival": 0.23046527777777792,
+          "gens": 2,
+          "kills": 4,
+          "duration": 378.7,
+          "standingS": 1088.2000000001058,
+          "repairS": 217.69999999999192,
+          "time": {
+            "hide:walk": 27.40000000000012,
+            "hide:still": 150.19999999999575,
+            "sneak:run": 0.7999999999999999,
+            "sneak:walk": 7.699999999999989,
+            "hide:run": 0.9999999999999999
+          },
+          "hides": 19,
+          "peeks": 13,
+          "newSightings": 79,
+          "scratchAssociatedSightings": 61
+        },
+        {
+          "seed": 1024,
+          "map": "gas-heaven-v000",
+          "fit": 0.1657836805555556,
+          "survival": 0.1993194444444445,
+          "gens": 0,
+          "kills": 4,
+          "duration": 270.9,
+          "standingS": 731.5000000000978,
+          "repairS": 158.0999999999953,
+          "time": {
+            "hide:walk": 23.90000000000007,
+            "hide:still": 84.0999999999995,
+            "sneak:walk": 2.3000000000000007,
+            "sneak:run": 0.30000000000000004,
+            "hide:run": 8.299999999999986
+          },
+          "hides": 11,
+          "peeks": 8,
+          "newSightings": 59,
+          "scratchAssociatedSightings": 53
+        },
+        {
+          "seed": 1025,
+          "map": "gas-heaven-v001",
+          "fit": 0.24225572916666657,
+          "survival": 0.26111111111111107,
+          "gens": 3,
+          "kills": 4,
+          "duration": 478.4,
+          "standingS": 1313.8999999999005,
+          "repairS": 330.50000000000665,
+          "time": {
+            "hide:walk": 60.70000000000059,
+            "hide:still": 178.89999999999412,
+            "sneak:run": 1.9000000000000006,
+            "sneak:still": 0.1,
+            "sneak:walk": 5.299999999999997,
+            "hide:run": 0.30000000000000004
+          },
+          "hides": 22,
+          "peeks": 30,
+          "newSightings": 116,
+          "scratchAssociatedSightings": 86
+        },
+        {
+          "seed": 1026,
+          "map": "gas-heaven-v002",
+          "fit": 0.2518622395833331,
+          "survival": 0.28159722222222194,
+          "gens": 2,
+          "kills": 4,
+          "duration": 466.3,
+          "standingS": 1240.2999999999674,
+          "repairS": 343.5000000000096,
+          "time": {
+            "hide:walk": 37.000000000000256,
+            "hide:still": 96.3999999999988,
+            "sneak:run": 4.100000000000001,
+            "sneak:repair": 0.30000000000000004,
+            "hide:run": 0.30000000000000004
+          },
+          "hides": 16,
+          "peeks": 20,
+          "newSightings": 91,
+          "scratchAssociatedSightings": 63
+        },
+        {
+          "seed": 1027,
+          "map": "gas-heaven-v003",
+          "fit": 0.17330928819444438,
+          "survival": 0.20009722222222215,
+          "gens": 1,
+          "kills": 4,
+          "duration": 316.9,
+          "standingS": 915.3000000001396,
+          "repairS": 182.49999999999392,
+          "time": {
+            "hide:walk": 23.10000000000006,
+            "hide:still": 108.99999999999808,
+            "hide:run": 0.4,
+            "sneak:walk": 0.8999999999999999
+          },
+          "hides": 15,
+          "peeks": 13,
+          "newSightings": 62,
+          "scratchAssociatedSightings": 52
+        },
+        {
+          "seed": 1028,
+          "map": "gas-heaven-v004",
+          "fit": 0.09674592013888889,
+          "survival": 0.1340972222222222,
+          "gens": 0,
+          "kills": 4,
+          "duration": 187,
+          "standingS": 473.40000000003914,
+          "repairS": 47.1000000000004,
+          "time": {
+            "hide:walk": 22.900000000000055,
+            "hide:still": 62.70000000000062,
+            "hide:run": 0.2,
+            "sneak:walk": 0.2
+          },
+          "hides": 8,
+          "peeks": 13,
+          "newSightings": 54,
+          "scratchAssociatedSightings": 46
+        },
+        {
+          "seed": 1029,
+          "map": "gas-heaven-v005",
+          "fit": 0.21721284722222195,
+          "survival": 0.2293263888888888,
+          "gens": 3,
+          "kills": 4,
+          "duration": 372.5,
+          "standingS": 1062.2000000001294,
+          "repairS": 362.700000000014,
+          "time": {
+            "hide:walk": 55.50000000000052,
+            "hide:still": 77.19999999999989,
+            "sneak:walk": 4.000000000000002,
+            "sneak:still": 0.1,
+            "hide:run": 4.000000000000002
+          },
+          "hides": 14,
+          "peeks": 20,
+          "newSightings": 74,
+          "scratchAssociatedSightings": 45
+        },
+        {
+          "seed": 1030,
+          "map": "gas-heaven-v006",
+          "fit": 0.42979262152777775,
+          "survival": 0.4681319444444444,
+          "gens": 5,
+          "kills": 3,
+          "duration": 621.5,
+          "standingS": 1835.499999999426,
+          "repairS": 513.2000000000481,
+          "time": {
+            "hide:walk": 32.9000000000002,
+            "hide:still": 90.39999999999914,
+            "sneak:walk": 1.6000000000000003,
+            "sneak:run": 1.8000000000000005
+          },
+          "hides": 14,
+          "peeks": 21,
+          "newSightings": 124,
+          "scratchAssociatedSightings": 95
+        },
+        {
+          "seed": 1031,
+          "map": "gas-heaven-v007",
+          "fit": 0.12918689236111117,
+          "survival": 0.15831944444444457,
+          "gens": 1,
+          "kills": 4,
+          "duration": 212.9,
+          "standingS": 634.7000000000758,
+          "repairS": 235.99999999999088,
+          "time": {
+            "hide:walk": 20.40000000000002,
+            "hide:still": 40.400000000000304,
+            "sneak:walk": 0.30000000000000004
+          },
+          "hides": 6,
+          "peeks": 7,
+          "newSightings": 44,
+          "scratchAssociatedSightings": 36
+        }
+      ]
+    },
+    {
+      "variant": "run",
+      "summary": {
+        "n": 32,
+        "fit": 0.25317865668402767,
+        "survival": 0.2862703993055556,
+        "gens": 2.6875,
+        "kills": 3.6875,
+        "duration": 390.90624999999994,
+        "hides": 14.40625,
+        "peeks": 18.4375,
+        "standingS": 36151.39999999853,
+        "repairS": 10865.100000000497,
+        "time": {
+          "hide:run": 712.000000000002,
+          "hide:still": 3458.399999999935,
+          "sneak:run": 147.99999999999983,
+          "sneak:repair": 0.4
+        },
+        "episodes": {
+          "hide": {
+            "n": 1237,
+            "unseenStart": 701,
+            "found": 99,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 0,
+            "ranS": 712.000000000001,
+            "censored": 0
+          },
+          "sneak": {
+            "n": 70,
+            "unseenStart": 63,
+            "found": 0,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 0,
+            "ranS": 147.99999999999991,
+            "censored": 0
+          }
+        },
+        "departures": {
+          "n": 561,
+          "unseenStart": 365,
+          "found": 169,
+          "firstWalk": 0,
+          "firstRun": 557,
+          "still": 4,
+          "sameGenWithin10S": 47,
+          "walkedS": 0,
+          "ranS": 3735.199999999996,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "threatenedDepartures": {
+          "n": 307,
+          "unseenStart": 144,
+          "found": 91,
+          "firstWalk": 0,
+          "firstRun": 303,
+          "still": 4,
+          "sameGenWithin10S": 24,
+          "walkedS": 0,
+          "ranS": 1886.6999999999994,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "stealthDepartures": {
+          "n": 156,
+          "unseenStart": 56,
+          "found": 30,
+          "firstWalk": 0,
+          "firstRun": 152,
+          "still": 4,
+          "sameGenWithin10S": 33,
+          "walkedS": 0,
+          "ranS": 697.1999999999992,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "newSightings": 2690,
+        "scratchAssociatedSightings": 2117,
+        "stealthSightings": {
+          "n": 326,
+          "scratchAssociated": 249,
+          "gruntAssociated": 25,
+          "recentRepair": 115
+        }
+      },
+      "rows": [
+        {
+          "seed": 1000,
+          "map": "gas-heaven-v008",
+          "fit": 0.16280668402777776,
+          "survival": 0.19503472222222218,
+          "gens": 0,
+          "kills": 4,
+          "duration": 307.9,
+          "standingS": 768.2000000001061,
+          "repairS": 163.599999999995,
+          "time": {
+            "hide:run": 22.50000000000005,
+            "hide:still": 86.89999999999934,
+            "sneak:run": 0.4
+          },
+          "hides": 10,
+          "peeks": 17,
+          "newSightings": 80,
+          "scratchAssociatedSightings": 60
+        },
+        {
+          "seed": 1001,
+          "map": "gas-heaven-v009",
+          "fit": 0.3088368055555553,
+          "survival": 0.3249930555555556,
+          "gens": 4,
+          "kills": 4,
+          "duration": 616,
+          "standingS": 1651.6999999995933,
+          "repairS": 453.20000000003455,
+          "time": {
+            "hide:run": 28.400000000000134,
+            "hide:still": 173.49999999999443,
+            "sneak:run": 6.999999999999991
+          },
+          "hides": 20,
+          "peeks": 26,
+          "newSightings": 121,
+          "scratchAssociatedSightings": 103
+        },
+        {
+          "seed": 1002,
+          "map": "gas-heaven-v010",
+          "fit": 0.19159904513888887,
+          "survival": 0.22929861111111116,
+          "gens": 1,
+          "kills": 4,
+          "duration": 386.5,
+          "standingS": 1024.100000000164,
+          "repairS": 217.09999999999195,
+          "time": {
+            "hide:run": 16.19999999999996,
+            "sneak:run": 4.899999999999999,
+            "hide:still": 65.10000000000058
+          },
+          "hides": 13,
+          "peeks": 16,
+          "newSightings": 95,
+          "scratchAssociatedSightings": 78
+        },
+        {
+          "seed": 1003,
+          "map": "gas-heaven-v011",
+          "fit": 0.14821354166666667,
+          "survival": 0.18180555555555566,
+          "gens": 2,
+          "kills": 4,
+          "duration": 242.6,
+          "standingS": 778.7000000001085,
+          "repairS": 264.59999999999167,
+          "time": {
+            "hide:run": 24.400000000000077,
+            "hide:still": 86.29999999999937,
+            "sneak:run": 11.399999999999975
+          },
+          "hides": 12,
+          "peeks": 20,
+          "newSightings": 69,
+          "scratchAssociatedSightings": 55
+        },
+        {
+          "seed": 1004,
+          "map": "gas-heaven-v012",
+          "fit": 0.11369843750000005,
+          "survival": 0.14159027777777788,
+          "gens": 1,
+          "kills": 4,
+          "duration": 178.2,
+          "standingS": 583.9000000000642,
+          "repairS": 241.39999999999057,
+          "time": {
+            "hide:run": 7.099999999999991,
+            "hide:still": 41.00000000000031,
+            "sneak:run": 5.699999999999996
+          },
+          "hides": 6,
+          "peeks": 6,
+          "newSightings": 29,
+          "scratchAssociatedSightings": 17
+        },
+        {
+          "seed": 1005,
+          "map": "gas-heaven-v013",
+          "fit": 0.2718071180555555,
+          "survival": 0.25520833333333337,
+          "gens": 4,
+          "kills": 4,
+          "duration": 460.5,
+          "standingS": 1473.5999999997553,
+          "repairS": 493.70000000004376,
+          "time": {
+            "hide:still": 197.19999999999308,
+            "hide:run": 26.200000000000102,
+            "sneak:run": 2.0000000000000004
+          },
+          "hides": 22,
+          "peeks": 31,
+          "newSightings": 92,
+          "scratchAssociatedSightings": 65
+        },
+        {
+          "seed": 1006,
+          "map": "gas-heaven-v014",
+          "fit": 0.19101345486111096,
+          "survival": 0.21910416666666654,
+          "gens": 2,
+          "kills": 4,
+          "duration": 340.5,
+          "standingS": 1014.200000000162,
+          "repairS": 305.600000000001,
+          "time": {
+            "hide:run": 26.0000000000001,
+            "hide:still": 153.49999999999557,
+            "sneak:run": 0.6
+          },
+          "hides": 19,
+          "peeks": 23,
+          "newSightings": 66,
+          "scratchAssociatedSightings": 58
+        },
+        {
+          "seed": 1007,
+          "map": "gas-heaven-v015",
+          "fit": 0.21024921874999986,
+          "survival": 0.21640277777777772,
+          "gens": 2,
+          "kills": 4,
+          "duration": 297.9,
+          "standingS": 929.2000000001427,
+          "repairS": 378.7000000000176,
+          "time": {
+            "hide:run": 16.19999999999996,
+            "hide:still": 87.89999999999928,
+            "sneak:run": 5.1999999999999975
+          },
+          "hides": 12,
+          "peeks": 15,
+          "newSightings": 64,
+          "scratchAssociatedSightings": 51
+        },
+        {
+          "seed": 1008,
+          "map": "gas-heaven-v016",
+          "fit": 0.25327109375,
+          "survival": 0.24718750000000012,
+          "gens": 2,
+          "kills": 4,
+          "duration": 500.2,
+          "standingS": 1236.7999999999706,
+          "repairS": 293.3999999999982,
+          "time": {
+            "hide:run": 28.20000000000013,
+            "hide:still": 131.9999999999968,
+            "sneak:run": 1.6000000000000003
+          },
+          "hides": 16,
+          "peeks": 24,
+          "newSightings": 97,
+          "scratchAssociatedSightings": 77
+        },
+        {
+          "seed": 1009,
+          "map": "gas-heaven-v017",
+          "fit": 0.4681849826388887,
+          "survival": 0.5938333333333333,
+          "gens": 5,
+          "kills": 2,
+          "duration": 414.4,
+          "standingS": 1293.1999999999193,
+          "repairS": 505.3000000000464,
+          "time": {
+            "hide:run": 13.899999999999967,
+            "hide:still": 78.89999999999979,
+            "sneak:run": 8.799999999999985
+          },
+          "hides": 13,
+          "peeks": 11,
+          "newSightings": 71,
+          "scratchAssociatedSightings": 57
+        },
+        {
+          "seed": 1010,
+          "map": "gas-heaven-v018",
+          "fit": 0.22972604166666663,
+          "survival": 0.2431875,
+          "gens": 2,
+          "kills": 4,
+          "duration": 432.5,
+          "standingS": 1108.800000000087,
+          "repairS": 301.6000000000001,
+          "time": {
+            "hide:run": 22.800000000000054,
+            "hide:still": 99.19999999999864,
+            "sneak:run": 10.999999999999977
+          },
+          "hides": 14,
+          "peeks": 21,
+          "newSightings": 85,
+          "scratchAssociatedSightings": 68
+        },
+        {
+          "seed": 1011,
+          "map": "gas-heaven-v019",
+          "fit": 0.2563905381944444,
+          "survival": 0.25344444444444447,
+          "gens": 4,
+          "kills": 4,
+          "duration": 455.6,
+          "standingS": 1370.9999999998486,
+          "repairS": 395.50000000002143,
+          "time": {
+            "hide:still": 169.19999999999467,
+            "hide:run": 39.60000000000029,
+            "sneak:run": 0.1
+          },
+          "hides": 22,
+          "peeks": 25,
+          "newSightings": 106,
+          "scratchAssociatedSightings": 86
+        },
+        {
+          "seed": 1012,
+          "map": "gas-heaven-v020",
+          "fit": 0.16566128472222222,
+          "survival": 0.19532638888888898,
+          "gens": 2,
+          "kills": 4,
+          "duration": 330.5,
+          "standingS": 868.2000000001289,
+          "repairS": 242.7999999999905,
+          "time": {
+            "hide:run": 20.900000000000027,
+            "hide:still": 132.99999999999673,
+            "sneak:run": 4.999999999999998
+          },
+          "hides": 17,
+          "peeks": 21,
+          "newSightings": 70,
+          "scratchAssociatedSightings": 58
+        },
+        {
+          "seed": 1013,
+          "map": "gas-heaven-v021",
+          "fit": 0.21263828124999995,
+          "survival": 0.21838888888888897,
+          "gens": 3,
+          "kills": 4,
+          "duration": 354,
+          "standingS": 1024.6000000001636,
+          "repairS": 326.50000000000574,
+          "time": {
+            "hide:still": 60.900000000000595,
+            "hide:run": 9.099999999999984
+          },
+          "hides": 7,
+          "peeks": 10,
+          "newSightings": 94,
+          "scratchAssociatedSightings": 80
+        },
+        {
+          "seed": 1014,
+          "map": "gas-heaven-v022",
+          "fit": 0.33142543402777763,
+          "survival": 0.33406250000000004,
+          "gens": 4,
+          "kills": 4,
+          "duration": 616.2,
+          "standingS": 1742.2999999995109,
+          "repairS": 470.6000000000385,
+          "time": {
+            "hide:run": 32.700000000000195,
+            "hide:still": 159.59999999999522,
+            "sneak:run": 4.000000000000002
+          },
+          "hides": 19,
+          "peeks": 17,
+          "newSightings": 128,
+          "scratchAssociatedSightings": 109
+        },
+        {
+          "seed": 1015,
+          "map": "gas-heaven-v023",
+          "fit": 0.15025894097222237,
+          "survival": 0.19059027777777804,
+          "gens": 1,
+          "kills": 4,
+          "duration": 307.2,
+          "standingS": 813.5000000001164,
+          "repairS": 109.79999999999804,
+          "time": {
+            "hide:run": 22.900000000000055,
+            "hide:still": 125.09999999999717,
+            "sneak:run": 11.599999999999975
+          },
+          "hides": 17,
+          "peeks": 22,
+          "newSightings": 83,
+          "scratchAssociatedSightings": 57
+        },
+        {
+          "seed": 1016,
+          "map": "gas-heaven-v024",
+          "fit": 0.6068223958333332,
+          "survival": 0.7868402777777778,
+          "gens": 5,
+          "kills": 1,
+          "duration": 428.5,
+          "standingS": 1515.1999999997174,
+          "repairS": 504.30000000004617,
+          "time": {
+            "hide:run": 24.400000000000077,
+            "hide:still": 101.99999999999848,
+            "sneak:run": 0.1
+          },
+          "hides": 15,
+          "peeks": 18,
+          "newSightings": 110,
+          "scratchAssociatedSightings": 84
+        },
+        {
+          "seed": 1017,
+          "map": "gas-heaven-v025",
+          "fit": 0.28770555555555555,
+          "survival": 0.3019861111111112,
+          "gens": 4,
+          "kills": 4,
+          "duration": 469.5,
+          "standingS": 1519.6999999997133,
+          "repairS": 450.0000000000338,
+          "time": {
+            "hide:still": 138.8999999999964,
+            "hide:run": 22.800000000000054,
+            "sneak:run": 2.600000000000001
+          },
+          "hides": 20,
+          "peeks": 14,
+          "newSightings": 94,
+          "scratchAssociatedSightings": 75
+        },
+        {
+          "seed": 1018,
+          "map": "gas-heaven-v026",
+          "fit": 0.2836524305555554,
+          "survival": 0.2862152777777778,
+          "gens": 5,
+          "kills": 4,
+          "duration": 535.4,
+          "standingS": 1459.699999999768,
+          "repairS": 482.0000000000411,
+          "time": {
+            "hide:run": 22.000000000000043,
+            "hide:still": 104.19999999999835,
+            "sneak:run": 8.299999999999986
+          },
+          "hides": 12,
+          "peeks": 15,
+          "newSightings": 92,
+          "scratchAssociatedSightings": 74
+        },
+        {
+          "seed": 1019,
+          "map": "gas-heaven-v027",
+          "fit": 0.13073281249999996,
+          "survival": 0.1655416666666667,
+          "gens": 1,
+          "kills": 4,
+          "duration": 267.6,
+          "standingS": 676.2000000000852,
+          "repairS": 202.0999999999928,
+          "time": {
+            "hide:run": 8.399999999999986,
+            "hide:still": 50.70000000000045
+          },
+          "hides": 9,
+          "peeks": 11,
+          "newSightings": 51,
+          "scratchAssociatedSightings": 39
+        },
+        {
+          "seed": 1020,
+          "map": "gas-heaven-v028",
+          "fit": 0.33148932291666655,
+          "survival": 0.3525694444444445,
+          "gens": 5,
+          "kills": 4,
+          "duration": 585.7,
+          "standingS": 1582.5999999996561,
+          "repairS": 474.2000000000393,
+          "time": {
+            "hide:run": 32.50000000000019,
+            "hide:still": 106.49999999999822,
+            "sneak:run": 8.699999999999985
+          },
+          "hides": 15,
+          "peeks": 20,
+          "newSightings": 129,
+          "scratchAssociatedSightings": 102
+        },
+        {
+          "seed": 1021,
+          "map": "gas-heaven-v029",
+          "fit": 0.12235494791666676,
+          "survival": 0.14822222222222237,
+          "gens": 1,
+          "kills": 4,
+          "duration": 223.1,
+          "standingS": 585.1000000000645,
+          "repairS": 141.19999999999627,
+          "time": {
+            "hide:run": 25.100000000000087,
+            "hide:still": 104.79999999999832
+          },
+          "hides": 14,
+          "peeks": 13,
+          "newSightings": 49,
+          "scratchAssociatedSightings": 35
+        },
+        {
+          "seed": 1022,
+          "map": "gas-heaven-v030",
+          "fit": 0.15344062499999997,
+          "survival": 0.18336805555555546,
+          "gens": 1,
+          "kills": 4,
+          "duration": 301.8,
+          "standingS": 772.7000000001071,
+          "repairS": 159.49999999999523,
+          "time": {
+            "hide:run": 17.199999999999974,
+            "hide:still": 84.99999999999945,
+            "sneak:run": 6.799999999999992
+          },
+          "hides": 9,
+          "peeks": 17,
+          "newSightings": 69,
+          "scratchAssociatedSightings": 56
+        },
+        {
+          "seed": 1023,
+          "map": "gas-heaven-v031",
+          "fit": 0.23652925347222203,
+          "survival": 0.24103472222222233,
+          "gens": 3,
+          "kills": 4,
+          "duration": 415.2,
+          "standingS": 1275.7999999999352,
+          "repairS": 430.2000000000293,
+          "time": {
+            "sneak:run": 5.299999999999997,
+            "hide:run": 23.400000000000063,
+            "hide:still": 110.399999999998
+          },
+          "hides": 14,
+          "peeks": 22,
+          "newSightings": 81,
+          "scratchAssociatedSightings": 64
+        },
+        {
+          "seed": 1024,
+          "map": "gas-heaven-v000",
+          "fit": 0.21106284722222202,
+          "survival": 0.2279930555555555,
+          "gens": 2,
+          "kills": 4,
+          "duration": 354.3,
+          "standingS": 984.9000000001554,
+          "repairS": 348.3000000000107,
+          "time": {
+            "hide:run": 10.29999999999998,
+            "hide:still": 38.80000000000028,
+            "sneak:run": 3.2000000000000015
+          },
+          "hides": 5,
+          "peeks": 12,
+          "newSightings": 90,
+          "scratchAssociatedSightings": 71
+        },
+        {
+          "seed": 1025,
+          "map": "gas-heaven-v001",
+          "fit": 0.21845538194444442,
+          "survival": 0.22230555555555565,
+          "gens": 3,
+          "kills": 4,
+          "duration": 371.6,
+          "standingS": 1091.200000000103,
+          "repairS": 382.00000000001836,
+          "time": {
+            "hide:run": 33.90000000000021,
+            "hide:still": 112.59999999999788
+          },
+          "hides": 15,
+          "peeks": 30,
+          "newSightings": 95,
+          "scratchAssociatedSightings": 76
+        },
+        {
+          "seed": 1026,
+          "map": "gas-heaven-v002",
+          "fit": 0.2746679687500001,
+          "survival": 0.31505555555555576,
+          "gens": 3,
+          "kills": 4,
+          "duration": 496.2,
+          "standingS": 1561.2999999996755,
+          "repairS": 392.00000000002063,
+          "time": {
+            "hide:run": 33.3000000000002,
+            "hide:still": 179.1999999999941,
+            "sneak:run": 10.599999999999978
+          },
+          "hides": 22,
+          "peeks": 33,
+          "newSightings": 118,
+          "scratchAssociatedSightings": 85
+        },
+        {
+          "seed": 1027,
+          "map": "gas-heaven-v003",
+          "fit": 0.17295407986111103,
+          "survival": 0.19396527777777772,
+          "gens": 1,
+          "kills": 4,
+          "duration": 300.9,
+          "standingS": 829.8000000001201,
+          "repairS": 254.59999999998982,
+          "time": {
+            "hide:run": 16.09999999999996,
+            "hide:still": 92.29999999999903,
+            "sneak:run": 12.79999999999997
+          },
+          "hides": 12,
+          "peeks": 14,
+          "newSightings": 50,
+          "scratchAssociatedSightings": 38
+        },
+        {
+          "seed": 1028,
+          "map": "gas-heaven-v004",
+          "fit": 0.5836749131944441,
+          "survival": 0.7323055555555555,
+          "gens": 5,
+          "kills": 1,
+          "duration": 496.4,
+          "standingS": 1577.9999999996603,
+          "repairS": 466.3000000000375,
+          "time": {
+            "hide:run": 31.00000000000017,
+            "hide:still": 110.499999999998,
+            "sneak:run": 5.599999999999996
+          },
+          "hides": 19,
+          "peeks": 26,
+          "newSightings": 109,
+          "scratchAssociatedSightings": 84
+        },
+        {
+          "seed": 1029,
+          "map": "gas-heaven-v005",
+          "fit": 0.10083541666666661,
+          "survival": 0.14020138888888878,
+          "gens": 0,
+          "kills": 4,
+          "duration": 203.3,
+          "standingS": 508.20000000004705,
+          "repairS": 58.20000000000056,
+          "time": {
+            "hide:run": 15.89999999999996,
+            "hide:still": 63.20000000000063
+          },
+          "hides": 10,
+          "peeks": 11,
+          "newSightings": 54,
+          "scratchAssociatedSightings": 39
+        },
+        {
+          "seed": 1030,
+          "map": "gas-heaven-v006",
+          "fit": 0.4975365451388887,
+          "survival": 0.5996805555555556,
+          "gens": 5,
+          "kills": 2,
+          "duration": 451.4,
+          "standingS": 1464.5999999997634,
+          "repairS": 544.8000000000553,
+          "time": {
+            "hide:run": 23.10000000000006,
+            "hide:still": 119.2999999999975,
+            "sneak:run": 1.3,
+            "sneak:repair": 0.4
+          },
+          "hides": 17,
+          "peeks": 11,
+          "newSightings": 79,
+          "scratchAssociatedSightings": 60
+        },
+        {
+          "seed": 1031,
+          "map": "gas-heaven-v007",
+          "fit": 0.2240216145833332,
+          "survival": 0.22390972222222216,
+          "gens": 3,
+          "kills": 4,
+          "duration": 367.4,
+          "standingS": 1064.4000000001274,
+          "repairS": 412.0000000000252,
+          "time": {
+            "hide:run": 15.499999999999961,
+            "hide:still": 90.69999999999912,
+            "sneak:run": 3.4000000000000017
+          },
+          "hides": 14,
+          "peeks": 18,
+          "newSightings": 70,
+          "scratchAssociatedSightings": 56
+        }
+      ]
+    },
+    {
+      "variant": "no-scratches",
+      "summary": {
+        "n": 32,
+        "fit": 0.22300532769097214,
+        "survival": 0.23821223958333332,
+        "gens": 2.71875,
+        "kills": 3.96875,
+        "duration": 398.553125,
+        "hides": 0,
+        "peeks": 6.59375,
+        "standingS": 35529.10000000004,
+        "repairS": 11618.000000000575,
+        "time": {
+          "hide:walk": 357.6999999999998,
+          "hide:still": 278.89999999999947,
+          "sneak:run": 366.8,
+          "sneak:still": 1.5000000000000002,
+          "sneak:repair": 21.999999999999993,
+          "hide:run": 0.2
+        },
+        "episodes": {
+          "hide": {
+            "n": 642,
+            "unseenStart": 141,
+            "found": 72,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 357.6999999999997,
+            "ranS": 0.2,
+            "censored": 0
+          },
+          "sneak": {
+            "n": 171,
+            "unseenStart": 161,
+            "found": 9,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 0,
+            "ranS": 366.7999999999999,
+            "censored": 0
+          }
+        },
+        "departures": {
+          "n": 598,
+          "unseenStart": 360,
+          "found": 165,
+          "firstWalk": 134,
+          "firstRun": 459,
+          "still": 5,
+          "sameGenWithin10S": 87,
+          "walkedS": 175.1999999999999,
+          "ranS": 4040.8,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "threatenedDepartures": {
+          "n": 359,
+          "unseenStart": 173,
+          "found": 111,
+          "firstWalk": 83,
+          "firstRun": 272,
+          "still": 4,
+          "sameGenWithin10S": 51,
+          "walkedS": 78.80000000000003,
+          "ranS": 2376.3999999999983,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "stealthDepartures": {
+          "n": 138,
+          "unseenStart": 27,
+          "found": 20,
+          "firstWalk": 134,
+          "firstRun": 2,
+          "still": 2,
+          "sameGenWithin10S": 59,
+          "walkedS": 136.49999999999997,
+          "ranS": 524.4999999999997,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "newSightings": 2681,
+        "scratchAssociatedSightings": 1,
+        "stealthSightings": {
+          "n": 270,
+          "scratchAssociated": 0,
+          "gruntAssociated": 4,
+          "recentRepair": 106
+        }
+      },
+      "rows": [
+        {
+          "seed": 1000,
+          "map": "gas-heaven-v008",
+          "fit": 0.27974062499999997,
+          "survival": 0.2530416666666666,
+          "gens": 5,
+          "kills": 4,
+          "duration": 454.5,
+          "standingS": 1385.4999999998354,
+          "repairS": 620.9000000000726,
+          "time": {
+            "hide:walk": 8.999999999999984,
+            "hide:still": 7.099999999999991
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 92,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1001,
+          "map": "gas-heaven-v009",
+          "fit": 0.2225903645833332,
+          "survival": 0.211715277777778,
+          "gens": 3,
+          "kills": 4,
+          "duration": 365.7,
+          "standingS": 1132.9000000000651,
+          "repairS": 428.10000000002884,
+          "time": {
+            "hide:walk": 10.799999999999978,
+            "hide:still": 8.099999999999987,
+            "sneak:run": 15.399999999999961
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 114,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1002,
+          "map": "gas-heaven-v010",
+          "fit": 0.20309800347222218,
+          "survival": 0.21964583333333332,
+          "gens": 0,
+          "kills": 4,
+          "duration": 385.6,
+          "standingS": 1169.300000000032,
+          "repairS": 164.69999999999493,
+          "time": {
+            "hide:walk": 19.300000000000004,
+            "sneak:run": 19.1,
+            "hide:still": 11.199999999999976,
+            "sneak:still": 1.5000000000000002
+          },
+          "hides": 0,
+          "peeks": 8,
+          "newSightings": 119,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1003,
+          "map": "gas-heaven-v011",
+          "fit": 0.23859383680555546,
+          "survival": 0.26098611111111114,
+          "gens": 3,
+          "kills": 4,
+          "duration": 429.1,
+          "standingS": 1223.299999999983,
+          "repairS": 375.6000000000169,
+          "time": {
+            "hide:walk": 21.80000000000004,
+            "hide:still": 12.79999999999997,
+            "sneak:run": 10.19999999999998
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 95,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1004,
+          "map": "gas-heaven-v012",
+          "fit": 0.20597951388888872,
+          "survival": 0.21870138888888868,
+          "gens": 1,
+          "kills": 4,
+          "duration": 346.8,
+          "standingS": 1009.2000000001609,
+          "repairS": 314.9000000000031,
+          "time": {
+            "hide:walk": 8.799999999999985,
+            "hide:still": 11.799999999999974,
+            "sneak:run": 31.70000000000018,
+            "sneak:repair": 2.9000000000000012
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 88,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1005,
+          "map": "gas-heaven-v013",
+          "fit": 0.24221137152777772,
+          "survival": 0.24015972222222215,
+          "gens": 5,
+          "kills": 4,
+          "duration": 402.8,
+          "standingS": 1227.2999999999793,
+          "repairS": 544.6000000000553,
+          "time": {
+            "hide:walk": 8.299999999999986,
+            "sneak:run": 6.099999999999994,
+            "hide:still": 6.999999999999991
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 76,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1006,
+          "map": "gas-heaven-v014",
+          "fit": 0.24802057291666646,
+          "survival": 0.24679166666666674,
+          "gens": 4,
+          "kills": 4,
+          "duration": 449,
+          "standingS": 1228.799999999978,
+          "repairS": 448.7000000000335,
+          "time": {
+            "sneak:run": 11.399999999999975,
+            "hide:walk": 8.599999999999985,
+            "hide:still": 7.999999999999988,
+            "sneak:repair": 0.4
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 85,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1007,
+          "map": "gas-heaven-v015",
+          "fit": 0.27012413194444435,
+          "survival": 0.2940972222222221,
+          "gens": 5,
+          "kills": 4,
+          "duration": 493.3,
+          "standingS": 1336.5999999998799,
+          "repairS": 489.1000000000427,
+          "time": {
+            "hide:walk": 10.499999999999979,
+            "hide:still": 7.39999999999999,
+            "sneak:run": 19.80000000000001,
+            "sneak:repair": 6.299999999999994
+          },
+          "hides": 0,
+          "peeks": 8,
+          "newSightings": 115,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1008,
+          "map": "gas-heaven-v016",
+          "fit": 0.29709097222222214,
+          "survival": 0.2833472222222223,
+          "gens": 4,
+          "kills": 4,
+          "duration": 578,
+          "standingS": 1579.0999999996593,
+          "repairS": 415.90000000002607,
+          "time": {
+            "hide:walk": 19.500000000000007,
+            "hide:still": 18.29999999999999,
+            "sneak:run": 12.099999999999973,
+            "sneak:repair": 0.9999999999999999
+          },
+          "hides": 0,
+          "peeks": 13,
+          "newSightings": 128,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1009,
+          "map": "gas-heaven-v017",
+          "fit": 0.24216067708333325,
+          "survival": 0.25768750000000007,
+          "gens": 3,
+          "kills": 4,
+          "duration": 475.7,
+          "standingS": 1230.899999999976,
+          "repairS": 436.10000000003066,
+          "time": {
+            "hide:walk": 7.799999999999988,
+            "sneak:run": 23.700000000000067,
+            "hide:still": 8.999999999999984
+          },
+          "hides": 0,
+          "peeks": 3,
+          "newSightings": 79,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1010,
+          "map": "gas-heaven-v018",
+          "fit": 0.23923515625000005,
+          "survival": 0.25290277777777803,
+          "gens": 2,
+          "kills": 4,
+          "duration": 496.2,
+          "standingS": 1192.8000000000106,
+          "repairS": 258.39999999999026,
+          "time": {
+            "hide:walk": 19.80000000000001,
+            "hide:still": 11.599999999999975,
+            "sneak:run": 9.99999999999998
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 104,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1011,
+          "map": "gas-heaven-v019",
+          "fit": 0.12156510416666663,
+          "survival": 0.15470833333333334,
+          "gens": 1,
+          "kills": 4,
+          "duration": 212.1,
+          "standingS": 607.4000000000696,
+          "repairS": 160.89999999999515,
+          "time": {
+            "hide:walk": 3.5000000000000018,
+            "hide:still": 0.7,
+            "sneak:run": 4.000000000000002
+          },
+          "hides": 0,
+          "peeks": 2,
+          "newSightings": 53,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1012,
+          "map": "gas-heaven-v020",
+          "fit": 0.2346359374999999,
+          "survival": 0.27746527777777774,
+          "gens": 4,
+          "kills": 4,
+          "duration": 445.4,
+          "standingS": 1373.5999999998462,
+          "repairS": 457.4000000000355,
+          "time": {
+            "hide:walk": 5.099999999999998,
+            "sneak:run": 9.399999999999983,
+            "hide:still": 1.0999999999999999
+          },
+          "hides": 0,
+          "peeks": 1,
+          "newSightings": 55,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1013,
+          "map": "gas-heaven-v021",
+          "fit": 0.24850052083333304,
+          "survival": 0.26435416666666645,
+          "gens": 5,
+          "kills": 4,
+          "duration": 393.3,
+          "standingS": 1282.8999999999287,
+          "repairS": 471.30000000003866,
+          "time": {
+            "sneak:run": 23.30000000000006,
+            "hide:walk": 12.299999999999972,
+            "hide:still": 6.999999999999991,
+            "sneak:repair": 0.4
+          },
+          "hides": 0,
+          "peeks": 6,
+          "newSightings": 85,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1014,
+          "map": "gas-heaven-v022",
+          "fit": 0.22860685763888877,
+          "survival": 0.23581944444444436,
+          "gens": 2,
+          "kills": 4,
+          "duration": 392,
+          "standingS": 1167.3000000000338,
+          "repairS": 334.6000000000076,
+          "time": {
+            "hide:walk": 8.799999999999985,
+            "hide:still": 3.2000000000000015,
+            "sneak:run": 17.59999999999998
+          },
+          "hides": 0,
+          "peeks": 5,
+          "newSightings": 95,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1015,
+          "map": "gas-heaven-v023",
+          "fit": 0.1296221354166666,
+          "survival": 0.15713888888888883,
+          "gens": 1,
+          "kills": 4,
+          "duration": 257.3,
+          "standingS": 615.7000000000714,
+          "repairS": 181.59999999999397,
+          "time": {
+            "hide:walk": 0.6,
+            "sneak:run": 3.4000000000000017,
+            "sneak:repair": 5.4999999999999964
+          },
+          "hides": 0,
+          "peeks": 0,
+          "newSightings": 46,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1016,
+          "map": "gas-heaven-v024",
+          "fit": 0.20259236111111117,
+          "survival": 0.23539583333333336,
+          "gens": 1,
+          "kills": 4,
+          "duration": 410.5,
+          "standingS": 1012.1000000001616,
+          "repairS": 364.40000000001436,
+          "time": {
+            "hide:walk": 6.999999999999991,
+            "hide:still": 10.599999999999978,
+            "sneak:run": 18.9
+          },
+          "hides": 0,
+          "peeks": 10,
+          "newSightings": 83,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1017,
+          "map": "gas-heaven-v025",
+          "fit": 0.22976762152777763,
+          "survival": 0.2225972222222221,
+          "gens": 3,
+          "kills": 4,
+          "duration": 375,
+          "standingS": 1122.6000000000745,
+          "repairS": 358.300000000013,
+          "time": {
+            "sneak:run": 5.1999999999999975,
+            "hide:walk": 9.699999999999982,
+            "hide:still": 13.299999999999969
+          },
+          "hides": 0,
+          "peeks": 6,
+          "newSightings": 98,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1018,
+          "map": "gas-heaven-v026",
+          "fit": 0.23645737847222204,
+          "survival": 0.25145833333333323,
+          "gens": 4,
+          "kills": 4,
+          "duration": 460.8,
+          "standingS": 1172.1000000000295,
+          "repairS": 429.00000000002905,
+          "time": {
+            "hide:walk": 4.699999999999999,
+            "hide:still": 2.700000000000001,
+            "sneak:run": 8.799999999999985,
+            "sneak:repair": 2.2000000000000006
+          },
+          "hides": 0,
+          "peeks": 3,
+          "newSightings": 60,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1019,
+          "map": "gas-heaven-v027",
+          "fit": 0.17286206597222223,
+          "survival": 0.2084583333333334,
+          "gens": 1,
+          "kills": 4,
+          "duration": 323.2,
+          "standingS": 846.700000000124,
+          "repairS": 229.29999999999126,
+          "time": {
+            "hide:walk": 11.999999999999973,
+            "sneak:run": 18.29999999999999,
+            "hide:still": 15.299999999999962
+          },
+          "hides": 0,
+          "peeks": 9,
+          "newSightings": 80,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1020,
+          "map": "gas-heaven-v028",
+          "fit": 0.19545598958333332,
+          "survival": 0.22622916666666681,
+          "gens": 2,
+          "kills": 4,
+          "duration": 369.7,
+          "standingS": 836.5000000001216,
+          "repairS": 334.6000000000076,
+          "time": {
+            "hide:walk": 6.199999999999994,
+            "hide:still": 0.2,
+            "sneak:run": 5.1999999999999975
+          },
+          "hides": 0,
+          "peeks": 0,
+          "newSightings": 67,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1021,
+          "map": "gas-heaven-v029",
+          "fit": 0.15639982638888883,
+          "survival": 0.17809722222222224,
+          "gens": 1,
+          "kills": 4,
+          "duration": 277.7,
+          "standingS": 733.3000000000982,
+          "repairS": 229.59999999999124,
+          "time": {
+            "hide:walk": 13.899999999999967,
+            "hide:still": 3.5000000000000018,
+            "sneak:run": 3.0000000000000013,
+            "sneak:repair": 2.9000000000000012
+          },
+          "hides": 0,
+          "peeks": 4,
+          "newSightings": 64,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1022,
+          "map": "gas-heaven-v030",
+          "fit": 0.2348127604166666,
+          "survival": 0.2656597222222221,
+          "gens": 1,
+          "kills": 4,
+          "duration": 432.3,
+          "standingS": 1293.2999999999192,
+          "repairS": 359.8000000000133,
+          "time": {
+            "sneak:run": 22.900000000000055,
+            "hide:walk": 24.800000000000082,
+            "hide:still": 18.499999999999993
+          },
+          "hides": 0,
+          "peeks": 13,
+          "newSightings": 130,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1023,
+          "map": "gas-heaven-v031",
+          "fit": 0.2441999131944444,
+          "survival": 0.26230555555555557,
+          "gens": 4,
+          "kills": 4,
+          "duration": 473.9,
+          "standingS": 1238.1999999999694,
+          "repairS": 500.9000000000454,
+          "time": {
+            "sneak:run": 7.999999999999988,
+            "hide:walk": 7.599999999999989,
+            "hide:still": 3.0000000000000013
+          },
+          "hides": 0,
+          "peeks": 2,
+          "newSightings": 55,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1024,
+          "map": "gas-heaven-v000",
+          "fit": 0.23417977430555553,
+          "survival": 0.2358055555555556,
+          "gens": 3,
+          "kills": 4,
+          "duration": 404.5,
+          "standingS": 1151.700000000048,
+          "repairS": 348.3000000000107,
+          "time": {
+            "hide:walk": 16.599999999999966,
+            "hide:still": 15.99999999999996,
+            "sneak:run": 17.69999999999998
+          },
+          "hides": 0,
+          "peeks": 10,
+          "newSightings": 97,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1025,
+          "map": "gas-heaven-v001",
+          "fit": 0.16285243055555554,
+          "survival": 0.1937986111111113,
+          "gens": 1,
+          "kills": 4,
+          "duration": 281.2,
+          "standingS": 797.9000000001129,
+          "repairS": 259.19999999999044,
+          "time": {
+            "hide:walk": 7.699999999999989,
+            "hide:still": 13.799999999999967,
+            "sneak:run": 5.399999999999997,
+            "hide:run": 0.1
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 52,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1026,
+          "map": "gas-heaven-v002",
+          "fit": 0.3912672743055552,
+          "survival": 0.45700694444444445,
+          "gens": 5,
+          "kills": 3,
+          "duration": 424.4,
+          "standingS": 1480.6999999997488,
+          "repairS": 462.6000000000367,
+          "time": {
+            "sneak:run": 9.699999999999982,
+            "hide:walk": 11.499999999999975,
+            "hide:still": 7.39999999999999,
+            "sneak:repair": 0.4
+          },
+          "hides": 0,
+          "peeks": 6,
+          "newSightings": 85,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1027,
+          "map": "gas-heaven-v003",
+          "fit": 0.19847890624999998,
+          "survival": 0.21588194444444464,
+          "gens": 2,
+          "kills": 4,
+          "duration": 392.2,
+          "standingS": 987.0000000001559,
+          "repairS": 298.0999999999993,
+          "time": {
+            "hide:walk": 7.39999999999999,
+            "hide:still": 4.4,
+            "sneak:run": 2.1000000000000005
+          },
+          "hides": 0,
+          "peeks": 7,
+          "newSightings": 62,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1028,
+          "map": "gas-heaven-v004",
+          "fit": 0.224646267361111,
+          "survival": 0.235138888888889,
+          "gens": 3,
+          "kills": 4,
+          "duration": 402,
+          "standingS": 1096.9000000000979,
+          "repairS": 389.50000000002007,
+          "time": {
+            "hide:walk": 15.79999999999996,
+            "hide:still": 15.99999999999996,
+            "sneak:run": 12.99999999999997,
+            "hide:run": 0.1
+          },
+          "hides": 0,
+          "peeks": 12,
+          "newSightings": 107,
+          "scratchAssociatedSightings": 1
+        },
+        {
+          "seed": 1029,
+          "map": "gas-heaven-v005",
+          "fit": 0.24079236111111108,
+          "survival": 0.25440972222222225,
+          "gens": 3,
+          "kills": 4,
+          "duration": 440,
+          "standingS": 1196.6000000000072,
+          "repairS": 327.600000000006,
+          "time": {
+            "hide:walk": 25.100000000000087,
+            "hide:still": 15.199999999999962,
+            "sneak:run": 7.39999999999999
+          },
+          "hides": 0,
+          "peeks": 12,
+          "newSightings": 83,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1030,
+          "map": "gas-heaven-v006",
+          "fit": 0.26528906249999995,
+          "survival": 0.23436111111111124,
+          "gens": 5,
+          "kills": 4,
+          "duration": 540.5,
+          "standingS": 1378.099999999842,
+          "repairS": 501.10000000004544,
+          "time": {
+            "hide:walk": 6.999999999999991,
+            "hide:still": 11.299999999999976
+          },
+          "hides": 0,
+          "peeks": 5,
+          "newSightings": 88,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1031,
+          "map": "gas-heaven-v007",
+          "fit": 0.09434071180555553,
+          "survival": 0.11762499999999998,
+          "gens": 0,
+          "kills": 4,
+          "duration": 169,
+          "standingS": 422.80000000002764,
+          "repairS": 122.89999999999729,
+          "time": {
+            "hide:walk": 6.199999999999994,
+            "hide:still": 3.4000000000000017,
+            "sneak:run": 4.000000000000002
+          },
+          "hides": 0,
+          "peeks": 2,
+          "newSightings": 41,
+          "scratchAssociatedSightings": 0
+        }
+      ]
+    },
+    {
+      "variant": "on-no-scratches",
+      "summary": {
+        "n": 32,
+        "fit": 0.22860592719184022,
+        "survival": 0.2532977430555556,
+        "gens": 2,
+        "kills": 3.875,
+        "duration": 392.7375,
+        "hides": 14.21875,
+        "peeks": 17.53125,
+        "standingS": 34819.50000000028,
+        "repairS": 10020.600000000346,
+        "time": {
+          "hide:walk": 1080.600000000007,
+          "hide:still": 3508.199999999934,
+          "sneak:run": 124.29999999999993,
+          "hide:run": 18.20000000000001,
+          "sneak:repair": 0.30000000000000004
+        },
+        "episodes": {
+          "hide": {
+            "n": 1232,
+            "unseenStart": 743,
+            "found": 122,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 1080.6000000000008,
+            "ranS": 18.200000000000006,
+            "censored": 0
+          },
+          "sneak": {
+            "n": 73,
+            "unseenStart": 58,
+            "found": 1,
+            "firstWalk": null,
+            "firstRun": null,
+            "still": null,
+            "sameGenWithin10S": null,
+            "walkedS": 0,
+            "ranS": 124.29999999999993,
+            "censored": 0
+          }
+        },
+        "departures": {
+          "n": 495,
+          "unseenStart": 317,
+          "found": 139,
+          "firstWalk": 153,
+          "firstRun": 340,
+          "still": 2,
+          "sameGenWithin10S": 44,
+          "walkedS": 340.5000000000001,
+          "ranS": 3034.5999999999985,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "threatenedDepartures": {
+          "n": 288,
+          "unseenStart": 150,
+          "found": 92,
+          "firstWalk": 113,
+          "firstRun": 173,
+          "still": 2,
+          "sameGenWithin10S": 18,
+          "walkedS": 229.8,
+          "ranS": 1611.699999999999,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "stealthDepartures": {
+          "n": 165,
+          "unseenStart": 64,
+          "found": 41,
+          "firstWalk": 152,
+          "firstRun": 11,
+          "still": 2,
+          "sameGenWithin10S": 30,
+          "walkedS": 229.3,
+          "ranS": 624.3999999999997,
+          "censored": 0,
+          "seenWithin10S": null,
+          "unseenFollowupCensored": null
+        },
+        "newSightings": 2609,
+        "scratchAssociatedSightings": 0,
+        "stealthSightings": {
+          "n": 306,
+          "scratchAssociated": 0,
+          "gruntAssociated": 15,
+          "recentRepair": 107
+        }
+      },
+      "rows": [
+        {
+          "seed": 1000,
+          "map": "gas-heaven-v008",
+          "fit": 0.2638094618055554,
+          "survival": 0.30886111111111103,
+          "gens": 2,
+          "kills": 4,
+          "duration": 492,
+          "standingS": 1505.4999999997262,
+          "repairS": 394.1000000000211,
+          "time": {
+            "hide:walk": 63.50000000000063,
+            "hide:still": 197.49999999999307,
+            "sneak:run": 19.300000000000004,
+            "hide:run": 0.1
+          },
+          "hides": 25,
+          "peeks": 29,
+          "newSightings": 114,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1001,
+          "map": "gas-heaven-v009",
+          "fit": 0.13008376736111107,
+          "survival": 0.16345833333333326,
+          "gens": 0,
+          "kills": 4,
+          "duration": 245.4,
+          "standingS": 629.1000000000745,
+          "repairS": 161.09999999999513,
+          "time": {
+            "hide:walk": 20.800000000000026,
+            "hide:still": 50.60000000000045,
+            "sneak:run": 0.9999999999999999
+          },
+          "hides": 9,
+          "peeks": 15,
+          "newSightings": 55,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1002,
+          "map": "gas-heaven-v010",
+          "fit": 0.18499487847222218,
+          "survival": 0.20747222222222217,
+          "gens": 0,
+          "kills": 4,
+          "duration": 326.8,
+          "standingS": 942.9000000001458,
+          "repairS": 231.49999999999113,
+          "time": {
+            "hide:walk": 30.700000000000166,
+            "sneak:run": 7.499999999999989,
+            "hide:still": 60.200000000000585
+          },
+          "hides": 10,
+          "peeks": 17,
+          "newSightings": 70,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1003,
+          "map": "gas-heaven-v011",
+          "fit": 0.22297986111111098,
+          "survival": 0.2279861111111111,
+          "gens": 2,
+          "kills": 4,
+          "duration": 445.9,
+          "standingS": 954.0000000001484,
+          "repairS": 270.399999999993,
+          "time": {
+            "hide:walk": 38.20000000000027,
+            "hide:still": 96.59999999999879,
+            "sneak:run": 0.1
+          },
+          "hides": 7,
+          "peeks": 15,
+          "newSightings": 79,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1004,
+          "map": "gas-heaven-v012",
+          "fit": 0.20130590277777766,
+          "survival": 0.2107986111111111,
+          "gens": 3,
+          "kills": 4,
+          "duration": 339.6,
+          "standingS": 963.0000000001504,
+          "repairS": 340.900000000009,
+          "time": {
+            "hide:walk": 13.199999999999969,
+            "hide:still": 55.70000000000052,
+            "sneak:run": 10.19999999999998
+          },
+          "hides": 9,
+          "peeks": 13,
+          "newSightings": 66,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1005,
+          "map": "gas-heaven-v013",
+          "fit": 0.24685729166666662,
+          "survival": 0.23020833333333335,
+          "gens": 2,
+          "kills": 4,
+          "duration": 466.9,
+          "standingS": 1167.8000000000334,
+          "repairS": 393.2000000000209,
+          "time": {
+            "hide:walk": 36.00000000000024,
+            "hide:still": 77.69999999999986,
+            "hide:run": 1.2
+          },
+          "hides": 14,
+          "peeks": 18,
+          "newSightings": 87,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1006,
+          "map": "gas-heaven-v014",
+          "fit": 0.25280763888888874,
+          "survival": 0.2867847222222222,
+          "gens": 3,
+          "kills": 4,
+          "duration": 407.9,
+          "standingS": 1349.599999999868,
+          "repairS": 405.0000000000236,
+          "time": {
+            "hide:walk": 45.00000000000037,
+            "hide:still": 171.39999999999455,
+            "sneak:run": 5.899999999999995
+          },
+          "hides": 20,
+          "peeks": 27,
+          "newSightings": 105,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1007,
+          "map": "gas-heaven-v015",
+          "fit": 0.25747404513888883,
+          "survival": 0.2625277777777779,
+          "gens": 3,
+          "kills": 4,
+          "duration": 435.1,
+          "standingS": 1275.5999999999353,
+          "repairS": 394.4000000000212,
+          "time": {
+            "hide:walk": 37.000000000000256,
+            "hide:still": 180.999999999994,
+            "hide:run": 0.6,
+            "sneak:run": 3.900000000000002
+          },
+          "hides": 17,
+          "peeks": 19,
+          "newSightings": 97,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1008,
+          "map": "gas-heaven-v016",
+          "fit": 0.13386614583333342,
+          "survival": 0.14998611111111126,
+          "gens": 0,
+          "kills": 4,
+          "duration": 265.2,
+          "standingS": 596.6000000000671,
+          "repairS": 163.99999999999497,
+          "time": {
+            "hide:walk": 19.1,
+            "hide:still": 31.900000000000183
+          },
+          "hides": 7,
+          "peeks": 6,
+          "newSightings": 36,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1009,
+          "map": "gas-heaven-v017",
+          "fit": 0.20819244791666658,
+          "survival": 0.23509722222222207,
+          "gens": 3,
+          "kills": 4,
+          "duration": 359.8,
+          "standingS": 965.600000000151,
+          "repairS": 321.70000000000465,
+          "time": {
+            "hide:walk": 25.600000000000094,
+            "hide:still": 80.19999999999972
+          },
+          "hides": 13,
+          "peeks": 6,
+          "newSightings": 54,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1010,
+          "map": "gas-heaven-v018",
+          "fit": 0.23516371527777769,
+          "survival": 0.22772222222222227,
+          "gens": 2,
+          "kills": 4,
+          "duration": 435.7,
+          "standingS": 1187.1000000000158,
+          "repairS": 378.00000000001745,
+          "time": {
+            "hide:walk": 29.400000000000148,
+            "hide:still": 72.40000000000016
+          },
+          "hides": 8,
+          "peeks": 17,
+          "newSightings": 86,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1011,
+          "map": "gas-heaven-v019",
+          "fit": 0.1842792534722222,
+          "survival": 0.2065069444444445,
+          "gens": 2,
+          "kills": 4,
+          "duration": 326,
+          "standingS": 876.4000000001307,
+          "repairS": 306.1000000000011,
+          "time": {
+            "hide:still": 96.19999999999881,
+            "hide:walk": 23.000000000000057,
+            "sneak:run": 0.9999999999999999
+          },
+          "hides": 12,
+          "peeks": 18,
+          "newSightings": 66,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1012,
+          "map": "gas-heaven-v020",
+          "fit": 0.5746416666666668,
+          "survival": 0.7831736111111112,
+          "gens": 5,
+          "kills": 1,
+          "duration": 454.2,
+          "standingS": 1626.3999999996163,
+          "repairS": 496.1000000000443,
+          "time": {
+            "hide:walk": 17.399999999999977,
+            "hide:still": 98.69999999999867,
+            "sneak:run": 7.29999999999999
+          },
+          "hides": 14,
+          "peeks": 13,
+          "newSightings": 60,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1013,
+          "map": "gas-heaven-v021",
+          "fit": 0.12494140625,
+          "survival": 0.1702986111111111,
+          "gens": 0,
+          "kills": 4,
+          "duration": 236.5,
+          "standingS": 660.8000000000817,
+          "repairS": 133.99999999999667,
+          "time": {
+            "hide:still": 85.49999999999942,
+            "hide:walk": 25.200000000000088,
+            "sneak:run": 5.599999999999996,
+            "hide:run": 2.1000000000000005
+          },
+          "hides": 12,
+          "peeks": 12,
+          "newSightings": 64,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1014,
+          "map": "gas-heaven-v022",
+          "fit": 0.29653012152777775,
+          "survival": 0.2960277777777778,
+          "gens": 3,
+          "kills": 4,
+          "duration": 581.2,
+          "standingS": 1530.5999999997034,
+          "repairS": 402.20000000002295,
+          "time": {
+            "hide:run": 3.600000000000002,
+            "hide:walk": 56.50000000000053,
+            "hide:still": 231.79999999999112,
+            "sneak:run": 10.499999999999979
+          },
+          "hides": 26,
+          "peeks": 32,
+          "newSightings": 135,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1015,
+          "map": "gas-heaven-v023",
+          "fit": 0.17770095486111115,
+          "survival": 0.21474305555555562,
+          "gens": 0,
+          "kills": 4,
+          "duration": 318.1,
+          "standingS": 861.2000000001273,
+          "repairS": 179.0999999999941,
+          "time": {
+            "hide:walk": 33.70000000000021,
+            "hide:still": 117.09999999999762,
+            "hide:run": 1.7000000000000004
+          },
+          "hides": 15,
+          "peeks": 22,
+          "newSightings": 79,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1016,
+          "map": "gas-heaven-v024",
+          "fit": 0.22861588541666653,
+          "survival": 0.2548611111111111,
+          "gens": 3,
+          "kills": 4,
+          "duration": 397,
+          "standingS": 1189.000000000014,
+          "repairS": 376.000000000017,
+          "time": {
+            "hide:walk": 32.100000000000186,
+            "hide:still": 140.7999999999963,
+            "sneak:run": 0.1,
+            "hide:run": 0.30000000000000004
+          },
+          "hides": 15,
+          "peeks": 14,
+          "newSightings": 81,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1017,
+          "map": "gas-heaven-v025",
+          "fit": 0.2065917534722222,
+          "survival": 0.23601388888888897,
+          "gens": 2,
+          "kills": 4,
+          "duration": 341.5,
+          "standingS": 1024.100000000164,
+          "repairS": 307.9000000000015,
+          "time": {
+            "hide:walk": 17.59999999999998,
+            "hide:still": 108.39999999999812,
+            "sneak:run": 1.7000000000000004
+          },
+          "hides": 11,
+          "peeks": 12,
+          "newSightings": 86,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1018,
+          "map": "gas-heaven-v026",
+          "fit": 0.35537647569444425,
+          "survival": 0.40607638888888875,
+          "gens": 5,
+          "kills": 3,
+          "duration": 447.8,
+          "standingS": 1306.699999999907,
+          "repairS": 479.0000000000404,
+          "time": {
+            "hide:walk": 37.90000000000027,
+            "hide:still": 77.99999999999984,
+            "hide:run": 0.30000000000000004,
+            "sneak:run": 1.9000000000000006
+          },
+          "hides": 13,
+          "peeks": 16,
+          "newSightings": 79,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1019,
+          "map": "gas-heaven-v027",
+          "fit": 0.30070060763888873,
+          "survival": 0.2902916666666667,
+          "gens": 3,
+          "kills": 4,
+          "duration": 548.8,
+          "standingS": 1524.8999999997086,
+          "repairS": 405.6000000000237,
+          "time": {
+            "hide:walk": 50.00000000000044,
+            "hide:still": 162.19999999999507,
+            "hide:run": 1.3,
+            "sneak:run": 4.699999999999999
+          },
+          "hides": 20,
+          "peeks": 22,
+          "newSightings": 120,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1020,
+          "map": "gas-heaven-v028",
+          "fit": 0.24185963541666655,
+          "survival": 0.2773333333333332,
+          "gens": 4,
+          "kills": 4,
+          "duration": 425.5,
+          "standingS": 1249.7999999999588,
+          "repairS": 427.20000000002864,
+          "time": {
+            "hide:walk": 50.10000000000044,
+            "hide:still": 118.89999999999752,
+            "sneak:run": 4.5
+          },
+          "hides": 19,
+          "peeks": 23,
+          "newSightings": 96,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1021,
+          "map": "gas-heaven-v029",
+          "fit": 0.1797276909722222,
+          "survival": 0.19239583333333332,
+          "gens": 1,
+          "kills": 4,
+          "duration": 353.6,
+          "standingS": 881.900000000132,
+          "repairS": 201.19999999999285,
+          "time": {
+            "hide:walk": 52.60000000000048,
+            "hide:still": 114.79999999999775,
+            "sneak:run": 6.799999999999992
+          },
+          "hides": 15,
+          "peeks": 21,
+          "newSightings": 74,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1022,
+          "map": "gas-heaven-v030",
+          "fit": 0.14810199652777778,
+          "survival": 0.18882638888888892,
+          "gens": 0,
+          "kills": 4,
+          "duration": 318.5,
+          "standingS": 726.2000000000966,
+          "repairS": 92.29999999999903,
+          "time": {
+            "hide:walk": 41.70000000000032,
+            "hide:still": 116.89999999999763,
+            "hide:run": 0.5,
+            "sneak:run": 0.9999999999999999
+          },
+          "hides": 12,
+          "peeks": 24,
+          "newSightings": 67,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1023,
+          "map": "gas-heaven-v031",
+          "fit": 0.20379366319444442,
+          "survival": 0.22343055555555558,
+          "gens": 1,
+          "kills": 4,
+          "duration": 400.5,
+          "standingS": 1082.0000000001114,
+          "repairS": 209.1999999999924,
+          "time": {
+            "hide:still": 149.69999999999578,
+            "hide:walk": 36.00000000000024,
+            "sneak:run": 3.900000000000002,
+            "hide:run": 1.3
+          },
+          "hides": 20,
+          "peeks": 12,
+          "newSightings": 102,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1024,
+          "map": "gas-heaven-v000",
+          "fit": 0.14789939236111105,
+          "survival": 0.18254861111111098,
+          "gens": 0,
+          "kills": 4,
+          "duration": 348.9,
+          "standingS": 709.8000000000928,
+          "repairS": 88.09999999999927,
+          "time": {
+            "hide:walk": 16.79999999999997,
+            "hide:still": 70.10000000000029,
+            "sneak:run": 7.599999999999989,
+            "sneak:repair": 0.30000000000000004,
+            "hide:run": 2.2000000000000006
+          },
+          "hides": 10,
+          "peeks": 11,
+          "newSightings": 67,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1025,
+          "map": "gas-heaven-v001",
+          "fit": 0.22737144097222212,
+          "survival": 0.23145833333333332,
+          "gens": 1,
+          "kills": 4,
+          "duration": 413,
+          "standingS": 1137.9000000000606,
+          "repairS": 247.8999999999902,
+          "time": {
+            "hide:walk": 35.500000000000234,
+            "hide:still": 102.69999999999844,
+            "sneak:run": 2.400000000000001
+          },
+          "hides": 14,
+          "peeks": 19,
+          "newSightings": 99,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1026,
+          "map": "gas-heaven-v002",
+          "fit": 0.23217204861111113,
+          "survival": 0.2832430555555556,
+          "gens": 2,
+          "kills": 4,
+          "duration": 436.7,
+          "standingS": 1272.7999999999379,
+          "repairS": 389.40000000002004,
+          "time": {
+            "hide:walk": 31.500000000000178,
+            "hide:still": 151.1999999999957,
+            "sneak:run": 2.500000000000001
+          },
+          "hides": 19,
+          "peeks": 13,
+          "newSightings": 73,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1027,
+          "map": "gas-heaven-v003",
+          "fit": 0.24403888888888867,
+          "survival": 0.22269444444444453,
+          "gens": 3,
+          "kills": 4,
+          "duration": 383,
+          "standingS": 1170.300000000031,
+          "repairS": 549.5000000000564,
+          "time": {
+            "hide:walk": 24.800000000000082,
+            "hide:still": 90.19999999999915,
+            "hide:run": 1.2
+          },
+          "hides": 13,
+          "peeks": 14,
+          "newSightings": 68,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1028,
+          "map": "gas-heaven-v004",
+          "fit": 0.19685685763888866,
+          "survival": 0.22227083333333308,
+          "gens": 1,
+          "kills": 4,
+          "duration": 329.8,
+          "standingS": 966.6000000001512,
+          "repairS": 278.19999999999476,
+          "time": {
+            "hide:walk": 36.300000000000246,
+            "hide:still": 74.10000000000007,
+            "sneak:run": 0.1,
+            "hide:run": 0.1
+          },
+          "hides": 14,
+          "peeks": 19,
+          "newSightings": 77,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1029,
+          "map": "gas-heaven-v005",
+          "fit": 0.2297380208333333,
+          "survival": 0.23738888888888887,
+          "gens": 2,
+          "kills": 4,
+          "duration": 423.9,
+          "standingS": 1135.4000000000628,
+          "repairS": 238.9999999999907,
+          "time": {
+            "hide:walk": 52.500000000000476,
+            "hide:still": 128.59999999999698,
+            "hide:run": 0.1
+          },
+          "hides": 17,
+          "peeks": 34,
+          "newSightings": 104,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1030,
+          "map": "gas-heaven-v006",
+          "fit": 0.2973801215277778,
+          "survival": 0.273875,
+          "gens": 5,
+          "kills": 4,
+          "duration": 524.5,
+          "standingS": 1487.7999999997423,
+          "repairS": 538.900000000054,
+          "time": {
+            "hide:walk": 34.900000000000226,
+            "hide:still": 132.59999999999675,
+            "sneak:run": 9.099999999999984
+          },
+          "hides": 15,
+          "peeks": 18,
+          "newSightings": 90,
+          "scratchAssociatedSightings": 0
+        },
+        {
+          "seed": 1031,
+          "map": "gas-heaven-v007",
+          "fit": 0.17953663194444436,
+          "survival": 0.2011666666666666,
+          "gens": 1,
+          "kills": 4,
+          "duration": 338.3,
+          "standingS": 862.1000000001275,
+          "repairS": 219.39999999999182,
+          "time": {
+            "hide:walk": 15.99999999999996,
+            "hide:still": 64.50000000000061,
+            "hide:run": 1.6000000000000003,
+            "sneak:run": 5.699999999999996
+          },
+          "hides": 10,
+          "peeks": 10,
+          "newSightings": 73,
+          "scratchAssociatedSightings": 0
+        }
+      ]
+    }
+  ]
+}
