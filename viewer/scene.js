@@ -13,10 +13,9 @@ const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness
 const box = (w, h, d, m) => { const g = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); g.castShadow = g.receiveShadow = true; return g; };
 
 /**
- * opts: { heatOn: () => boolean, actors: number of survivors to draw (default 4) }
+ * opts: { hideSurvivor: (i) => boolean }
  */
 export function createScene(container, opts = {}) {
-  const heatOn = opts.heatOn ?? (() => true);
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false });
   renderer.setPixelRatio(devicePixelRatio);
   renderer.shadowMap.enabled = true;
@@ -176,48 +175,13 @@ export function createScene(container, opts = {}) {
     }
     for (let i = 0; i < 4; i++) { const a = makeActor(survColors[i], 1.7); dyn.add(a); v.survivors.push(a); }
     const h = makeActor(0xd8313b, 2.2);
-    const cone = new THREE.Mesh(new THREE.CircleGeometry(14, 32, -50 * Math.PI / 180, 100 * Math.PI / 180),
-      new THREE.MeshBasicMaterial({ color: 0xff4040, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
-    cone.rotation.x = -Math.PI / 2; cone.position.y = 0.06;
-    const coneWrap = new THREE.Group(); coneWrap.add(cone);
-    const terror = new THREE.Mesh(new THREE.RingGeometry(31.7, 32, 96), new THREE.MeshBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
-    terror.rotation.x = -Math.PI / 2; terror.position.y = 0.05;
-    dyn.add(h, coneWrap, terror);
-    v.hunter = h; v.cone = coneWrap; v.terror = terror;
-    // hunter belief heat map overlay (what the hunter thinks: where survivors could be)
-    const b = m.hunter.brain && m.hunter.brain.belief;
-    if (b) {
-      const data = new Uint8Array(b.W * b.H * 4);
-      const tex = new THREE.DataTexture(data, b.W, b.H, THREE.RGBAFormat);
-      tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(b.W * b.cs, b.H * b.cs),
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
-      plane.rotation.x = -Math.PI / 2;                // plane's +y (texture rows) -> world -z; flip below
-      plane.scale.y = -1;
-      plane.position.set((b.W * b.cs) / 2, 0.08, (b.H * b.cs) / 2);
-      dyn.add(plane);
-      v.heat = { b, data, tex, plane };
-    }
-  }
-
-  function syncHeat() {
-    const hv = v.heat;
-    if (!hv) return;
-    hv.plane.visible = heatOn();
-    if (!hv.plane.visible) return;
-    const h = hv.b.heat();
-    let max = 1e-6; for (let i = 0; i < h.length; i++) if (h[i] > max) max = h[i];
-    for (let i = 0; i < h.length; i++) {
-      const q = Math.min(1, Math.sqrt(h[i] / max));
-      hv.data[i * 4] = 255; hv.data[i * 4 + 1] = Math.round(200 * (1 - q)); hv.data[i * 4 + 2] = 40;
-      hv.data[i * 4 + 3] = Math.round(170 * q);
-    }
-    hv.tex.needsUpdate = true;
+    dyn.add(h);
+    v.hunter = h;
+    // (vision cone, terror radius, belief heat etc. are overlay layers: viewer/layers.js)
   }
 
   function sync(m) {
     if (!v) return;
-    syncHeat();
     m.gens.forEach((g, i) => {
       const p = Math.min(1, g.done ? 1 : g.p / m.need);
       const o = v.gens[i];
@@ -241,18 +205,18 @@ export function createScene(container, opts = {}) {
     place(v.hunter, H.x, H.z, H.face);
     // stunned = yellow glow, lunging = red glow, attack cooldown (post-hit/miss slowdown) = blue-grey glow
     v.hunter.userData.body.material.emissive.setHex(H.stunT > 0 ? 0x666600 : H.windT > 0 ? 0x660000 : H.cdT > 0 ? 0x2a3a66 : 0x000000);
-    v.cone.position.set(H.x, 0, H.z); v.cone.rotation.y = -H.face;
-    v.terror.position.set(H.x, 0.05, H.z);
     for (const hk of m.hooks) hookMeshes.get(hk.id)?.material.color.setHex(hk.occ >= 0 ? 0xff3344 : 0x99232f);
   }
 
-  function setTopDown(top) {
-    controls.target.set(center.x, 0, center.z);
-    const hgt = Math.max(30, span * 1.45);
-    camera.position.set(center.x, top ? hgt : hgt * 0.68, top ? center.z + 0.01 : center.z + hgt * 0.6);
+  // focus: optional { x, z, span } to frame part of the map (e.g. the duel shack) instead of the whole map
+  function setTopDown(top, focus = null) {
+    const c = focus || center, sp = focus ? focus.span : span;
+    controls.target.set(c.x, 0, c.z);
+    const hgt = Math.max(30, sp * 1.45);
+    camera.position.set(c.x, top ? hgt : hgt * 0.68, top ? c.z + 0.01 : c.z + hgt * 0.6);
     controls.update();
   }
   function render() { controls.update(); renderer.render(scene, camera); }
 
-  return { THREE, renderer, scene, camera, controls, buildStatic, buildDynamic, sync, render, resize, setTopDown, get terror() { return v && v.terror; } };
+  return { THREE, renderer, scene, camera, controls, buildStatic, buildDynamic, sync, render, resize, setTopDown };
 }

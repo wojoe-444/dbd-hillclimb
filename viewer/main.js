@@ -6,6 +6,7 @@ import { defaults } from '../src/hillclimb/params.js';
 import { scoreBloodpoints } from '../src/hillclimb/bloodpoints.js';
 import { hunterTableScore } from '../src/hillclimb/hunterscore.js';
 import { createScene, survCss, stateNames } from './scene.js';
+import { createLayers } from './layers.js';
 import { lineChart, attachHover, histogram, sparkline, prep, fmtNum, CAT, INK, niceCeil } from './charts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,7 +26,11 @@ const variantInfo = new Map((variantIndex?.variants ?? []).map((v) => [v.id, v])
 
 // ---------------------------------------------------------------- 3D
 const view = $('view');
-const S3 = createScene(view, { heatOn: () => $('heat').checked });
+const S3 = createScene(view);
+const layers = createLayers({ scene3d: S3, panel: $('layerPanel'), storeKey: 'layers.main' });
+const syncHeatBox = () => { $('heat').checked = layers.isOn('h-belief'); };
+layers.onChange(syncHeatBox); syncHeatBox();
+window.__layers = layers;   // console access (layer costs: __layers.costs())
 
 // ---------------------------------------------------------------- layout: dock, tabs, immersive full screen
 const body = document.body;
@@ -71,6 +76,7 @@ function setImmersive(on) {
   if (on === immersive) return;
   immersive = on;
   body.classList.toggle('immersive', on);
+  if (!on && $('layerFloat').classList.contains('show')) { $('layerFloat').classList.remove('show'); $('pane-layers').appendChild($('layerPanel')); }
   if (on) { document.documentElement.requestFullscreen?.().catch(() => {}); poke(); }
   else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   hud(true);
@@ -602,6 +608,7 @@ async function newMatch() {
   match = createMatch({ map: live, seed, hunter: brains.hunter.make(use.hunter), survivors: brains.survivor.make(use.survivor) });
   track = newTrack(); sample(); track.nextSample = 1;
   S3.buildDynamic(match, map);
+  layers.rebuild(match, map);
   logUpdate(true);
   dirty.map = dirty.champ = true;
   S3.sync(match); hud(true); queueRender();
@@ -614,6 +621,7 @@ function frame(now) {
     while (acc >= 1 && n < 400 && !match.over) { match.step(); afterStep(); acc -= 1; n++; }
     if (n >= 400) acc = 0;
     S3.sync(match); hud();
+    layers.update();
     renderActive(false);
   }
   S3.render();
@@ -632,33 +640,34 @@ $('useChamp').onchange = () => { dirty.champ = true; newMatch(); };
 let top = false;
 const setTop = (t) => { top = t; $('cam').classList.toggle('on', top); S3.setTopDown(top); };
 $('cam').onclick = () => setTop(!top);
-$('heat').onchange = () => S3.sync(match);
+$('heat').onchange = () => { layers.set('h-belief', { on: $('heat').checked }); };
 
 addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && immersive) { setImmersive(false); return; }
   const tag = ev.target.tagName;
   if (tag === 'INPUT' && ev.target.type !== 'checkbox' && ev.target.type !== 'range' || tag === 'SELECT' || tag === 'TEXTAREA' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
   const k = ev.key.toLowerCase(), sp = $('speed');
-  const tabs = ['match', 'evo', 'knobs', 'map', 'champ'];
+  const tabs = ['match', 'evo', 'knobs', 'map', 'champ', 'layers'];
   if (k === 'f') setImmersive(!immersive);
   else if (k === ' ') togglePause();
   else if (k === 'r') newMatch();
   else if (k === 'n') $('random').click();
   else if (k === 't') setTop(!top);
-  else if (k === 'h') { $('heat').checked = !$('heat').checked; S3.sync(match); }
+  else if (k === 'h') { layers.toggle('h-belief'); syncHeatBox(); }
   else if (k === 'd') { layout.hidden = !layout.hidden; applyLayout(); }
   else if (k === 'b') { layout.pos = layout.pos === 'bottom' ? 'right' : 'bottom'; applyLayout(); }
   else if (k === '[') { sp.selectedIndex = Math.max(0, sp.selectedIndex - 1); hud(true); }
   else if (k === ']') { sp.selectedIndex = Math.min(sp.options.length - 1, sp.selectedIndex + 1); hud(true); }
   else if (k === 'arrowleft' && ev.target.type !== 'range') setGen(+$('gen').value - 1, true);
   else if (k === 'arrowright' && ev.target.type !== 'range') setGen(+$('gen').value + 1, true);
-  else if (/^[1-5]$/.test(k)) setTab(tabs[+k - 1]);
+  else if (/^[1-6]$/.test(k)) setTab(tabs[+k - 1]);
+  else if (k === 'l') { if (immersive) { const fl = $('layerFloat'); fl.classList.toggle('show'); if (fl.classList.contains('show')) fl.appendChild($('layerPanel')); else $('pane-layers').appendChild($('layerPanel')); } else setTab('layers'); }
   else return;
   ev.preventDefault();
 });
 
 applyLayout();
-setTab(layout.tab === 'keys' || ['match', 'evo', 'knobs', 'map', 'champ'].includes(layout.tab) ? layout.tab : 'match');
+setTab(['keys', 'match', 'evo', 'knobs', 'map', 'champ', 'layers'].includes(layout.tab) ? layout.tab : 'match');
 const mapList = await fetch('/api/maps').then((r) => r.json()).catch(() => ['maps/gas-heaven.json']);
 variantPool = mapList.filter((m) => m.startsWith('maps/gas-heaven/v') && m.endsWith('.json')).sort();
 $('map').innerHTML = `<option value="auto">auto: variant by seed (what the bots train on)</option>` + mapList.map((m) => `<option>${esc(m)}</option>`).join('');

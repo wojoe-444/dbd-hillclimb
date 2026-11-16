@@ -106,7 +106,7 @@ export function createDuel({ map, createMatch, B, setup, seed, P, hunterMode = '
   const acts = [];   // survivor actions (decide calls)
   const wrapped = (ctx) => {
     const br = sBrainFactory(ctx);
-    return { ...br, decide(obs, api) { const act = br.decide(obs, api); acts.push({ t: obs.t, act }); if (acts.length > 400) acts.splice(0, 200); return act; }, get stats() { return br.stats; }, get debug() { return br.debug; } };
+    return { ...br, decide(obs, api) { const act = br.decide(obs, api); acts.push({ t: obs.t, act }); if (acts.length > 400) acts.splice(0, 200); return act; }, get stats() { return br.stats; } };   // (debug() is copied by the spread)
   };
   const hFactory = B.hunter.make(P.hp);
   let hAct = {}, S = null, lastSeenT = 0;

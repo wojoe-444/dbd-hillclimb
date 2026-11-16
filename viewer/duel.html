@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dbd-hillclimb · shack duel</title>
+<link rel="stylesheet" href="./viewer.css">
+<style>
+  #main { grid-template-columns: minmax(280px, 1fr) 6px minmax(340px, var(--dock-w)); }
+  #dock { display: block; overflow-y: auto; padding: 10px 12px 20px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .row .lbl { color: var(--muted); font-size: 12px; min-width: 52px; }
+  #scrubWrap { position: relative; margin-top: 4px; }
+  #marks { width: 100%; height: 26px; display: block; background: var(--surface); border: 1px solid var(--line); border-radius: 5px 5px 0 0; cursor: pointer; }
+  #scrub { width: 100%; margin: 0; display: block; }
+  #trace { font: 11.5px/1.45 ui-monospace, monospace; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; white-space: pre-wrap; color: var(--ink2); min-height: 4.4em; }
+  #events { font: 11.5px/1.45 ui-monospace, monospace; max-height: 220px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 4px 6px; }
+  #events .e { cursor: pointer; padding: 0 3px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #events .e:hover { background: #ffffff10; } #events .e.past { opacity: .55; } #events .e.now { background: #3987e533; opacity: 1; }
+  #err { color: var(--crit); }
+  body.immersive #layerFloat.show { display: block; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="toolbar">
+  <div class="grp"><a href="./" style="color:var(--ink2)">← match viewer</a></div>
+  <div class="grp"><b style="color:var(--ink)">Shack duel</b> <span class="lbl">1 hunter vs 1 survivor on maps/duel-shack.json (scripts/duel-shack.js setups)</span></div>
+  <div class="spacer"></div>
+  <div class="grp">
+    <button id="cam" class="on" title="T">Top-down</button>
+    <button id="fsBtn" title="Full-screen 3D view (F) — Esc to return">⛶ Full screen <kbd>F</kbd></button>
+  </div>
+</div>
+<div id="main">
+  <div id="view">
+    <div id="hud"></div>
+    <div id="layerFloat"></div>
+    <div id="fsHint"><kbd>Esc</kbd> / <kbd>F</kbd> exit · <kbd>L</kbd> layers · <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step</div>
+  </div>
+  <div id="resizer" title="drag to resize · double-click to reset"></div>
+  <div id="dock">
+    <h3>Setup</h3>
+    <div class="row"><span class="lbl">duel #</span><input id="idx" type="number" min="0" value="0" style="width:70px" title="same as scripts/duel-shack.js --trace N / --list row N: setup = grid[N % setups], seed = seed0 + N">
+      <span class="muted" style="font-size:12px">= setup N mod <span id="nSetups">?</span>, seed 1000 + N</span></div>
+    <div class="row"><span class="lbl">setup</span><select id="setup" style="flex:1"></select></div>
+    <div class="row"><span class="lbl">seed</span><input id="seed" type="number" value="1000" style="width:90px"><button id="rnd">Random</button></div>
+    <div class="row"><span class="lbl">hunter</span><select id="hmode" title="strong = assist + breaks a dropped pallet within 3 m; assist = path to the survivor's true position after 3 s unseen; brain = the param brain alone">
+      <option value="strong">strong harness</option><option value="assist">assist harness</option><option value="brain">brain only</option></select>
+      <span class="lbl" style="min-width:0">assist after</span><input id="assistAfter" type="number" value="3" step="0.5" style="width:56px"> s</div>
+    <div class="row"><span class="lbl">params</span><select id="params" style="flex:1"></select></div>
+    <div class="row"><span class="lbl">jitter</span><input id="jitter" type="number" value="0.5" step="0.1" style="width:60px"> m
+      <span class="lbl" style="min-width:0">cap</span><input id="cap" type="number" value="120" style="width:60px"> s</div>
+    <div class="row"><label title="keep the hunter's generator-cluster leash (pocket artifact; off in the script by default)"><input type="checkbox" id="leash"> keep cluster leash</label>
+      <label title="push a pallet-overlapping hunter out (engine gap; on in the script by default)"><input type="checkbox" id="pushfix" checked> pallet push fix</label></div>
+    <div class="row"><button id="restart" title="R">Restart</button><span id="err"></span></div>
+
+    <h3>Playback</h3>
+    <div class="row">
+      <button id="play" title="Space">Play</button>
+      <button id="back" title="← (Shift: 1 s)">◀ step</button><button id="fwd" title="→ (Shift: 1 s)">step ▶</button>
+      <span class="lbl" style="min-width:0">speed</span><select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option><option>8</option></select>
+      <span id="clock" class="num" style="color:var(--ink)"></span>
+    </div>
+    <div id="scrubWrap"><canvas id="marks" title="event timeline: click to jump"></canvas><input id="scrub" type="range" min="0" max="0" value="0"></div>
+    <div class="legend" style="margin-top:4px;font-size:11px"><span><span class="sq" style="background:#e66767"></span>hit / down</span><span><span class="sq" style="background:#d95926"></span>pallet drop</span><span><span class="sq" style="background:#8a6d50"></span>break</span><span><span class="sq" style="background:#3987e5"></span>vault</span><span><span class="sq" style="background:#d55181"></span>chase</span><span><span class="sq" style="background:#6fc8e8"></span>window blocked</span></div>
+
+    <h3>Now</h3>
+    <div class="tiles" id="tiles"></div>
+    <div id="trace" style="margin-top:6px"></div>
+
+    <h3>Result (whole duel)</h3>
+    <div id="result" class="muted"></div>
+
+    <h3>Events <span class="muted" style="text-transform:none;letter-spacing:0">— click to jump</span></h3>
+    <div id="events"></div>
+
+    <h3>Layers</h3>
+    <div id="layerPanel"></div>
+  </div>
+</div>
+<script type="module" src="./duel.js"></script>
+</body>
+</html>
