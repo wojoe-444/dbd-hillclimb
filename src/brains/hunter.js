@@ -165,7 +165,8 @@ export function makeHunter(P) {
         const gensLeft = obs.gensNeeded - obs.gensDone;
         const clusterOn = cluster && gensLeft <= P.clusterActivate;
         const anchor = cluster ? gens[cluster.anchor] : null;
-        const clusterDist = clusterOn ? nav.dist(me, anchor) : 0;   // my path distance to the cluster
+        const cdRaw = clusterOn ? nav.dist(me, anchor) : 0;
+        const clusterDist = Number.isFinite(cdRaw) ? cdRaw : 0;    // my path distance to the cluster (unreachable cluster: ignore the leash)
         const outsideLeash = (pt) => clusterOn && d2(pt, anchor) > P.leashDist;
 
         // ---- carrying ----
