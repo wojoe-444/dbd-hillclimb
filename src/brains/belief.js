@@ -63,6 +63,7 @@ export class SurvivorBelief {
     this.lastT = 0;
     this.prevHooked = new Map();                       // survivor id -> hook position
     this.notesRead = 0;
+    this.lastGruntT = -1; this.lastScratchT = -1; this.lastNoiseT = -99;
     this.carry = 0;                                    // fractional "cells to spread" carried between updates
     // start: survivors spawn together near the edge opposite the hunter -> mass on the far side of the map
     const sp = ctx.spawn;
@@ -154,10 +155,11 @@ export class SurvivorBelief {
       if (n.x === undefined) continue;
       if (n.type === 'genDone' || n.type === 'fumble' || n.type === 'loudNoise') this.attribute(n.x, n.z, n.type === 'genDone' ? 0.6 : 0.9, 1);
     }
-    for (const g of obs.noisyGens || []) this.attribute(g.x, g.z, 0.9, 1);
-    for (const g of obs.grunts || []) this.attribute(g.x, g.z, 0.8, 1);
+    // sounds/marks persist in obs for a while: only act on new ones (repair noise at most every 2 s)
+    if (obs.noisyGens && obs.noisyGens.length && t - this.lastNoiseT >= 2) { this.lastNoiseT = t; for (const g of obs.noisyGens) this.attribute(g.x, g.z, 0.9, 1); }
+    for (const g of obs.grunts || []) if (g.t > this.lastGruntT) { this.lastGruntT = g.t; this.attribute(g.x, g.z, 0.8, 1); }
     const sc = obs.scratches && obs.scratches[obs.scratches.length - 1];
-    if (sc && t - sc.t < 2) this.attribute(sc.x, sc.z, 0.6, 1.5);
+    if (sc && sc.t > this.lastScratchT + 1) { this.lastScratchT = sc.t; this.attribute(sc.x, sc.z, 0.6, 1.5); }
 
     if (t - this.lastT < everyS) return;
     const dt = t - this.lastT; this.lastT = t;
