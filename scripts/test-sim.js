@@ -14,6 +14,9 @@ import { LoopModel } from '../src/brains/loops.js';
 import { MapKnowledge } from '../src/brains/mapknow.js';
 import { RouteEval } from '../src/brains/routes.js';
 import { RouteLookahead } from '../src/brains/lookahead.js';
+import { HunterForecast } from '../src/brains/hunterforecast.js';
+import { makeCanary, mergeCanary, findInfLoopTile } from '../src/diag/canary.js';
+import { defaultConfig } from '../src/sim/index.js';
 import { generateOutline, checkOutlineCells, outlineToCells, OUTLINE_FAMILIES, generateFromLayout, gasHeavenLayout, makeRng, outlineInset, TILES } from '../src/mapgen/index.js';
 import { analyzeMap } from './validate-map.js';
 
@@ -1917,6 +1920,109 @@ test('shipped variant pool: odd variants shaped (all families, 9216-9792 m2, asp
     ok(Math.max(g.cw, g.ch) / Math.min(g.cw, g.ch) <= 1.6 && minWidth4(g) && connected4(g), f + ': aspect / min width / connected');
   }
   ok(fams.size === OUTLINE_FAMILIES.length, 'all outline families in the pool: ' + [...fams].join(' '));
+});
+
+test('hunter forecast: learns a straight-running hunter (momentum) vs one running at me (pursuit); deterministic', () => {
+  const loops = new LoopModel({ map: smallMap, config: defaultConfig });
+  const runFc = (mode) => {
+    const fc = new HunterForecast({ config: defaultConfig }, loops, { learnS: 1 });
+    const me = { x: 30, z: 30, vx: 0, vz: 0 };
+    let h = { x: 5, z: 28, vx: 0, vz: 0 };
+    for (let k = 0; k < 40; k++) {
+      const t = k * 0.1;
+      if (mode === 'straight') h = { x: 25 - 4.6 * t, z: 28, vx: -4.6, vz: 0 };   // runs away along z = 28 (committed elsewhere)
+      else { const dx = me.x - h.x, dz = me.z - h.z, L = Math.hypot(dx, dz); h = { x: h.x + 0.46 * dx / L, z: h.z + 0.46 * dz / L, vx: 4.6 * dx / L, vz: 4.6 * dz / L }; }
+      fc.update({ t, hunter: h }, null, me);
+    }
+    return fc;
+  };
+  const a = runFc('straight'), b = runFc('pursue');
+  ok(a.stats.scored > 10 && b.stats.scored > 10, 'predictions get scored against later sightings');
+  ok(a.err[1] < a.err[0], 'straight runner: momentum predicts it better than pursuit (err ' + a.err[1].toFixed(2) + ' vs ' + a.err[0].toFixed(2) + ')');
+  ok(a.w[1] > a.w[0], 'straight runner: momentum outweighs pursuit');
+  ok(b.err[0] <= b.err[3] && b.w[0] > b.w[3], 'runner at me: pursuit beats stand');
+  const p = a.predict({ t: 3.9, hunter: { x: 7.06, z: 28, vx: -4.6, vz: 0 } }, null, { x: 30, z: 30 }, 1);
+  ok(p && p.x < 7, 'a 1 s prediction keeps the runner going its own way (x ' + (p && p.x.toFixed(2)) + ')');
+  ok(JSON.stringify(Array.from(runFc('straight').w)) === JSON.stringify(Array.from(a.w)), 'deterministic');
+});
+
+test('chase forecast / station / strong-loop knobs: off = inert (forecast memory knob changes nothing), on = deterministic', () => {
+  const B = getBrains();
+  const gh = load('maps/gas-heaven/v003.json');
+  const off = { stationMode: 0, fcReverseP: 1.05, fcLeadS: 0, strongTravelW: 0, strongLoopW: 0 };
+  const go = (sp, seed) => JSON.stringify(runMatch({ map: gh, seed, config: { maxMatchS: 240 }, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make({ ...defaults(B.survivor.space), ...sp }) }).events);
+  for (const seed of [51, 52]) {
+    ok(go({ ...off, fcLearnS: 0.5 }, seed) === go({ ...off, fcLearnS: 3 }, seed), 'seed ' + seed + ': all forecast uses off -> its memory knob is inert');
+    const on = { fcLeadS: 0.5, fcReverseP: 0.6, holdBiasM: 2 };
+    ok(go(on, seed) === go(on, seed), 'seed ' + seed + ': forecast / station / strong loops on: deterministic');
+  }
+});
+
+test('canary metric: finds the probe tile via map.mapgen.tiles; counters consistent and deterministic', () => {
+  const B = getBrains();
+  const gh = load('maps/gas-heaven/v000.json');
+  const t = gh.mapgen.tiles.find((x) => x.tile === 'infinite-loop');
+  const sq = findInfLoopTile(gh);
+  ok(sq && sq.x0 === t.x && sq.z0 === t.z && sq.x1 === t.x + t.size, 'tile square from the mapgen entry');
+  ok(findInfLoopTile(smallMap) === null, 'no probe tile on test-small');
+  const go = () => {
+    const m = createMatch({ map: gh, seed: 77, config: { maxMatchS: 300 }, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(defaults(B.survivor.space)) });
+    const c = makeCanary(m, gh);
+    while (!m.over) { m.step(); c.step(); }
+    return c.result();
+  };
+  const r = go();
+  ok(r.present && r.tileChaseS <= r.chaseS + 1e-9 && r.tileChases <= r.chases && r.laps * 4 <= r.tileVaults, 'consistent: ' + JSON.stringify({ chaseS: +r.chaseS.toFixed(1), tile: +r.tileChaseS.toFixed(1), chases: r.chases, tileChases: r.tileChases, vaults: r.tileVaults, laps: r.laps }));
+  ok(r.chaseS > 0, 'some chase time recorded');
+  ok(JSON.stringify(go()) === JSON.stringify(r), 'deterministic');
+  const mg = mergeCanary([r, r]);
+  ok(mg.matches === 2 && Math.abs(mg.chaseS - 2 * r.chaseS) < 1e-9 && Math.abs(mg.tileShare - r.tileShare) < 1e-9, 'mergeCanary pools matches');
+});
+
+// 1 survivor (it knows the map) vs the param hunter; the other three removed, gates powered (no last-survivor end)
+function chaseDuel(map, seed, sPos, hPos, capS, onStep) {
+  const B = getBrains(), idle = () => ({ decide: () => ({}) });
+  let brain = null; const mkS = B.survivor.make(defaults(B.survivor.space));
+  const m = createMatch({ map, seed, config: { maxMatchS: capS + 5 }, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: [(c) => (brain = mkS(c)), idle, idle, idle] });
+  for (let i = 1; i < 4; i++) m.survivors[i].st = 6;
+  m.gatesPowered = true;
+  const s = m.survivors[0]; place(s, sPos.x, sPos.z); place(m.hunter, hPos.x, hPos.z); m.hunter.face = Math.atan2(s.z - hPos.z, s.x - hPos.x);
+  m.step(); brain.know.anchorKnown.fill(1);
+  while (!m.over && m.t < capS && s.st < 2) { m.step(); onStep(m, s); }
+  return m;
+}
+
+test('chase routing: a chased survivor does not flee into a dead-end pocket straight away from the hunter', () => {
+  const base = smallMap;
+  const map = { ...base, id: 'test-deadend', obstacles: [...base.obstacles.filter((o) => !['l-1', 'l-2', 'r3'].includes(o.id)),
+    { id: 'de-w', x: 21, z: 21, w: 1, d: 13, height: 3.5, kind: 'wall' }, { id: 'de-e', x: 27, z: 21, w: 1, d: 13, height: 3.5, kind: 'wall' },
+    { id: 'de-s', x: 21, z: 33, w: 7, d: 1, height: 3.5, kind: 'wall' }], pallets: base.pallets.filter((p) => p.id !== 'p-gap') };
+  let entered = 0;
+  for (let k = 0; k < 4; k++) {
+    let went = false;
+    chaseDuel(map, 8100 + k, { x: 23.5 + k * 0.7, z: 18.5 }, { x: 24.5, z: 9.5 + k }, 20, (m, s) => { if (s.x > 22 && s.x < 27 && s.z > 22 && s.z < 33) went = true; });
+    if (went) entered++;
+  }
+  ok(entered === 0, 'entered the pocket in ' + entered + '/4 starts');
+});
+
+test('chase routing: a chased survivor next to the infinite-loop probe tile runs there and vaults its windows', () => {
+  let used = 0, n = 0, vaults = 0;
+  for (const f of ['v001', 'v011', 'v020', 'v022']) {
+    const map = load('maps/gas-heaven/' + f + '.json'), sq = findInfLoopTile(map);
+    if (!sq) continue;
+    const cx = (sq.x0 + sq.x1) / 2, cz = (sq.z0 + sq.z1) / 2, W = map.size.w, H = map.size.h;
+    const blocked = (x, z) => x < 1 || z < 1 || x > W - 1 || z > H - 1 || map.obstacles.some((o) => x >= o.x - 0.5 && x < o.x + o.w + 0.5 && z >= o.z - 0.5 && z < o.z + o.d + 0.5);
+    let st = null;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const s = { x: cx + dx * 15, z: cz + dz * 15 }, h = { x: s.x + dx * 9, z: s.z + dz * 9 }; if (!blocked(s.x, s.z) && !blocked(h.x, h.z)) { st = [s, h]; break; } }
+    if (!st) continue;
+    n++;
+    const tw = new Set(map.windows.filter((w) => w.x + 0.5 >= sq.x0 && w.x + 0.5 <= sq.x1 && w.z + 0.5 >= sq.z0 && w.z + 0.5 <= sq.z1).map((w) => w.z * W + w.x));
+    let last = null, v = 0;
+    chaseDuel(map, 7100 + n, st[0], st[1], 30, (m, s) => { if (s.vault && s.vault !== last && tw.has(s.vault.cell)) v++; last = s.vault || null; });
+    vaults += v; if (v >= 2) used++;
+  }
+  ok(n >= 3 && used >= n - 1, 'went to the probe tile and vaulted >= 2 of its windows in ' + used + '/' + n + ' starts (' + vaults + ' tile vaults)');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
