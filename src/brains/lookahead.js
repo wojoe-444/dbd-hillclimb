@@ -25,7 +25,7 @@
 
 export const lookaheadSpace = {
   routeLookaheadW:   [0, 2, 0.6],    // weight of the best next resource reachable from an open flee destination (0 = off)
-  openGroundPenalty: [0, 1, 0.25],   // per metre of bare ground after the flee destination before the next reachable resource (0 = off)
+  openGroundPenalty: [0, 1, 0],   // per metre of bare ground after the flee destination before the next reachable resource (0 = off)
   lookaheadMaxM:     [0, 30, 14],    // how far past the destination to look for the next resource (m; 0 = lookahead off)
   chainAfterBreakW:  [0, 2, 0.8],    // extra next-resource weight for 6 s after I see a pallet break (chain to the next tile)
 };

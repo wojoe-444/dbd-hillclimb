@@ -1469,7 +1469,7 @@ test('loop mind games: knobs at 0 are inert; turned on they fire and stay determ
   const go = (seed, on) => {
     let hb = null; const sbs = [];
     const hf = B.hunter.make({ ...defaults(B.hunter.space), ...(on ? MG_H : {}) });
-    const sf = B.survivor.make({ ...defaults(B.survivor.space), ...(on ? MG_S : {}) });
+    const sf = B.survivor.make({ ...defaults(B.survivor.space), ...(on ? { ...MG_S, openGroundPenalty: 0.25 } : {}) });   // scenario seeds picked with the old 0.25 default
     const r = runMatch({ map: gh, seed, hunter: (c) => (hb = hf(c)), survivors: (c) => { const b = sf(c); sbs.push(b); return b; } });
     return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), st: { ...hb.mind.stats }, srev: sbs.reduce((s, b) => s + b.stats.loopReversals, 0) };
   };
@@ -1585,7 +1585,7 @@ test('route lookahead (brains/lookahead.js): knobs, knowledge gate, next resourc
   const B = getBrains();
   for (const k of ['routeLookaheadW', 'openGroundPenalty', 'lookaheadMaxM', 'chainAfterBreakW']) {
     const r = B.survivor.space[k];
-    ok(Array.isArray(r) && r[0] <= 0 && r[1] > 0 && r[2] > 0 && r[2] >= r[0] && r[2] <= r[1], `${k} in survivorSpace, range includes 0, default on (${JSON.stringify(r)})`);
+    ok(Array.isArray(r) && r[0] <= 0 && r[1] > 0 && (r[2] > 0 || k === 'openGroundPenalty') && r[2] >= r[0] && r[2] <= r[1], `${k} in survivorSpace, range includes 0, default on (openGroundPenalty off: evo-v15 drove it to 0) (${JSON.stringify(r)})`);
   }
   // a survivor ctx from a real match on test-small
   let sctx = null;

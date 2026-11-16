@@ -31,7 +31,7 @@ export const survivorSpace = {
   hideWalk:      [0, 1, 0.6],    // >0.5: walk (no scratch marks) while slipping out of view
   // ---- camera (survivor.camera): where to look, peeking ----
   glanceRate:    [0, 1, 0.4],    // how often to glance around while working / walking (0 = rarely, 1 = constantly)
-  peekW:         [0, 3, 1],      // hiding-spot score: bonus for a "peek spot" (body out of the hunter's sight, camera sees it)
+  peekW:         [0, 8, 1],      // hiding-spot score: bonus for a "peek spot" (body out of the hunter's sight, camera sees it)
   peekMoveMaxM:  [2, 20, 10],    // how far to move for a peek / hiding spot when slipping out of a visible hunter's view
   hideHoldS:     [0, 8, 2],      // once out of view, stay put this long while the hunter is still around
   // ---- chase: loops scored by "equivalent distance held" (loops.js) ----
