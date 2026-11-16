@@ -130,7 +130,7 @@ export function scoreBloodpoints(res) {
       case 'hookStage': if (e.stage === 2) hun.sacrifice += K.entitySummoned; break;
       case 'death':
         if (e.cause === 'bleedout') hun.deviousness += K.bleedOut;
-        else if (e.cause === 'hookDeath' || e.cause === 'hook3') hun.sacrifice += K.sacrifice;
+        else if (e.cause === 'hookDeath' || e.cause === 'hook3' || e.cause === 'lastHook') hun.sacrifice += K.sacrifice;   // any death on the hook
         else if (e.cause === 'endgame') hun.sacrifice += K.timesUp;
         break;
       default: break;
