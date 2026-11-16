@@ -36,7 +36,7 @@
 <rect x="24" y="16" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t43 small-car rot2 · none</title></rect>
 <rect x="24" y="24" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t47 small-lowl rot1 mirrored · none</title></rect>
 <rect x="64" y="24" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t48 small-lowl rot1 · weak</title></rect>
-<rect x="40" y="40" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t56 small-car rot2 · weak</title></rect>
+<rect x="40" y="40" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t56 small-car rot2 · none</title></rect>
 <rect x="24" y="56" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t63 small-car rot1 mirrored · none</title></rect>
 <rect x="88" y="56" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t65 small-tree rot2 · weak</title></rect>
 <rect x="48" y="64" width="8" height="8" fill="#e3f2dc" opacity=".7"><title>t72 small-car rot1 · none</title></rect>
@@ -134,7 +134,7 @@
 <rect x="64.15" y="24.15" width="7.7" height="7.7" fill="none" stroke="#8a97a6" stroke-width=".15" stroke-dasharray=".8 .5"/>
 <text x="64.5" y="25.5" font-size="1.25" fill="#5b6877">small-lowl · weak</text>
 <rect x="40.15" y="40.15" width="7.7" height="7.7" fill="none" stroke="#8a97a6" stroke-width=".15" stroke-dasharray=".8 .5"/>
-<text x="40.5" y="41.5" font-size="1.25" fill="#5b6877">small-car · weak</text>
+<text x="40.5" y="41.5" font-size="1.25" fill="#5b6877">small-car</text>
 <rect x="24.15" y="56.15" width="7.7" height="7.7" fill="none" stroke="#8a97a6" stroke-width=".15" stroke-dasharray=".8 .5"/>
 <text x="24.5" y="57.5" font-size="1.25" fill="#5b6877">small-car</text>
 <rect x="88.15" y="56.15" width="7.7" height="7.7" fill="none" stroke="#8a97a6" stroke-width=".15" stroke-dasharray=".8 .5"/>
@@ -280,22 +280,25 @@
 <rect x="72" y="33" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-1 · 3 m high</title></rect>
 <rect x="102" y="33" width="1" height="5" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t18-wall-7 · 3 m high</title></rect>
 <rect x="2" y="34" width="3" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t52-car-low-1 · 1.1 m high</title></rect>
-<rect x="52" y="34" width="7" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-1 · 3 m high</title></rect>
-<rect x="77" y="34" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-2 · 3 m high</title></rect>
+<rect x="52" y="34" width="7" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-1 · 3 m high</title></rect>
+<rect x="77" y="34" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-2 · 3 m high</title></rect>
 <rect x="10" y="35" width="7" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t03-wall-13 · 3 m high</title></rect>
-<rect x="52" y="35" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-2 · 3 m high</title></rect>
+<rect x="44" y="35" width="1" height="32" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t20-wall-2 · 3 m high</title></rect>
+<rect x="49" y="35" width="3" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-2 · 3 m high</title></rect>
+<rect x="59" y="35" width="18" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-3 · 3 m high</title></rect>
+<rect x="78" y="35" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-3 · 3 m high</title></rect>
 <rect x="91" y="35" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t18-wall-8 · 3 m high</title></rect>
 <rect x="93" y="35" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t18-wall-9 · 3 m high</title></rect>
-<rect x="77" y="36" width="1" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-3 · 3 m high</title></rect>
+<rect x="81" y="36" width="1" height="9" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t54-wall-1 · 3 m high</title></rect>
 <rect x="107" y="36" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t55-rock-1 · 2.6 m high</title></rect>
 <rect x="11" y="37" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t03-wall-14 · 3 m high</title></rect>
 <rect x="17" y="37" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t03-wall-15 · 3 m high</title></rect>
 <rect x="28" y="37" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t53-tree-1 · 5 m high</title></rect>
-<rect x="56" y="37" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-3 · 3 m high</title></rect>
+<rect x="56" y="37" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-4 · 3 m high</title></rect>
 <rect x="100" y="37" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t18-wall-10 · 3 m high</title></rect>
-<rect x="52" y="38" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-4 · 3 m high</title></rect>
-<rect x="60" y="38" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-5 · 3 m high</title></rect>
-<rect x="60" y="39" width="1" height="5" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-6 · 3 m high</title></rect>
+<rect x="52" y="38" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-5 · 3 m high</title></rect>
+<rect x="60" y="38" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-6 · 3 m high</title></rect>
+<rect x="60" y="39" width="1" height="5" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-7 · 3 m high</title></rect>
 <rect x="69" y="39" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-4 · 3 m high</title></rect>
 <rect x="11" y="41" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-1 · 3 m high</title></rect>
 <rect x="17" y="41" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-2 · 3 m high</title></rect>
@@ -305,12 +308,12 @@
 <rect x="94" y="42" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-1 · 3 m high</title></rect>
 <rect x="41" y="43" width="2" height="3" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t56-car-low-1 · 1.1 m high</title></rect>
 <rect x="45" y="43" width="2" height="3" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t56-car-low-2 · 1.1 m high</title></rect>
-<rect x="59" y="43" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-7 · 3 m high</title></rect>
-<rect x="61" y="43" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-8 · 3 m high</title></rect>
+<rect x="59" y="43" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-8 · 3 m high</title></rect>
+<rect x="61" y="43" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-9 · 3 m high</title></rect>
 <rect x="99" y="43" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-2 · 3 m high</title></rect>
 <rect x="11" y="44" width="3" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-4 · 3 m high</title></rect>
 <rect x="34" y="44" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t05-car-2 · 2.4 m high</title></rect>
-<rect x="49" y="44" width="1" height="3" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-9 · 3 m high</title></rect>
+<rect x="49" y="44" width="1" height="3" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-10 · 3 m high</title></rect>
 <rect x="69" y="44" width="1" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-5 · 3 m high</title></rect>
 <rect x="12" y="45" width="1" height="6" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-5 · 3 m high</title></rect>
 <rect x="27" y="45" width="2" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t05-car-low-2 · 1.1 m high</title></rect>
@@ -318,19 +321,20 @@
 <rect x="70" y="45" width="3" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t17-wall-7 · 3 m high</title></rect>
 <rect x="90" y="45" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-3 · 3 m high</title></rect>
 <rect x="99" y="45" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-4 · 3 m high</title></rect>
-<rect x="50" y="46" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-10 · 3 m high</title></rect>
-<rect x="56" y="46" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-11 · 3 m high</title></rect>
+<rect x="50" y="46" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-11 · 3 m high</title></rect>
+<rect x="56" y="46" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t19-wall-12 · 3 m high</title></rect>
 <rect x="90" y="46" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-5 · 3 m high</title></rect>
 <rect x="92" y="46" width="1" height="6" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-6 · 3 m high</title></rect>
 <rect x="19" y="47" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-6 · 3 m high</title></rect>
 <rect x="34" y="47" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t05-car-3 · 2.4 m high</title></rect>
 <rect x="27" y="48" width="3" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t05-car-4 · 2.4 m high</title></rect>
 <rect x="10" y="49" width="1" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-7 · 3 m high</title></rect>
+<rect x="81" y="49" width="1" height="9" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-wall-1 · 3 m high</title></rect>
 <rect x="11" y="50" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-8 · 3 m high</title></rect>
 <rect x="13" y="50" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-9 · 3 m high</title></rect>
 <rect x="28" y="51" width="4" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t05-car-low-3 · 1.1 m high</title></rect>
 <rect x="33" y="51" width="3" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t05-car-5 · 2.4 m high</title></rect>
-<rect x="43" y="51" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t13-tree-1 · 5 m high</title></rect>
+<rect x="43" y="51" width="1" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t13-tree-1 · 5 m high</title></rect>
 <rect x="91" y="51" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-7 · 3 m high</title></rect>
 <rect x="93" y="51" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-8 · 3 m high</title></rect>
 <rect x="19" y="52" width="1" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-10 · 3 m high</title></rect>
@@ -339,16 +343,19 @@
 <rect x="101" y="52" width="1" height="3" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-9 · 3 m high</title></rect>
 <rect x="14" y="53" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t16-wall-11 · 3 m high</title></rect>
 <rect x="35" y="53" width="2" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t05-car-low-4 · 1.1 m high</title></rect>
-<rect x="77" y="54" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-wall-1 · 3 m high</title></rect>
+<rect x="77" y="54" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-wall-2 · 3 m high</title></rect>
 <rect x="91" y="54" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-10 · 3 m high</title></rect>
 <rect x="97" y="54" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t07-wall-11 · 3 m high</title></rect>
-<rect x="44" y="55" width="2" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t13-rock-low-1 · 1 m high</title></rect>
+<rect x="45" y="55" width="1" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t13-rock-low-1 · 1 m high</title></rect>
 <rect x="82" y="55" width="2" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t21-rock-low-1 · 1 m high</title></rect>
-<rect x="75" y="56" width="3" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-rock-1 · 2.6 m high</title></rect>
+<rect x="75" y="56" width="3" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-rock-1 · 2.6 m high</title></rect>
 <rect x="27" y="57" width="3" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t63-car-low-1 · 1.1 m high</title></rect>
 <rect x="47" y="57" width="4" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t13-wall-1 · 3 m high</title></rect>
 <rect x="57" y="57" width="3" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-1 · 3 m high</title></rect>
+<rect x="75" y="57" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-wall-3 · 3 m high</title></rect>
 <rect x="57" y="58" width="1" height="5" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-2 · 3 m high</title></rect>
+<rect x="75" y="58" width="1" height="10" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-wall-4 · 3 m high</title></rect>
+<rect x="76" y="58" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-rock-2 · 2.6 m high</title></rect>
 <rect x="12" y="59" width="4" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t08-car-low-1 · 1.1 m high</title></rect>
 <rect x="17" y="59" width="5" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t08-car-low-2 · 1.1 m high</title></rect>
 <rect x="83" y="59" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t21-tree-1 · 5 m high</title></rect>
@@ -359,7 +366,7 @@
 <rect x="68" y="60" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-4 · 3 m high</title></rect>
 <rect x="93" y="60" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t65-tree-2 · 5 m high</title></rect>
 <rect x="27" y="61" width="3" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t63-car-low-2 · 1.1 m high</title></rect>
-<rect x="69" y="61" width="1" height="6" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-5 · 3 m high</title></rect>
+<rect x="69" y="61" width="1" height="7" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-5 · 3 m high</title></rect>
 <rect x="16" y="63" width="1" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t08-car-low-5 · 1.1 m high</title></rect>
 <rect x="17" y="63" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t08-car-1 · 2.4 m high</title></rect>
 <rect x="21" y="64" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t08-car-2 · 2.4 m high</title></rect>
@@ -370,16 +377,20 @@
 <rect x="33" y="66" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t70-tree-1 · 5 m high</title></rect>
 <rect x="73" y="66" width="1" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t73-rock-low-1 · 1 m high</title></rect>
 <rect x="2" y="67" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t68-rock-1 · 2.6 m high</title></rect>
-<rect x="60" y="67" width="1" height="3" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-8 · 3 m high</title></rect>
+<rect x="48" y="67" width="9" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t72-wall-1 · 3 m high</title></rect>
+<rect x="58" y="67" width="8" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-8 · 3 m high</title></rect>
+<rect x="67" y="67" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-9 · 3 m high</title></rect>
+<rect x="70" y="67" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-10 · 3 m high</title></rect>
 <rect x="77" y="67" width="1" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t73-rock-low-2 · 1 m high</title></rect>
 <rect x="12" y="68" width="1" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t08-car-low-6 · 1.1 m high</title></rect>
 <rect x="15" y="68" width="3" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t08-car-4 · 2.4 m high</title></rect>
 <rect x="19" y="68" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t08-car-5 · 2.4 m high</title></rect>
-<rect x="61" y="68" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-9 · 3 m high</title></rect>
+<rect x="60" y="68" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-11 · 3 m high</title></rect>
 <rect x="89" y="68" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t75-tree-1 · 5 m high</title></rect>
 <rect x="42" y="69" width="2" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t71-tree-1 · 5 m high</title></rect>
 <rect x="51" y="69" width="3" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t72-car-low-2 · 1.1 m high</title></rect>
-<rect x="65" y="69" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-10 · 3 m high</title></rect>
+<rect x="60" y="69" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-12 · 3 m high</title></rect>
+<rect x="65" y="69" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>o-t06-wall-13 · 3 m high</title></rect>
 <rect x="73" y="70" width="1" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t73-rock-low-3 · 1 m high</title></rect>
 <rect x="78" y="70" width="1" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t73-rock-low-4 · 1 m high</title></rect>
 <rect x="38" y="74" width="1" height="5" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>o-t11-wall-low-1 · 1 m high</title></rect>
@@ -456,15 +467,12 @@
 <rect x="12" y="29" width="1" height="1" fill="#4ac5e8" stroke="#007d9e" stroke-width=".12"><title>w-t03-1</title></rect>
 <path d="M11.7 29.5h1.6" stroke="#00708b" stroke-width=".15"/>
 <text class="feature" x="13.2" y="28.75">w-t03-1</text>
-<rect x="77" y="35" width="1" height="1" fill="#4ac5e8" stroke="#007d9e" stroke-width=".12"><title>w-t17-1</title></rect>
-<path d="M76.7 35.5h1.6" stroke="#00708b" stroke-width=".15"/>
-<text class="feature" x="78.2" y="34.75">w-t17-1</text>
 <rect x="92" y="35" width="1" height="1" fill="#4ac5e8" stroke="#007d9e" stroke-width=".12"><title>w-t18-1</title></rect>
 <path d="M92.5 34.7v1.6" stroke="#00708b" stroke-width=".15"/>
 <text class="feature" x="93.2" y="34.75">w-t18-1</text>
-<rect x="69" y="43" width="1" height="1" fill="#4ac5e8" stroke="#007d9e" stroke-width=".12"><title>w-t17-2</title></rect>
+<rect x="69" y="43" width="1" height="1" fill="#4ac5e8" stroke="#007d9e" stroke-width=".12"><title>w-t17-1</title></rect>
 <path d="M68.7 43.5h1.6" stroke="#00708b" stroke-width=".15"/>
-<text class="feature" x="70.2" y="42.75">w-t17-2</text>
+<text class="feature" x="70.2" y="42.75">w-t17-1</text>
 <rect x="99" y="44" width="1" height="1" fill="#4ac5e8" stroke="#007d9e" stroke-width=".12"><title>w-t07-1</title></rect>
 <path d="M98.7 44.5h1.6" stroke="#00708b" stroke-width=".15"/>
 <text class="feature" x="100.2" y="43.75">w-t07-1</text>
@@ -505,12 +513,8 @@
 <text class="feature" x="18.25" y="33.8">p-t03-1</text>
 <rect x="43" y="33" width="2" height="1" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-t20-1</title></rect>
 <text class="feature" x="45.25" y="34.8">p-t20-1</text>
-<rect x="57" y="35" width="1" height="2" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-t19-1</title></rect>
-<text class="feature" x="58.25" y="37.8">p-t19-1</text>
 <rect x="12" y="42" width="1" height="2" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-t16-1</title></rect>
 <text class="feature" x="13.25" y="44.8">p-t16-1</text>
-<rect x="43" y="44" width="2" height="1" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-t56-1</title></rect>
-<text class="feature" x="45.25" y="45.8">p-t56-1</text>
 <rect x="34" y="46" width="1" height="1" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-t05-1</title></rect>
 <text class="feature" x="35.25" y="47.8">p-t05-1</text>
 <rect x="92" y="52" width="1" height="2" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-t07-1</title></rect>
@@ -557,46 +561,46 @@
 <text class="feature" x="4.5" y="61.1">g11</text>
 <rect x="42" y="90" width="1" height="1" fill="#6ebc78" stroke="#236c35" stroke-width=".12"><title>g12</title></rect>
 <text class="feature" x="43.5" y="91.1">g12</text>
-<g transform="translate(48.5 2.5)"><title>h01</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="49.65" y="3.05">h01</text>
-<g transform="translate(84.5 4.5)"><title>h02</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="85.65" y="5.05">h02</text>
-<g transform="translate(24.5 10.5)"><title>h03</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="25.65" y="11.05">h03</text>
-<g transform="translate(106.5 14.5)"><title>h04</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="107.65" y="15.05">h04</text>
-<g transform="translate(68.5 16.5)"><title>h05</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="69.65" y="17.05">h05</text>
-<g transform="translate(6.5 28.5)"><title>h06</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="7.65" y="29.05">h06</text>
-<g transform="translate(44.5 30.5)"><title>h07</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="45.65" y="31.05">h07</text>
-<g transform="translate(88.5 32.5)"><title>h08</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="89.65" y="33.05">h08</text>
-<g transform="translate(22.5 40.5)"><title>h09</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="23.65" y="41.05">h09</text>
-<g transform="translate(108.5 46.5)"><title>h10</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="109.65" y="47.05">h10</text>
-<g transform="translate(64.5 48.5)"><title>h11</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="65.65" y="49.05">h11</text>
-<g transform="translate(9.5 54.5)"><title>h12</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="10.65" y="55.05">h12</text>
-<g transform="translate(35.5 60.5)"><title>h13</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="36.65" y="61.05">h13</text>
-<g transform="translate(90.5 62.5)"><title>h14</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="91.65" y="63.05">h14</text>
-<g transform="translate(10.5 74.5)"><title>h15</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="11.65" y="75.05">h15</text>
-<g transform="translate(62.5 74.5)"><title>h16</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="63.65" y="75.05">h16</text>
-<g transform="translate(88.5 82.5)"><title>h17</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="89.65" y="83.05">h17</text>
-<g transform="translate(36.5 86.5)"><title>h18</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="37.65" y="87.05">h18</text>
-<g transform="translate(10.5 89.5)"><title>h19</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="11.65" y="90.05">h19</text>
-<g transform="translate(65.5 94.5)"><title>h20</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="66.65" y="95.05">h20</text>
+<g transform="translate(38.5 4.5)"><title>h01</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="39.65" y="5.05">h01</text>
+<g transform="translate(74.5 6.5)"><title>h02</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="75.65" y="7.05">h02</text>
+<g transform="translate(50.5 12.5)"><title>h03</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="51.65" y="13.05">h03</text>
+<g transform="translate(102.5 16.5)"><title>h04</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="103.65" y="17.05">h04</text>
+<g transform="translate(12.5 18.5)"><title>h05</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="13.65" y="19.05">h05</text>
+<g transform="translate(72.5 26.5)"><title>h06</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="73.65" y="27.05">h06</text>
+<g transform="translate(34.5 28.5)"><title>h07</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="35.65" y="29.05">h07</text>
+<g transform="translate(10.5 32.5)"><title>h08</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="11.65" y="33.05">h08</text>
+<g transform="translate(42.5 40.5)"><title>h09</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="43.65" y="41.05">h09</text>
+<g transform="translate(8.5 44.5)"><title>h10</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="9.65" y="45.05">h10</text>
+<g transform="translate(106.5 46.5)"><title>h11</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="107.65" y="47.05">h11</text>
+<g transform="translate(64.5 48.5)"><title>h12</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="65.65" y="49.05">h12</text>
+<g transform="translate(82.5 48.5)"><title>h13</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="83.65" y="49.05">h13</text>
+<g transform="translate(14.5 62.5)"><title>h14</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="15.65" y="63.05">h14</text>
+<g transform="translate(54.5 64.5)"><title>h15</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="55.65" y="65.05">h15</text>
+<g transform="translate(92.5 72.5)"><title>h16</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="93.65" y="73.05">h16</text>
+<g transform="translate(64.5 84.5)"><title>h17</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="65.65" y="85.05">h17</text>
+<g transform="translate(80.5 86.5)"><title>h18</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="81.65" y="87.05">h18</text>
+<g transform="translate(2.5 88.5)"><title>h19</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="3.65" y="89.05">h19</text>
+<g transform="translate(34.5 88.5)"><title>h20</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="35.65" y="89.05">h20</text>
 <path d="M1.5 45.5L0.5 43.5" stroke="#8062b4" stroke-width=".3" stroke-dasharray=".5 .4"/>
 <rect x="0.95" y="44.95" width="1.1" height="1.1" fill="#8062b4"><title>gate-w lever</title></rect>
 <circle cx="0.5" cy="43.5" r="1" fill="#8062b4"><title>gate-w exit</title></circle>
@@ -651,5 +655,5 @@
 <rect x="23" y="103.7" width="1.5" height="1.5" fill="#8062b4"/><text x="25.2" y="105" font-size="1.8">Gate</text>
 <rect x="46" y="103.7" width="1.5" height="1.5" fill="#df3d37"/><text x="48.2" y="105" font-size="1.8">Hunter</text>
 <rect x="69" y="103.7" width="1.5" height="1.5" fill="#377ace"/><text x="71.2" y="105" font-size="1.8">Survivor</text>
-<text x="0" y="109" font-size="1.7">9984 m² · 22 pallets · 18 windows · 12 generator candidates · 20 hooks · max hook walk 20 m</text>
+<text x="0" y="109" font-size="1.7">9984 m² · 20 pallets · 17 windows · 12 generator candidates · 20 hooks · max hook walk 26 m</text>
 </svg>

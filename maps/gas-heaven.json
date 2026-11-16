@@ -321,42 +321,6 @@
       "kind": "wall"
     },
     {
-      "id": "se-bar",
-      "x": 81,
-      "z": 58,
-      "w": 5,
-      "d": 1,
-      "height": 2.8,
-      "kind": "wall"
-    },
-    {
-      "id": "se-car",
-      "x": 87,
-      "z": 58,
-      "w": 5,
-      "d": 1,
-      "height": 1,
-      "kind": "car"
-    },
-    {
-      "id": "se-arm",
-      "x": 81,
-      "z": 59,
-      "w": 1,
-      "d": 5,
-      "height": 2.8,
-      "kind": "wall"
-    },
-    {
-      "id": "se-crates",
-      "x": 90,
-      "z": 54,
-      "w": 3,
-      "d": 2,
-      "height": 1,
-      "kind": "crate"
-    },
-    {
       "id": "sel-n",
       "x": 85,
       "z": 77,
@@ -706,6 +670,69 @@
       "d": 1,
       "height": 3.5,
       "kind": "wall"
+    },
+    {
+      "id": "mid-encl-w",
+      "x": 44,
+      "z": 35,
+      "w": 1,
+      "d": 32,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "mid-encl-n",
+      "x": 49,
+      "z": 35,
+      "w": 33,
+      "d": 1,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "mid-encl-e1",
+      "x": 81,
+      "z": 36,
+      "w": 1,
+      "d": 9,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "mid-encl-e2",
+      "x": 81,
+      "z": 49,
+      "w": 1,
+      "d": 8,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "mid-encl-step",
+      "x": 75,
+      "z": 57,
+      "w": 7,
+      "d": 1,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "mid-encl-e3",
+      "x": 75,
+      "z": 58,
+      "w": 1,
+      "d": 9,
+      "height": 3.5,
+      "kind": "wall"
+    },
+    {
+      "id": "mid-encl-s",
+      "x": 48,
+      "z": 67,
+      "w": 28,
+      "d": 1,
+      "height": 3.5,
+      "kind": "wall"
     }
   ],
   "windows": [
@@ -800,13 +827,6 @@
       "x": 103,
       "z": 38,
       "axis": "x",
-      "length": 1
-    },
-    {
-      "id": "p-se",
-      "x": 86,
-      "z": 58,
-      "axis": "z",
       "length": 1
     },
     {
@@ -943,8 +963,8 @@
     },
     {
       "id": "h10",
-      "x": 51.5,
-      "z": 48.5
+      "x": 60.5,
+      "z": 51.5
     },
     {
       "id": "h11",
@@ -963,8 +983,8 @@
     },
     {
       "id": "h14",
-      "x": 30.5,
-      "z": 68.5
+      "x": 48.5,
+      "z": 64.5
     },
     {
       "id": "h15",

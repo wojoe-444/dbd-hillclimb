@@ -82,10 +82,6 @@
 <rect x="104" y="33" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>e-top · 3 m high</title></rect>
 <rect x="104" y="43" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>e-bottom-w · 3 m high</title></rect>
 <rect x="107" y="43" width="2" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>e-bottom-e · 3 m high</title></rect>
-<rect x="81" y="58" width="5" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>se-bar · 2.8 m high</title></rect>
-<rect x="87" y="58" width="5" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>se-car · 1 m high</title></rect>
-<rect x="81" y="59" width="1" height="5" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>se-arm · 2.8 m high</title></rect>
-<rect x="90" y="54" width="3" height="2" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>se-crates · 1 m high</title></rect>
 <rect x="85" y="77" width="1" height="5" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>sel-n · 1 m high</title></rect>
 <rect x="85" y="84" width="1" height="4" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>sel-s · 2.8 m high</title></rect>
 <rect x="86" y="77" width="5" height="1" fill="#adb7c2" stroke="#26323f" stroke-width=".12"><title>sel-top · 1 m high</title></rect>
@@ -125,6 +121,13 @@
 <rect x="56" y="26" width="1" height="2" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>tl-l-up-n · 3.5 m high</title></rect>
 <rect x="56" y="29" width="1" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>tl-l-up-s · 3.5 m high</title></rect>
 <rect x="56" y="30" width="6" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>tl-l-foot · 3.5 m high</title></rect>
+<rect x="44" y="35" width="1" height="32" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>mid-encl-w · 3.5 m high</title></rect>
+<rect x="49" y="35" width="33" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>mid-encl-n · 3.5 m high</title></rect>
+<rect x="81" y="36" width="1" height="9" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>mid-encl-e1 · 3.5 m high</title></rect>
+<rect x="81" y="49" width="1" height="8" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>mid-encl-e2 · 3.5 m high</title></rect>
+<rect x="75" y="57" width="7" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>mid-encl-step · 3.5 m high</title></rect>
+<rect x="75" y="58" width="1" height="9" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>mid-encl-e3 · 3.5 m high</title></rect>
+<rect x="48" y="67" width="28" height="1" fill="#303b49" stroke="#26323f" stroke-width=".12"><title>mid-encl-s · 3.5 m high</title></rect>
 <rect x="8" y="63" width="1" height="1" fill="#4ac5e8" stroke="#007d9e" stroke-width=".12"><title>w-b1</title></rect>
 <path d="M7.7 63.5h1.6" stroke="#00708b" stroke-width=".15"/>
 <text class="feature" x="9.2" y="62.75">w-b1</text>
@@ -160,8 +163,6 @@
 <text class="feature" x="95.25" y="15.8">p-ne</text>
 <rect x="103" y="38" width="1" height="1" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-e</title></rect>
 <text class="feature" x="104.25" y="39.8">p-e</text>
-<rect x="86" y="58" width="1" height="1" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-se</title></rect>
-<text class="feature" x="87.25" y="59.8">p-se</text>
 <rect x="85" y="82" width="1" height="2" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-sel</title></rect>
 <text class="feature" x="86.25" y="84.8">p-sel</text>
 <rect x="57" y="80" width="2" height="1" fill="#efad4c" stroke="#9b6000" stroke-width=".12"><title>p-south</title></rect>
@@ -210,16 +211,16 @@
 <text class="feature" x="104.65" y="32.05">h08</text>
 <g transform="translate(23.5 42.5)"><title>h09</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
 <text class="feature" x="24.65" y="43.05">h09</text>
-<g transform="translate(51.5 48.5)"><title>h10</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="52.65" y="49.05">h10</text>
+<g transform="translate(60.5 51.5)"><title>h10</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="61.65" y="52.05">h10</text>
 <g transform="translate(84.5 53.5)"><title>h11</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
 <text class="feature" x="85.65" y="54.05">h11</text>
 <g transform="translate(3.5 55.5)"><title>h12</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
 <text class="feature" x="4.65" y="56.05">h12</text>
 <g transform="translate(105.5 57.5)"><title>h13</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
 <text class="feature" x="106.65" y="58.05">h13</text>
-<g transform="translate(30.5 68.5)"><title>h14</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
-<text class="feature" x="31.65" y="69.05">h14</text>
+<g transform="translate(48.5 64.5)"><title>h14</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
+<text class="feature" x="49.65" y="65.05">h14</text>
 <g transform="translate(69.5 71.5)"><title>h15</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
 <text class="feature" x="70.65" y="72.05">h15</text>
 <g transform="translate(92.5 82.5)"><title>h16</title><circle r=".95" fill="#fff" stroke="#ac3354" stroke-width=".2"/><path d="M-.3 -.6V.3q0 .6 .6 .3" fill="none" stroke="#ac3354" stroke-width=".25"/></g>
@@ -280,5 +281,5 @@
 <rect x="23" y="103.7" width="1.5" height="1.5" fill="#8062b4"/><text x="25.2" y="105" font-size="1.8">Gate</text>
 <rect x="46" y="103.7" width="1.5" height="1.5" fill="#df3d37"/><text x="48.2" y="105" font-size="1.8">Hunter</text>
 <rect x="69" y="103.7" width="1.5" height="1.5" fill="#377ace"/><text x="71.2" y="105" font-size="1.8">Survivor</text>
-<text x="0" y="109" font-size="1.7">9984 m² · 12 pallets · 7 windows · 11 generator candidates · 20 hooks · max hook walk 20 m</text>
+<text x="0" y="109" font-size="1.7">9984 m² · 11 pallets · 7 windows · 11 generator candidates · 20 hooks · max hook walk 28 m</text>
 </svg>

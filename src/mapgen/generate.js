@@ -120,6 +120,30 @@ export function generateFromLayout(layout, seed) {
     place(pickFromPool(cellRing(i, j) ? 'ring8' : 'inner8'), i * C, j * C, cellRing(i, j) ? 'ring' : 'inner');
   }
 
+  // ---- 3b. fixed wall overlays (user-drawn structures laid over whatever tiles rolled there) ---------
+  if (layout.overlays && layout.overlays.length) {
+    const ov = new Uint8Array(N), near = new Uint8Array(N);
+    for (const o of layout.overlays) for (let z = o.z; z < o.z + o.d; z++) for (let x = o.x; x < o.x + o.w; x++) {
+      const gi = z * w + x;
+      if (grid[gi] === OUTSIDE) continue;
+      grid[gi] = o.char ?? '#'; ov[gi] = 1;
+    }
+    for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) {
+      if (!ov[z * w + x]) continue;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, zz = z + dz; if (xx >= 0 && zz >= 0 && xx < w && zz < h) near[zz * w + xx] = 1; }
+    }
+    for (const inst of instances) {
+      inst.pallets = inst.pallets.filter((pl) => {
+        if (!pl.cells.some(([x, z]) => near[z * w + x])) return true;
+        for (const [x, z] of pl.cells) if (!ov[z * w + x]) grid[z * w + x] = '.';
+        return false;
+      });
+      inst.genSlots = inst.genSlots.filter(([x, z]) => !near[z * w + x]);
+      inst.hookSlots = inst.hookSlots.filter(([x, z]) => !near[z * w + x]);
+    }
+    for (let gi = 0; gi < N; gi++) if (near[gi] && !ov[gi] && grid[gi] === 'W') grid[gi] = '#';   // a window touching the new wall: wall it up
+  }
+
   // ---- 4. pallet budget: drop random optional pallets above the max ----------------------------------
   const allPallets = () => instances.flatMap(inst => inst.pallets.map(p => ({ inst, p })));
   let total = allPallets().length;

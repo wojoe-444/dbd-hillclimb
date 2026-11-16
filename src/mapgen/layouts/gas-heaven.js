@@ -23,6 +23,12 @@ export const gasHeavenLayout = {
     { pool: 'carpile', x: 8, z: 56 },         // car pile (8/9)
   ],
 
+  // user-drawn walled enclosure around MID (doorways: NW corner, SW corner, east side z 45-48)
+  overlays: [
+    { x: 44, z: 35, w: 1, d: 32 }, { x: 49, z: 35, w: 33, d: 1 }, { x: 81, z: 36, w: 1, d: 9 }, { x: 81, z: 49, w: 1, d: 8 },
+    { x: 75, z: 57, w: 7, d: 1 }, { x: 75, z: 58, w: 1, d: 9 }, { x: 48, z: 67, w: 28, d: 1 },
+  ],
+
   pools: {
     maze: { decay: 0.35, tiles: { 'maze-a': 1, 'maze-b': 1, 'maze-c': 1 } },
     carpile: { decay: 0.6, tiles: { 'carpile-a': 1, 'carpile-b': 1 } },
@@ -47,7 +53,7 @@ export const gasHeavenLayout = {
   pallets: { min: 14, max: 24 },
   gates: { minDistance: 75 },
   gens: { count: [11, 12], minSpacing: 20, require: [] },
-  hooks: { min: 16, max: 20, radius: 20, slotBonus: 25, jitter: 15 },
+  hooks: { min: 16, max: 20, radius: 26, slotBonus: 25, jitter: 15 },   // radius was 20; the walled MID enclosure lengthens walks
   // perimeter spawns: survivor anchors (engine scatters 4 survivors within 15 m) + hunter points
   spawns: { survivorAnchors: 10, hunter: 10, inset: [4, 8], anchorOpenRadius: 15, anchorOpenFraction: 0.75 },
   deadZoneDistance: 12,

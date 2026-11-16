@@ -12,7 +12,7 @@ Generator: `src/mapgen/` (tile library `tiles.js`, layout spec `layouts/gas-heav
 5. Optional pallets roll per tile (`p` groups) and car piles roll *one* of their numbered spots or none. If the total exceeds 24, random optional non-landmark pallets are removed; below 14 the seed is rejected.
 6. 11–12 generator candidates chosen from tile generator slots (one always in main), spread ≥ ~20 m apart where possible.
 7. Spawns: 10 survivor *anchors* and 10 hunter points spread around the whole perimeter, each 4–8 m inside the outline, outside landmarks; anchors need ≥ 75% walkable cells within 15 m (the engine scatters the 4 survivors within 15 m of the chosen anchor and picks a hunter point on the opposite side). Maps declare `spawnRules`, so the validator enforces the inset/walkable/open-space rules for them.
-8. Hooks: exactly 20 hooks placed by simulated annealing so every walkable cell is within 20 m (4-neighbour walk, the validator's metric) of a hook; tile hook slots are preferred.
+8. Hooks: exactly 20 hooks placed by simulated annealing so every walkable cell is within 26 m (4-neighbour walk, the validator's metric) of a hook; tile hook slots are preferred.
 
 ## Tile library
 
@@ -54,49 +54,49 @@ Pallet slots: G = guaranteed, O = optional groups (spawn chance in brackets), C 
 
 | Variant | Pallets | Windows | Strong | Weak | Dead tiles | Dead zone | Gens | JG v1/v2 | T+L | Mazes | Car piles (pallet/none) | Gates |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| v000 | 22 | 18 | 9 | 16 | 49% | 31% | 12 | 3/3 | 3 | BCA | 1/1 | gate-w gate-e |
-| v001 | 20 | 16 | 7 | 18 | 49% | 36% | 12 | 2/2 | 2 | CCB | 2/0 | gate-e gate-w |
-| v002 | 19 | 16 | 9 | 13 | 53% | 34% | 12 | 2/3 | 2 | ABC | 2/0 | gate-n gate-s |
-| v003 | 24 | 16 | 7 | 20 | 50% | 30% | 12 | 3/1 | 3 | ABC | 2/0 | gate-n gate-e |
-| v004 | 19 | 14 | 7 | 14 | 60% | 37% | 12 | 1/2 | 2 | CBB | 1/1 | gate-e gate-w |
-| v005 | 16 | 16 | 7 | 13 | 55% | 44% | 11 | 2/2 | 3 | BCA | 2/0 | gate-w gate-s |
-| v006 | 17 | 18 | 7 | 14 | 54% | 36% | 12 | 2/2 | 4 | ACB | 1/1 | gate-e gate-n |
-| v007 | 16 | 15 | 4 | 18 | 55% | 42% | 12 | 1/2 | 3 | CAB | 2/0 | gate-w gate-n |
-| v008 | 21 | 14 | 6 | 17 | 56% | 35% | 12 | 1/2 | 3 | CAA | 0/2 | gate-e gate-n |
-| v009 | 21 | 16 | 7 | 17 | 58% | 35% | 11 | 3/2 | 3 | AAB | 2/0 | gate-e gate-w |
-| v010 | 14 | 17 | 6 | 13 | 57% | 43% | 12 | 3/2 | 3 | CBA | 1/1 | gate-w gate-n |
-| v011 | 18 | 11 | 6 | 12 | 65% | 42% | 12 | 2/1 | 2 | ACA | 1/1 | gate-e gate-s |
-| v012 | 18 | 17 | 7 | 17 | 56% | 40% | 11 | 3/1 | 3 | ABC | 0/2 | gate-e gate-w |
-| v013 | 16 | 17 | 7 | 13 | 55% | 38% | 11 | 3/1 | 3 | CBA | 1/1 | gate-s gate-e |
-| v014 | 22 | 17 | 9 | 15 | 56% | 30% | 11 | 3/2 | 3 | AAC | 0/2 | gate-s gate-w |
-| v015 | 16 | 14 | 6 | 12 | 64% | 40% | 11 | 1/1 | 3 | BCA | 1/1 | gate-e gate-s |
-| v016 | 22 | 16 | 8 | 17 | 51% | 33% | 11 | 3/3 | 2 | BAC | 2/0 | gate-w gate-n |
-| v017 | 19 | 17 | 5 | 19 | 50% | 34% | 12 | 2/1 | 4 | CCB | 2/0 | gate-n gate-w |
-| v018 | 17 | 15 | 9 | 10 | 57% | 39% | 11 | 3/2 | 2 | CCA | 1/1 | gate-e gate-s |
-| v019 | 15 | 18 | 7 | 13 | 53% | 34% | 11 | 3/1 | 3 | ABC | 2/0 | gate-n gate-s |
-| v020 | 18 | 15 | 7 | 14 | 58% | 36% | 12 | 2/2 | 2 | CBA | 1/1 | gate-w gate-s |
-| v021 | 14 | 16 | 5 | 14 | 57% | 40% | 11 | 2/1 | 3 | CBC | 2/0 | gate-e gate-w |
-| v022 | 23 | 16 | 7 | 19 | 53% | 29% | 12 | 2/1 | 3 | BBA | 0/2 | gate-e gate-n |
-| v023 | 17 | 11 | 6 | 12 | 64% | 44% | 12 | 2/1 | 1 | BAC | 0/2 | gate-w gate-n |
-| v024 | 19 | 17 | 7 | 16 | 56% | 37% | 12 | 3/1 | 3 | BCB | 1/1 | gate-s gate-n |
-| v025 | 17 | 18 | 8 | 12 | 58% | 34% | 12 | 2/2 | 3 | BAB | 1/1 | gate-w gate-n |
-| v026 | 16 | 17 | 8 | 12 | 55% | 38% | 12 | 3/2 | 3 | AAB | 2/0 | gate-w gate-s |
-| v027 | 23 | 16 | 9 | 15 | 58% | 30% | 12 | 2/3 | 2 | ABB | 1/1 | gate-e gate-w |
-| v028 | 22 | 16 | 7 | 19 | 49% | 33% | 12 | 3/2 | 2 | CBC | 2/0 | gate-n gate-s |
-| v029 | 22 | 14 | 6 | 19 | 49% | 33% | 11 | 2/2 | 2 | ACB | 2/0 | gate-n gate-e |
-| v030 | 19 | 13 | 6 | 15 | 62% | 37% | 12 | 2/2 | 2 | ABC | 0/2 | gate-e gate-n |
-| v031 | 18 | 16 | 5 | 19 | 52% | 34% | 12 | 2/1 | 3 | BAC | 1/1 | gate-e gate-s |
+| v000 | 20 | 17 | 9 | 15 | 50% | 33% | 12 | 3/3 | 3 | BCA | 1/1 | gate-w gate-e |
+| v001 | 17 | 16 | 7 | 16 | 51% | 39% | 12 | 2/2 | 2 | CCB | 2/0 | gate-e gate-w |
+| v002 | 19 | 15 | 9 | 13 | 53% | 37% | 12 | 2/3 | 2 | ABC | 2/0 | gate-n gate-s |
+| v003 | 17 | 12 | 6 | 16 | 55% | 44% | 12 | 3/2 | 2 | CCA | 1/1 | gate-e gate-w |
+| v004 | 19 | 14 | 7 | 14 | 60% | 39% | 12 | 1/2 | 2 | CBB | 1/1 | gate-e gate-w |
+| v005 | 21 | 11 | 7 | 15 | 59% | 39% | 12 | 2/2 | 1 | ACB | 1/1 | gate-w gate-n |
+| v006 | 16 | 17 | 7 | 13 | 56% | 38% | 12 | 2/2 | 4 | ACB | 1/1 | gate-e gate-n |
+| v007 | 15 | 15 | 4 | 18 | 55% | 44% | 12 | 1/2 | 3 | CAB | 2/0 | gate-w gate-n |
+| v008 | 19 | 14 | 6 | 16 | 57% | 38% | 12 | 1/2 | 3 | CAA | 0/2 | gate-e gate-n |
+| v009 | 19 | 15 | 7 | 16 | 58% | 38% | 11 | 3/2 | 3 | AAB | 2/0 | gate-e gate-w |
+| v010 | 20 | 15 | 9 | 11 | 55% | 37% | 11 | 3/1 | 3 | CBA | 2/0 | gate-w gate-e |
+| v011 | 15 | 11 | 6 | 10 | 69% | 49% | 12 | 2/1 | 2 | ACA | 1/1 | gate-e gate-s |
+| v012 | 18 | 15 | 7 | 16 | 58% | 47% | 11 | 3/1 | 3 | ABC | 0/2 | gate-e gate-w |
+| v013 | 16 | 16 | 7 | 13 | 55% | 40% | 11 | 3/1 | 3 | CBA | 1/1 | gate-s gate-e |
+| v014 | 21 | 15 | 8 | 15 | 56% | 35% | 11 | 3/2 | 3 | AAC | 0/2 | gate-s gate-w |
+| v015 | 15 | 13 | 6 | 12 | 64% | 44% | 11 | 1/1 | 3 | BCA | 1/1 | gate-e gate-s |
+| v016 | 20 | 14 | 8 | 15 | 55% | 36% | 11 | 3/3 | 2 | BAC | 2/0 | gate-w gate-n |
+| v017 | 18 | 17 | 5 | 19 | 50% | 37% | 12 | 2/1 | 4 | CCB | 2/0 | gate-n gate-w |
+| v018 | 15 | 15 | 8 | 10 | 58% | 43% | 11 | 3/2 | 2 | CCA | 1/1 | gate-e gate-s |
+| v019 | 21 | 16 | 10 | 13 | 47% | 32% | 12 | 3/1 | 4 | BCC | 2/0 | gate-s gate-n |
+| v020 | 17 | 15 | 7 | 13 | 58% | 39% | 12 | 2/2 | 2 | CBA | 1/1 | gate-w gate-s |
+| v021 | 18 | 14 | 8 | 12 | 62% | 41% | 11 | 2/1 | 2 | ABC | 2/0 | gate-e gate-n |
+| v022 | 19 | 15 | 7 | 16 | 55% | 34% | 12 | 2/1 | 3 | BBA | 0/2 | gate-e gate-n |
+| v023 | 14 | 11 | 6 | 9 | 67% | 50% | 12 | 2/1 | 1 | BAC | 0/2 | gate-w gate-n |
+| v024 | 18 | 16 | 7 | 16 | 56% | 39% | 12 | 3/1 | 3 | BCB | 1/1 | gate-s gate-n |
+| v025 | 16 | 15 | 8 | 12 | 58% | 38% | 12 | 2/2 | 3 | BAB | 1/1 | gate-w gate-n |
+| v026 | 15 | 13 | 7 | 13 | 55% | 44% | 12 | 3/2 | 3 | AAB | 2/0 | gate-w gate-s |
+| v027 | 20 | 16 | 9 | 14 | 58% | 35% | 12 | 2/3 | 2 | ABB | 1/1 | gate-e gate-w |
+| v028 | 21 | 14 | 7 | 19 | 49% | 36% | 12 | 3/2 | 2 | CBC | 2/0 | gate-n gate-s |
+| v029 | 21 | 13 | 6 | 19 | 49% | 36% | 11 | 2/2 | 2 | ACB | 2/0 | gate-n gate-e |
+| v030 | 18 | 11 | 6 | 14 | 62% | 40% | 12 | 2/2 | 2 | ABC | 0/2 | gate-e gate-n |
+| v031 | 14 | 15 | 4 | 18 | 55% | 41% | 12 | 2/1 | 3 | BAC | 1/1 | gate-e gate-s |
 
 ### Spread across the pool
 
 | Stat | Min | Mean | Max |
 | --- | --- | --- | --- |
-| Pallets | 14.0 | 18.8 | 24.0 |
-| Windows | 11.0 | 15.7 | 18.0 |
-| Strong loops | 4.0 | 6.9 | 9.0 |
-| Weak loops | 10.0 | 15.2 | 20.0 |
-| Dead tiles | 49% | 55% | 65% |
-| Dead zone | 29% | 36% | 44% |
+| Pallets | 14.0 | 17.9 | 21.0 |
+| Windows | 11.0 | 14.4 | 17.0 |
+| Strong loops | 4.0 | 7.0 | 10.0 |
+| Weak loops | 9.0 | 14.4 | 19.0 |
+| Dead tiles | 47% | 56% | 69% |
+| Dead zone | 32% | 39% | 50% |
 
 Hand-made v1 for comparison: 14 pallets, 9 windows.
 

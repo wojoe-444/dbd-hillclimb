@@ -41,6 +41,7 @@ export const survivorSpace = {
   // ---- chase: loop quality ----
   loopQualityW:  [0, 2, 0.2],    // anchor score = path distance - this * (hunter's walk-around detour, m): prefer strong loops
   avoidHeading:  [0, 1, 0.6],    // >0.5: skip anchors the hunter is heading toward (it would cut us off)
+  chaseToMatesW: [-1, 1, 0],     // in a chase: >0 run toward teammates known to be repairing, <0 lead the hunter away from them
   weakPalletM:   [0, 20, 8],     // a pallet whose hunter detour is below this is "weak"...
   weakDropDist:  [1.5, 8, 4],    // ...and gets dropped as soon as the hunter is this close (no holding for a stun)
 };
@@ -142,7 +143,22 @@ export function makeSurvivor(P) {
       return best;
     }
 
+    function matesOnGens(obs) {
+      const out = [];
+      if (!obs.hud) return out;
+      for (const x of obs.hud) {
+        if (x.id === obs.self.id || x.activity !== 'repair') continue;
+        const seen = obs.teammates.find((t) => t.id === x.id);
+        const ls = obs.lastSeen[x.id];
+        const pos = seen ?? (ls && obs.t - ls.t < 60 ? ls : null);
+        if (pos) out.push({ x: pos.x, z: pos.z });
+      }
+      return out;
+    }
+    const mateCloseness = (mates, c) => mates.reduce((a, m) => a + Math.max(0, 30 - d2(c, m)) / 30, 0);
+
     function chase(obs, api, me, h) {
+      const mates = P.chaseToMatesW !== 0 ? matesOnGens(obs) : [];
       const nav = api.nav;
       const hp = h ?? obs.lastHunter;
       if (!hp) return null;
@@ -159,7 +175,7 @@ export function makeSurvivor(P) {
           if (!(dm < P.loopRange && dm < P.loopRace * dh)) continue;
           // the hunter is heading for it: it would cut us off there
           if (h && P.avoidHeading > 0.5) { const tx = a.c.x - h.x, tz = a.c.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dh < d2(me, a.c) + 4) continue; }
-          const sc = dm - P.loopQualityW * Math.min(30, a.detour);
+          const sc = dm - P.loopQualityW * Math.min(30, a.detour) - P.chaseToMatesW * 10 * mateCloseness(mates, a.c);
           if (sc < bd) { bd = sc; best = a; }
         }
         anchor = best;
@@ -193,7 +209,7 @@ export function makeSurvivor(P) {
         let bs = -Infinity;
         const cands = [...gens, ...M.hooks, ...anchors.filter((a) => anchorUsable(a, obs)).map((a) => ({ x: a.c.x, z: a.c.z, q: a.detour }))];
         for (const c of cands) {
-          const s = d2(c, hp) - 0.6 * d2(c, me) + P.loopQualityW * Math.min(30, c.q ?? 0);
+          const s = d2(c, hp) - 0.6 * d2(c, me) + P.loopQualityW * Math.min(30, c.q ?? 0) + P.chaseToMatesW * 10 * mateCloseness(mates, c);
           if (d2(c, hp) < d2(me, hp)) continue;
           if (s > bs) { bs = s; fleePoint = { x: c.x, z: c.z }; }
         }
