@@ -30,6 +30,8 @@ export const survivorSpace = {
   healSeek:      [0, 1, 0.4],    // >0.5: go heal an injured teammate on a known gen (HUD) within healDist
 };
 
+import { makeSlotPicker } from '../sim/slotpick.js';
+
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
 function rectDist(x, z, x0, z0, x1, z1) {
@@ -59,6 +61,7 @@ export function makeSurvivor(P) {
     let lastThreatT = -99;
     let anchor = null;
     let genTarget = -1;
+    const slots = makeSlotPicker(ctx.config.reach.repairSlot);   // generator side slots (one repairer per side)
     let fleePoint = null, fleeT = -99;
     let sneakStart = -1;
     let idleHoldT = 0;            // time spent holding at an anchor without being pressed
@@ -193,11 +196,7 @@ export function makeSurvivor(P) {
             const d = d2(gens[i], ref) - 0.3 * d2(gens[i], me);
             if (d > fd) { fd = d; far = gens[i]; }
           }
-          if (far) {
-            const fx = Math.floor(far.x), fz = Math.floor(far.z);
-            if (rectDist(me.x, me.z, fx, fz, fx + 1, fz + 1) <= 1.0 && !holdProtection) return { act: 'repair', target: far.id };
-            return { moveTo: far, walk };
-          }
+          if (far) return slots.act(obs, gens.indexOf(far), far, { walk, hold: holdProtection });
         }
 
         // ---- altruism: rescue (the HUD announces every hook with its location) ----
@@ -259,10 +258,7 @@ export function makeSurvivor(P) {
           genTarget = bi;
         }
         if (genTarget >= 0) {
-          const g = gens[genTarget];
-          const gx = Math.floor(g.x), gz = Math.floor(g.z);
-          if (rectDist(me.x, me.z, gx, gz, gx + 1, gz + 1) <= 1.0) return holdProtection ? {} : { act: 'repair', target: g.id };
-          return { moveTo: g, walk };
+          return slots.act(obs, genTarget, gens[genTarget], { walk, hold: holdProtection });
         }
         return {};
       },

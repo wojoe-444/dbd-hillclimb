@@ -11,7 +11,9 @@ const result = runMatch({ map, seed: 42, hunter: hunterBrain, survivors: [surviv
 ```
 
 Files: `match.js` (rules, perception, observations), `nav.js` (distance fields / A* / waypoints / collision test),
-`sight.js` (grid DDA), `mapdata.js` (map rasterisation, cached per map object), `config.js`, `rng.js`, `testbrains.js`.
+`sight.js` (grid DDA), `mapdata.js` (map rasterisation, cached per map object), `config.js`, `rng.js`, `testbrains.js`,
+`slotpick.js` (brain helper: walk to a free generator side slot and repair).
+Checks: `node scripts/check-gen-slots.js` (generator side slots on every shipped map; warns on gens with only 1–2 usable sides).
 Checks: `node scripts/test-sim.js` · benchmark: `node scripts/bench.js [--n 200] [--map …] [--decide-every 3]`.
 
 ## Solo queue + HUD: brains must not communicate
@@ -36,7 +38,7 @@ What a survivor can learn (everything else is hidden):
 | **downed auras** (`obs.downedAuras`) | `[{id, x, z}]` live positions of all downed teammates (not carried, not yourself). |
 | **chase** | `hud[j].chased` and `self.chased` (chase music) from the engine chase state (below). |
 | teammate positions | otherwise only if seen by the same sight model used for the hunter (360°, range 75 m, semi-transparency): `teammates` = position + visible state. `obs.lastSeen[j]` is the survivor's own memory of the last sighting (HUD/aura info does not update it). |
-| generators | progress, *who is working* and `regressing` only for gens currently seen (or within `sight.adjacentReach` = 2 m); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `seenT`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. (The HUD's `repairing` tells you *that* a gen is being worked on, not its progress.) |
+| generators | progress, *who is working*, `regressing` and `slotsTaken` (busy sides) only for gens currently seen (or within `sight.adjacentReach` = 2 m); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `slotsTaken:null`, `seenT`). Slot positions are static (`ctx.map.generators[i].slots`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. (The HUD's `repairing` tells you *that* a gen is being worked on, not its progress.) |
 | exit gates | `powered`/`open` are public; lever `progress` only while you perceive the lever (same sight rule, or within 2 m); open gates report `progress: 1`. |
 | pallets | state (`up/dropped/broken`) only for pallets currently seen/adjacent, else last-seen (initially `up`). |
 | hunter | position/facing/state only if seen; `lastHunter` = last sighting; `terror` = `{layer, approx}` — which third of the 32 m radius you *hear* (no direction, no exact distance); entering/leaving noticed after 0.5 s, layer changes only after persisting 2.5 s. |
@@ -58,7 +60,9 @@ Engine-level, at most **one** chased survivor at a time. Updated once per tick (
 * Exposed as `hud[j].chased`, `self.chased` (survivors) and `obs.chase = { target: id|null }` (hunter). Events `chaseStart {who}`,
   `chaseEnd {who, reason: 'lost'|'switch'|<state>}`.
 
-Hunter knowledge: visible survivors in the 100° cone, all generator progress + `regressing` (but *workers* only for visible gens),
+Hunter knowledge: visible survivors in the 100° cone, generator progress / `regressing` / *workers* only for gens it currently perceives (in the cone,
+range and visibility via the same per-cell masks, or within `sight.adjacentReach`), otherwise its own last-seen values (initially progress 0,
+not regressing; `done` is public, completions are announced; a kick leaves it adjacent, so it sees the regression it caused),
 generators being repaired within `senses.repairNoiseRadius` (10 m, `noisyGens`, no identity/count), lever progress of gates in its
 cone (or within 2 m), hooked survivors (stage/timer), pallet states, notifications (incl. `loudNoise` from fast vaults), grunts,
 scratch marks, who is dead/escaped. Not visible to the hunter: unhook protection, Deep Wound.
@@ -88,7 +92,7 @@ is readable: `hunter`, `survivors[i]` (`x z face st …`), `gens`, `hooks`, `gat
   stats: { hits, downs, hooks, pickups, stuns, palletsDropped, palletsBroken, vaults, wiggles, rescues, heals, fumbles, missed },
   gens: [ids chosen], events: [{ t, type, … }], record? }
 ```
-Event types: `start hit miss pickup hook hookStage rescue resolveFull selfUnhook protect heal mend deepWoundDown palletDrop palletBreak dropped wiggle fumble genDone genKick genRegressStop gatesPowered gateOpen endgame loudNoise windowBlocked chaseStart chaseEnd escape death end`
+Event types: `start hit miss unstick pickup hook hookStage rescue resolveFull selfUnhook protect heal mend deepWoundDown palletDrop palletBreak dropped wiggle fumble genDone genKick genRegressStop gatesPowered gateOpen endgame loudNoise windowBlocked chaseStart chaseEnd escape death end`
 (`hit` with `endurance: true` = absorbed by unhook Endurance)
 (`death.cause`: `bleedout | hookDeath | hook3 | endgame`).
 
@@ -105,7 +109,8 @@ action repeats. Hooked/dead/escaped survivors are not asked. An exception in a b
 
 * `id`: survivors `0..3`; hunter `'hunter'`. `rng`: per-agent seeded stream (`next() int(n) range(a,b) chance(p) pick shuffle normal`).
 * `map`: frozen static info — `size,w,h,eyeHeight,outline,obstacles,windows[{id,x,z,axis}],pallets[{id,x,z,axis,length,x0,z0,x1,z1,cx,cz}]`,
-  `generators` (**only the 7 chosen** for this match, order = `obs.gens` order), `gensNeeded`, `hooks`, `exitGates[{id,lever,exit}]`, `spawns`.
+  `generators` (**only the 7 chosen** for this match, order = `obs.gens` order; each `{id, x, z, slots: [{side:'N'|'E'|'S'|'W', x, z}]}` = usable
+  repair sides, see "Generators"), `gensNeeded`, `hooks`, `exitGates[{id,lever,exit}]`, `spawns`.
   `obs.pallets[i]` is aligned with `map.pallets[i]`.
 * `api` (same object as `ctx.api`): `nav`, `visibility(a,b)` (0..1, points `{x,z}`), `los(a,b)` (visibility ≥ threshold), `walkClear(a,b)`, `cellOf(x,z)`, `dt`.
 
@@ -137,7 +142,7 @@ progress, gate lever progress, heal progress on the patient, mend progress).
 
 | act | who | range / time |
 |---|---|---|
-| `repair` | survivor | within 1.1 m of the generator cell; 90 s solo; per-worker efficiency 1.0 / 0.85 / 0.7 / 0.55 for 1 / 2 / 3 / 4 workers; fumble 1 %/repair-second: −10 % progress + loud hunter notification. Any repair progress stops a kick regression. Nothing happens once the gates are powered (remaining gens blocked) |
+| `repair` | survivor | within `reach.repairSlot` (0.6 m) of a **free side slot** of the generator (one survivor per side; first come keeps it — a second survivor at an occupied slot gets nothing; max workers = usable sides, see "Generators"); 90 s solo; per-worker efficiency 1.0 / 0.85 / 0.7 / 0.55 for 1 / 2 / 3 / 4 workers; fumble 1 %/repair-second: −10 % progress + loud hunter notification. Any repair progress stops a kick regression. Nothing happens once the gates are powered (remaining gens blocked) |
 | `heal` | survivor→other | 1.6 m centre-to-centre; 16 s, progress persists on the target; injured→healthy, downed→injured; never self; not while the target has Deep Wound |
 | `rescue` | survivor | within 1.8 m of the hook; 1 s; victim → injured + unhook protections (below) |
 | `mend` | survivor (self) | only with Deep Wound; 12 s, progress persists; clears Deep Wound; Deep Wound timer paused while mending |
@@ -154,7 +159,7 @@ Windows: entering a window cell along its axis triggers a vault (position locked
 Survivor tiers: **fast 0.5 s** = running with a straight run-up ≥ 2.5 m (continuous running distance whose heading stays within 25° of the
 vault direction; reset on walking, stopping, being blocked, turning, vault end) — fast vaults are LOUD: the hunter gets
 `{type:'loudNoise', cause:'vault', x, z, t}` (within `senses.loudNoiseRange`, default map-wide); **medium 0.9 s** = running with a shorter
-run-up / angled approach / after bumping a wall; **slow 1.5 s** = walking (quiet, no scratch marks). Dropped pallets: survivors vault (1.2 s), the hunter is blocked. Characters are circles r = 0.4 m; no character–character collision.
+run-up / angled approach / after bumping a wall; **slow 1.5 s** = walking (quiet, no scratch marks). Dropped pallets: survivors vault (1.2 s), the hunter is blocked. Characters are circles r = 0.4 m that collide with each other (see "Collision").
 
 ### Observations
 
@@ -170,7 +175,7 @@ Survivor `obs`:
   lastSeen: [ {x,z,state,t} | null ×4 ],                                            // own memory, index = survivor id
   hud: [{ id, state, hookCount, hookStage /*0|1|2*/, beingHealed, healing, repairing /*gen id|null*/, chased } ×4],  // game HUD, index = id, no positions
   downedAuras: [{ id,x,z }],                                                        // live positions of downed (not carried) teammates
-  gens: [{ id,x,z,progress(0..1),done,blocked,regressing|null,visible,workers:[ids]|null,seenT }],   // order = ctx.map.generators
+  gens: [{ id,x,z,progress(0..1),done,blocked,regressing|null,visible,workers:[ids]|null,slotsTaken:['N'|'E'|'S'|'W'…]|null,seenT }],   // order = ctx.map.generators
   gensDone, gensNeeded, pallets: ['up'|'dropped'|'broken'…],
   gates: [{ id, powered, open, progress? }],   // progress 0..1 only if the lever is perceived (always 1 when open)
   gatesPowered, endgame: { remainingS } | null,  // null until the first gate is OPENED
@@ -184,7 +189,8 @@ Hunter `obs`:
   lastSeen: [ {x,z,state,t}|null ×4 ],
   grunts: [{x,z,t}],            // injured survivors within 10 m, ±2 m noise, no identity, kept 2 s
   scratches: [{x,z,t,dx,dz}],   // sprint marks of the last 10 s inside the cone (≤ 30 m, visible)
-  gens: [{ id,x,z,progress,done,blocked,regressing,visible,workers:[ids]|null }], gensDone, gensNeeded,
+  gens: [{ id,x,z,progress,done,blocked,regressing,visible,workers:[ids]|null,seenT }],   // progress/regressing = last perceived (see Hunter knowledge)
+  gensDone, gensNeeded,
   noisyGens: [{ id,x,z }],      // gens with >= 1 worker within senses.repairNoiseRadius (10 m)
   hooked: [{ id,hookId,stage,timerS,hookCount }], status: ['alive'|'dead'|'escaped' ×4],
   chase: { target: id|null },   // engine chase state (see "Chase state")
@@ -203,7 +209,7 @@ Obs objects are freshly allocated every call and owned by the receiving brain.
   game when it expires die (`death.cause: 'endgame'`). If only one survivor remains before the gates are powered they auto-power (hatch
   stand-in; the timer still waits for an opening). Powered-but-never-opened matches end at the 20-minute cap (`timeouts`).
 * **Spawns**: `map.spawns.survivors` are anchor candidates: one is picked (seeded) and the 4 survivors are placed on distinct free
-  positions within `spawn.groupRadius` (15 m path distance from the anchor and pairwise, ≥ 1.5 m apart; other candidates near the anchor
+  positions within `spawn.groupRadius` (15 m path distance from the anchor and pairwise, ≥ `spawn.minSep` = 3 m apart; other candidates near the anchor
   first, then random free cells). Hunter: `map.spawns.hunter` candidates whose path distance from the anchor is ≥ `spawn.hunterMinFrac`
   (0.8) × the farthest free cell ≥ `spawn.edgeInset` (4 m) inside the outline; seeded pick. If none qualifies (or there are none), that
   farthest inset cell is used — so maps with only central hunter candidates still spawn the hunter on the far side.
@@ -219,6 +225,33 @@ Obs objects are freshly allocated every call and owned by the receiving brain.
   start/end cells excluded). **A target is "seen" iff in range (75 m), in the cone (hunter 100°; survivors 360°) and visibility ≥ `sight.visThreshold` (0.5)** —
   deterministic, no RNG. So one semi-transparent obstacle is see-through, two are not. Dynamic sight (hunter↔survivors↔survivors) refreshes every
   `perceptionEvery` = 2 ticks; generators/pallets use per-cell cached visibility masks (from the cell centre), shared across matches.
+
+## Collision (`config.collision`, user rules)
+
+Characters are circles of radius 0.4 m (contact at 0.8 m centre to centre). Survivors block survivors, and the hunter and survivors block
+each other (body blocking; `collision.survivors`, `collision.hunterSurvivor`, both on). **Non-colliding** (with anyone): a survivor within
+`survivor.noCollideAfterHitS` (2 s) of taking damage (any hit, incl. an Endurance hit); downed / carried / hooked / dead / escaped survivors;
+anyone mid-vault; a carrying hunter (the carried survivor rides on it).
+
+* Resolved in movement, after the static-grid test: a candidate position is blocked by a body if it overlaps it **and** is closer than before
+  the move, so characters that already overlap (vault landing on someone, end of a no-collide window) can always separate. The usual
+  axis-slide / shortened-step candidates apply; if a body is in the way the mover also tries to slide along the contact tangent (head-on:
+  rotate the step +90°, so both parties of a head-on meeting sidestep to opposite sides and pass). Bodies never push each other.
+* Order: survivors move in the rotating per-tick order, then the hunter, each against the others' current positions. Deterministic, ≤ 16 pair checks per tick.
+* Nav is static (no dynamic avoidance in the planner). **Anti-deadlock**: a survivor pushing against another *survivor* without progress for
+  `collision.unstickS` (2 s) stops colliding with survivors for `collision.unstickGhostS` (1 s) (event `unstick`; still collides with the
+  hunter). That is what gets two survivors through a 1-cell corridor head-on.
+* Limitations: no pushing; a survivor can be sidestepped against a wall corner when using raw `moveDir` (`moveTo` re-centres via the nav);
+  vault landings don't check bodies (overlap resolves as above); a survivor body-blocking the hunter in a corridor holds until hit (genre).
+
+## Generators: side slots
+
+A generator is a solid 1×1 cell. Its **side slots** are the orthogonal neighbour cells (N = −z, E = +x, S = +z, W = −x) that are plain walkable
+cells (not solid / window / pallet / outside); the slot point is that cell's centre. Each slot holds **one** repairing survivor: repair needs the
+survivor within `reach.repairSlot` (0.6 m) of a slot point that nobody else repaired from this tick or the previous one (first come keeps it;
+the next one gets nothing until it is free). Max workers = number of usable sides (≤ 4). Slots are static in `ctx.map.generators[i].slots`;
+survivors see the busy sides (`gens[i].slotsTaken`) only for gens they perceive. The hunter kicks from any side within `reach.kickGen`.
+All shipped maps: every candidate has 4 usable sides (`node scripts/check-gen-slots.js`). Brains can use `makeSlotPicker()` from `slotpick.js`.
 
 ## Anti-camp "Resolve" self-unhook (`config.antiCamp`)
 

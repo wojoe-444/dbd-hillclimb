@@ -30,6 +30,19 @@ function rectDist(x, z, x0, z0, x1, z1) {
 const hyp = (a, b) => Math.sqrt(a * a + b * b);   // Math.hypot is slow in V8
 const r2 = v => Math.round(v * 100) / 100;
 
+// Generator side slots: the orthogonal neighbour cells (N = -z, E = +x, S = +z, W = -x) that are plain walkable cells
+// (not solid / window / pallet / outside). Slot point = that cell's centre. One repairing survivor per slot.
+const SIDES = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]];
+export function genSlots(md, c) {
+  const out = [];
+  for (const [side, dx, dz] of SIDES) {
+    const i = c.i + dx, j = c.j + dz;
+    if (i < 0 || j < 0 || i >= md.w || j >= md.h || md.kind[j * md.w + i] !== 0) continue;
+    out.push({ side, x: i + 0.5, z: j + 0.5, occ: -1, occTick: -9 });
+  }
+  return out;
+}
+
 export class Match {
   constructor(opts) {
     if (!opts || !opts.map) throw new Error('createMatch: opts.map required');
@@ -65,7 +78,7 @@ export class Match {
     this.gens = chosen.map((ci, gi) => {
       const c = cands[ci];
       return { idx: gi, ci, id: c.id, x: c.x, z: c.z, i: c.i, j: c.j, x0: c.x0, z0: c.z0, x1: c.x1, z1: c.z1,
-        p: 0, done: false, regress: false, nWork: 0, wIds: [-1, -1, -1, -1], lastN: 0 };
+        p: 0, done: false, regress: false, nWork: 0, wIds: [-1, -1, -1, -1], lastN: 0, slots: genSlots(md, c) };
     });
     this.genById = new Map(this.gens.map(g => [g.id, g]));
     this.gensDone = 0;
@@ -84,7 +97,7 @@ export class Match {
     this.hunter = {
       role: 'hunter', id: 'hunter', x: hs.x, z: hs.z, vx: 0, vz: 0, face: Math.atan2(this.Hh / 2 - hs.z, this.W / 2 - hs.x),
       carrying: -1, cdT: 0, cdSpeed: 1, windT: 0, stunT: 0, vault: null, prog: 0, curAct: null, curTgt: null,
-      seen: [false, false, false, false], gSeen: new Uint8Array(G), lastSeen: [null, null, null, null], visMarks: [],
+      seen: [false, false, false, false], gSeen: new Uint8Array(G), gMem: this.gens.map(() => ({ progress: 0, regressing: false, seenT: -1 })), lastSeen: [null, null, null, null], visMarks: [],
       grunts: [], inbox: [], inboxRead: 0, lastAction: IDLE, nav: null, brain: null, api: null, ctx: null, spawn: hs,
     };
     this.survivors = [];
@@ -92,7 +105,7 @@ export class Match {
       this.survivors.push({
         role: 'survivor', id: i, x: spawns[i].x, z: spawns[i].z, vx: 0, vz: 0, face: rs.range(-Math.PI, Math.PI),
         st: S_HEALTHY, boostT: 0, runD: 0, runDx: 0, runDz: 0, protT: 0, endure: false, dwT: -1, mendP: 0, hookCount: 0, hookStage: 0, hookTimer: 0, hookIdx: -1, resolve: 0, campT: 0, outT: 0, graceT: 0, selfT: -1, bleedT: 0, heal: 0, wiggle: 0,
-        vault: null, curAct: null, curTgt: null, prog: 0, gruntT: 0, scratchT: 0, outcome: null, cause: null, tOut: -1, repairS: 0, repairC: 0, leverS: 0,
+        vault: null, curAct: null, curTgt: null, prog: 0, hitT: -1e9, bodyT: 0, ghostT: 0, gruntT: 0, scratchT: 0, outcome: null, cause: null, tOut: -1, repairS: 0, repairC: 0, leverS: 0,
         seesHunter: false, trLayer: 0, trPend: 0, trPendT: 0, seesMate: [false, false, false, false], gSeen: new Uint8Array(G), pSeen: new Uint8Array(P),
         mem: { lastHunter: null, lastSeen: [null, null, null, null], gens: this.gens.map(() => ({ progress: 0, done: false, workers: null, seenT: -1 })), pal: new Uint8Array(P) },
         inbox: [], inboxRead: 0, lastAction: IDLE, nav: null, brain: null, api: null, ctx: null, spawn: spawns[i],
@@ -105,7 +118,7 @@ export class Match {
     // ---- brains ----
     const mapInfoBase = {
       ...md.info,
-      generators: Object.freeze(this.gens.map(g => Object.freeze({ id: g.id, x: g.x, z: g.z }))),
+      generators: deepFreeze(this.gens.map(g => ({ id: g.id, x: g.x, z: g.z, slots: g.slots.map(s => ({ side: s.side, x: s.x, z: s.z })) }))),
       gensNeeded: this.gensNeeded,
     };
     const sf = opts.survivors;
@@ -151,7 +164,7 @@ export class Match {
     const field = this.shared.computeField(cellOf(anchor.x, anchor.z), null, 0);   // mm, path distance from the anchor
     const pd = (x, z) => field[cellOf(x, z)] / 1000;
     // survivors: anchor first, then map candidates nearest the anchor, then random walkable cells within the radius
-    const gr = sc.groupRadius, minSep = 1.5;
+    const gr = sc.groupRadius, minSep = sc.minSep ?? 3;
     const surv = [anchor];
     const fits = (x, z) => {
       if (!free(x, z) || !(pd(x, z) <= gr)) return false;
@@ -457,7 +470,7 @@ export class Match {
       const ge = this.gens[g], me = m.gens[g];
       const vis = !ge.done && (s.gSeen[g] === 1 || rectDist2(s.x, s.z, ge.x0, ge.z0, ge.x1, ge.z1) <= adj2);
       if (vis) { me.progress = ge.p / this.need; me.seenT = this.t; me.workers = ge.wIds.slice(0, ge.lastN); }
-      gens.push({ id: ge.id, x: ge.x, z: ge.z, progress: me.done ? 1 : me.progress, done: me.done, blocked: this.gatesPowered && !ge.done, regressing: vis ? ge.regress : null, visible: vis, workers: vis ? me.workers : null, seenT: me.seenT });
+      gens.push({ id: ge.id, x: ge.x, z: ge.z, progress: me.done ? 1 : me.progress, done: me.done, blocked: this.gatesPowered && !ge.done, regressing: vis ? ge.regress : null, visible: vis, workers: vis ? me.workers : null, slotsTaken: vis ? this._slotsTaken(ge) : null, seenT: me.seenT });
     }
     const pals = [];
     const pd = this.md.pallets;
@@ -479,6 +492,14 @@ export class Match {
     };
   }
 
+  // A slot is taken while a survivor repaired from it this tick or the previous one (obs are built before acts).
+  _slotTaken(sl, by) { return sl.occ >= 0 && sl.occ !== by && sl.occTick >= this.tick - 1; }
+  _slotsTaken(g) {
+    const out = [];
+    for (const sl of g.slots) if (this._slotTaken(sl, -1)) out.push(sl.side);
+    return out;
+  }
+
   _obsHunter() {
     const cfg = this.cfg, H = this.hunter, t = this.t;
     const survivors = [];
@@ -493,9 +514,15 @@ export class Match {
     if (k) H.grunts.splice(0, k);
     const grunts = H.grunts.map(g => ({ x: g.x, z: g.z, t: g.t }));
     const scratches = H.visMarks.filter(m => t - m.t <= cfg.senses.scratchMemoryS).map(m => ({ x: m.x, z: m.z, t: m.t, dx: m.dx, dz: m.dz }));
+    // generator progress / regression / workers only for gens the hunter perceives (cone + range + visibility via the
+    // per-cell masks, or within sight.adjacentReach); otherwise its own last-seen values. `done` is public (announced).
+    const adj2 = cfg.sight.adjacentReach * cfg.sight.adjacentReach;
     const gens = this.gens.map((g, i) => {
-      const vis = H.gSeen[i] === 1;
-      return { id: g.id, x: g.x, z: g.z, progress: g.done ? 1 : g.p / this.need, done: g.done, blocked: this.gatesPowered && !g.done, regressing: g.regress, visible: vis, workers: vis ? g.wIds.slice(0, g.lastN) : null };
+      const me = H.gMem[i];
+      const vis = !g.done && (H.gSeen[i] === 1 || rectDist2(H.x, H.z, g.x0, g.z0, g.x1, g.z1) <= adj2);
+      if (vis) { me.progress = g.p / this.need; me.regressing = g.regress; me.seenT = t; }
+      return { id: g.id, x: g.x, z: g.z, progress: g.done ? 1 : me.progress, done: g.done, blocked: this.gatesPowered && !g.done,
+        regressing: g.done ? false : me.regressing, visible: vis, workers: vis ? g.wIds.slice(0, g.lastN) : null, seenT: me.seenT };
     });
     const noisyGens = [], nr = cfg.senses.repairNoiseRadius;
     for (const g of this.gens) if (g.lastN > 0 && rectDist(H.x, H.z, g.x0, g.z0, g.x1, g.z1) <= nr) noisyGens.push({ id: g.id, x: g.x, z: g.z });
@@ -537,27 +564,86 @@ export class Match {
     return step > 0;
   }
 
+  // ---- character bodies (config.collision; README "Collision") ----
+  _survBody(s) { return s.st <= S_INJURED && !s.vault && this.t - s.hitT >= this.cfg.survivor.noCollideAfterHitS - EPS; }
+  _hunterBody() { const H = this.hunter; return !H.vault && H.carrying < 0; }
+  // Fill this._bodies with the characters that block mover `a` (positions as of now: survivors act in a rotating
+  // order, then the hunter). Returns the count. Pre-existing overlap never traps anyone (see _free).
+  _collectBodies(a, isHunter) {
+    const cc = this.cfg.collision, B = this._bodies || (this._bodies = []);
+    let n = 0;
+    if (!cc) return 0;
+    if (isHunter) {
+      if (!cc.hunterSurvivor || !this._hunterBody()) return 0;
+      for (const s of this.survivors) if (this._survBody(s)) B[n++] = s;
+    } else {
+      if (!this._survBody(a)) return 0;
+      if (cc.hunterSurvivor && this._hunterBody()) B[n++] = this.hunter;
+      if (cc.survivors && !(a.ghostT > 0)) for (const o of this.survivors) if (o !== a && !(o.ghostT > 0) && this._survBody(o)) B[n++] = o;
+    }
+    return n;
+  }
+
+  // Static grid + bodies. A body blocks a position that overlaps it (centre distance < 2R) AND is closer than before
+  // the move, so characters that already overlap (vault landing, end of a no-collide window) can always separate.
+  _free(x, z, px, pz, nb) {
+    if (!circleFree(this.coll, this.W, this.Hh, x, z, this.R)) return false;
+    const B = this._bodies, D = 4 * this.R * this.R - 1e-9;
+    for (let k = 0; k < nb; k++) {
+      const b = B[k], ex = x - b.x, ez = z - b.z, d2 = ex * ex + ez * ez;
+      if (d2 < D) { const ox = px - b.x, oz = pz - b.z; if (d2 < ox * ox + oz * oz - 1e-9) { this._blocker = b; return false; } }
+    }
+    return true;
+  }
+
   _applyMove(a, dx, dz, step, isHunter) {
     const px = a.x, pz = a.z;
-    const coll = this.coll, W = this.W, Hh = this.Hh, R = this.R;
+    const nb = this._collectBodies(a, isHunter);
+    this._blocker = null;
     const nx = px + dx * step, nz = pz + dz * step;
-    if (circleFree(coll, W, Hh, nx, nz, R)) { a.x = nx; a.z = nz; }
+    if (this._free(nx, nz, px, pz, nb)) { a.x = nx; a.z = nz; }
     else {
       // blocked: take the candidate (axis slides / shortened steps, all tried at full and fractional length) that
       // gains the most distance, so walls are approached flush and slid along
+      const firstBlocker = this._blocker;
       const ddx = nx - px, ddz = nz - pz, len = Math.sqrt(ddx * ddx + ddz * ddz);
       let bx = px, bz = pz, gain = 0;
       for (let k = -1; k < FRAC.length; k++) {
         const f = k < 0 ? 1 : FRAC[k];
         if (k >= 0 && f * len <= gain) break;
-        if (k >= 0 && circleFree(coll, W, Hh, px + ddx * f, pz + ddz * f, R)) { bx = px + ddx * f; bz = pz + ddz * f; gain = f * len; break; }
+        if (k >= 0 && this._free(px + ddx * f, pz + ddz * f, px, pz, nb)) { bx = px + ddx * f; bz = pz + ddz * f; gain = f * len; break; }
         const gx = ddx * f < 0 ? -ddx * f : ddx * f;
-        if (gx > gain && ddx !== 0 && circleFree(coll, W, Hh, px + ddx * f, pz, R)) { bx = px + ddx * f; bz = pz; gain = gx; }
+        if (gx > gain && ddx !== 0 && this._free(px + ddx * f, pz, px, pz, nb)) { bx = px + ddx * f; bz = pz; gain = gx; }
         const gz = ddz * f < 0 ? -ddz * f : ddz * f;
-        if (gz > gain && ddz !== 0 && circleFree(coll, W, Hh, px, pz + ddz * f, R)) { bx = px; bz = pz + ddz * f; gain = gz; }
+        if (gz > gain && ddz !== 0 && this._free(px, pz + ddz * f, px, pz, nb)) { bx = px; bz = pz + ddz * f; gain = gz; }
+      }
+      // body in the way: slide around it along the contact tangent (head-on => rotate the step +90 deg, so both
+      // parties of a head-on meeting sidestep to opposite sides and pass). Deterministic, no jitter.
+      if (firstBlocker && gain < 0.6 * len) {
+        const b = firstBlocker;
+        let ox = px - b.x, oz = pz - b.z; const ol = Math.sqrt(ox * ox + oz * oz);
+        if (ol > 1e-6) { ox /= ol; oz /= ol; } else { ox = -dx; oz = -dz; }
+        const dn = dx * ox + dz * oz;
+        let tx = dx - dn * ox, tz = dz - dn * oz, tl = Math.sqrt(tx * tx + tz * tz);
+        if (tl < 0.2) { tx = -dz; tz = dx; tl = 1; }
+        tx /= tl; tz /= tl;
+        for (const f of [1, 0.5]) {
+          const sx = px + tx * len * f, sz = pz + tz * len * f;
+          if (len * f > gain && this._free(sx, sz, px, pz, nb)) { bx = sx; bz = sz; gain = len * f; break; }
+        }
       }
       a.x = bx; a.z = bz;
+      // anti-deadlock (two survivors face to face in a 1-cell corridor): pushing a survivor without progress for
+      // collision.unstickS => stop colliding with survivors for collision.unstickGhostS
+      if (!isHunter) {
+        const cc = this.cfg.collision;
+        if (firstBlocker && firstBlocker !== this.hunter && gain < 0.3 * len && cc.unstickGhostS > 0) {
+          a.bodyT += this.dt;
+          if (a.bodyT >= cc.unstickS - EPS) { a.bodyT = 0; a.ghostT = cc.unstickGhostS; this.ev('unstick', { who: a.id }); }
+        } else a.bodyT = 0;
+      }
     }
+    if (!isHunter && this._blocker === null && a.bodyT > 0) a.bodyT = 0;
     const mx = a.x - px, mz = a.z - pz;
     if (mx * mx + mz * mz < 0.36 * step * step) this._tryVault(a, dx, dz, isHunter);
     a.vx = (a.x - px) / this.dt; a.vz = (a.z - pz) / this.dt;
@@ -759,7 +845,7 @@ export class Match {
         s.scratchT -= dt;
         if (s.scratchT <= 0) { this.marks.push({ x: s.x, z: s.z, t: this.t, dx: this._sdx, dz: this._sdz }); s.scratchT = cfg.senses.scratchEveryS; }
       }
-    } else { s.vx = s.vz = 0; s.runD = 0; }
+    } else { s.vx = s.vz = 0; s.runD = 0; s.bodyT = 0; }
     if (s.vault) { s.curAct = 'vault'; return; }
     if (A.face) s.face = Math.atan2(A.face.z - s.z, A.face.x - s.x);
     if (crawl) { s.prog = 0; return; }
@@ -770,7 +856,18 @@ export class Match {
           if (this.gatesPowered) break;                 // remaining generators are blocked once the exit gates are powered
           let g = A.target !== undefined && A.target !== null ? this.genById.get(A.target) : null;
           if (!g) { let bd = Infinity; for (const c of this.gens) { if (c.done) continue; const d = rectDist(s.x, s.z, c.x0, c.z0, c.x1, c.z1); if (d < bd) { bd = d; g = c; } } }
-          if (!g || g.done || rectDist(s.x, s.z, g.x0, g.z0, g.x1, g.z1) > cfg.reach.repair) break;
+          if (!g || g.done) break;
+          // side slots: must be within reach.repairSlot of a slot point; keep the slot you hold, else the nearest free one
+          const rr = cfg.reach.repairSlot;
+          let sl = null, sd = Infinity;
+          for (const c of g.slots) {
+            const d = hyp(c.x - s.x, c.z - s.z);
+            if (d > rr || this._slotTaken(c, s.id)) continue;
+            if (c.occ === s.id && c.occTick >= this.tick - 1) { sl = c; break; }
+            if (d < sd) { sd = d; sl = c; }
+          }
+          if (!sl) break;
+          sl.occ = s.id; sl.occTick = this.tick;
           this._endProtection(s);
           s.curAct = 'repair'; s.curTgt = g.id; s.prog = 0;
           if (g.nWork < 4) g.wIds[g.nWork] = s.id;
@@ -1028,7 +1125,7 @@ export class Match {
   // ------------------------------------------------------------------ hunter actions
   _hurt(s) {
     const sv = this.cfg.survivor;
-    this.stats.hits++;
+    this.stats.hits++; s.hitT = this.t;   // no body collision for survivor.noCollideAfterHitS
     if (s.st === S_HEALTHY) { s.st = S_INJURED; s.boostT = sv.hitBoostS; s.gruntT = 0; this.ev('hit', { who: s.id, state: 'injured' }); }
     else if (s.st === S_INJURED && s.endure && s.protT > 0) {   // Endurance: survive the downing hit with Deep Wound
       s.endure = false; s.boostT = sv.hitBoostS; s.dwT = this.cfg.unhook.deepWoundS; s.mendP = 0; s.gruntT = 0;
@@ -1204,6 +1301,7 @@ export class Match {
     for (const s of this.survivors) {
       if (s.st >= S_DEAD) continue;
       if (s.boostT > 0) s.boostT = Math.max(0, s.boostT - dt);
+      if (s.ghostT > 0) s.ghostT = Math.max(0, s.ghostT - dt);
       if (s.protT > 0) { s.protT = Math.max(0, s.protT - dt); if (s.protT <= EPS) { s.protT = 0; this._endProtection(s); } }
       if (s.dwT >= 0 && s.st === S_INJURED && s.curAct !== 'mend') {
         s.dwT -= dt;

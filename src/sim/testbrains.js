@@ -2,6 +2,8 @@
 // Rules for brains (see README): no module-level mutable state, no communication between instances.
 // Everything a brain remembers lives inside its factory closure.
 
+import { makeSlotPicker } from './slotpick.js';
+
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 
 function rectDist(x, z, x0, z0, x1, z1) {
@@ -13,6 +15,7 @@ function rectDist(x, z, x0, z0, x1, z1) {
 export function survivorBrain(ctx) {
   const { generators: gens, pallets, exitGates, hooks } = ctx.map;
   let genTarget = -1;
+  const slots = makeSlotPicker(ctx.config.reach.repairSlot);
 
   return {
     decide(obs, api) {
@@ -87,9 +90,7 @@ export function survivorBrain(ctx) {
         }
       }
       if (genTarget >= 0) {
-        const g = gens[genTarget];
-        if (rectDist(me.x, me.z, Math.floor(g.x), Math.floor(g.z), Math.floor(g.x) + 1, Math.floor(g.z) + 1) <= 1.0) return { act: 'repair', target: g.id };
-        return { moveTo: { x: g.x, z: g.z } };
+        return slots.act(obs, genTarget, gens[genTarget]);   // walk to a free side slot, repair there
       }
       return {};
     },

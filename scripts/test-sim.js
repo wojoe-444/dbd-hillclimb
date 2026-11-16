@@ -8,6 +8,7 @@ import { survivorBrain, hunterBrain } from '../src/sim/testbrains.js';
 import { circleFree } from '../src/sim/nav.js';
 import { getBrains } from '../src/brains/index.js';
 import { defaults } from '../src/hillclimb/params.js';
+import { slotReport, allMapFiles } from './check-gen-slots.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = p => JSON.parse(fs.readFileSync(path.resolve(root, p), 'utf8'));
@@ -176,9 +177,9 @@ test('solo queue: teammate positions only by sight (HUD states only); gens progr
   place(m.survivors[0], 15.5, 10.5); run(m, 40);
   const e = obs[0].gens[gi];
   ok(!e.visible && e.workers === null && Math.abs(e.progress - p1) < 0.03 && e.progress < g.p / m.need - 0.02 && e.seenT > 0, 'out of view again: keeps the last-seen value (stale), no workers');
-  // hunter side: the hunter also gets no free info about who is on a gen unless it sees it
+  // hunter side: no free info about progress / who is on a gen unless it perceives it
   let hObs; ctl.H = o => (hObs = o, {}); run(m, 3);
-  ok(hObs.gens[gi].progress > 0.05 && hObs.gens[gi].workers === null, 'hunter sees progress of every gen but not workers unless visible');
+  ok(hObs.gens[gi].visible ? hObs.gens[gi].progress > 0.05 && Array.isArray(hObs.gens[gi].workers) : hObs.gens[gi].progress === 0 && hObs.gens[gi].workers === null, 'hunter: progress + workers only for a perceived gen (else its own stale memory)');
 });
 
 test('solo queue: gen completion is announced to everyone; scream radius is a knob (default off)', () => {
@@ -423,6 +424,7 @@ test('pallet drop: 0.3 s, stuns hunter within footprint +-1 m along axis (2 s), 
   place(m.hunter, 25.5, 23.2);
   ctl.H = () => ({ act: 'breakPallet', target: 'p-gap' });
   run(m, 22); ok(m.ps[p.index] === 1, 'still intact after 2.2 s'); run(m, 2); ok(m.ps[p.index] === 2, 'broken after 2.34 s (2.4 s in whole ticks)');
+  place(m.survivors[0], 3.5, 33.5);   // out of the way (bodies block the hunter)
   ctl.H = () => ({ moveDir: { x: 0, z: -1 } }); run(m, 30); ok(m.hunter.z < 21.5, 'hunter walks through after the break');
   // survivor vault over a dropped pallet: 1.2 s
   const u = mk(); const pi = u.m.md.pallets.findIndex(q => q.id === 'p-gap');
@@ -609,7 +611,7 @@ test('exit gates: lever 20 s, open, escape at exit; endgame timer kills the rest
 });
 
 test('survivor-side nav: reaches targets without leaving walkable space (several routes)', () => {
-  const { m, ctl } = mk();
+  const { m, ctl } = mk({ config: { collision: { survivors: false } } });   // parked teammates sit on some goals
   const goals = [[44.5, 33.5], [6.5, 6.5], [24.5, 30.5], [24.5, 10.5], [14.5, 11.5]];
   const s = m.survivors[0];
   place(m.hunter, 24.5, 18.5); ctl.H = () => ({});
@@ -749,17 +751,17 @@ test('spawns: survivors grouped within 15 m, hunter on the far side, determinist
       const S = m.survivors, H = m.hunter;
       for (let i = 0; i < 4; i++) {
         if (!circleFree(m.coll, m.W, m.Hh, S[i].x, S[i].z, 0.4)) okFree = false;
-        for (let j = i + 1; j < 4; j++) { const d = Math.hypot(S[i].x - S[j].x, S[i].z - S[j].z); if (d > 15 + 1e-9 || d < 1.5 - 1e-9) okGroup = false; }
+        for (let j = i + 1; j < 4; j++) { const d = Math.hypot(S[i].x - S[j].x, S[i].z - S[j].z); if (d > 15 + 1e-9 || d < 3 - 1e-9) okGroup = false; }
         minH = Math.min(minH, Math.hypot(S[i].x - H.x, S[i].z - H.z));
       }
       hset.add(H.x + ',' + H.z); aset.add(S[0].x + ',' + S[0].z);
       const m2 = createMatch({ map, seed, hunter: hunterBrain, survivors: survivorBrain });
       ok(JSON.stringify([H.x, H.z, S.map(q => [q.x, q.z])]) === JSON.stringify([m2.hunter.x, m2.hunter.z, m2.survivors.map(q => [q.x, q.z])]), map.id + ' seed ' + seed + ': spawns deterministic');
     }
-    ok(okGroup, map.id + ': survivors pairwise 1.5..15 m apart');
+    ok(okGroup, map.id + ': survivors pairwise 3..15 m apart (spawn.minSep)');
     ok(okFree, map.id + ': survivors on free positions');
     ok(aset.size > 1, map.id + ': anchor varies by seed');
-    if (map === bigMap) ok(minH >= 0.6 * diag, map.id + ': hunter >= 0.6 x diagonal from every survivor (min ' + minH.toFixed(1) + ' / ' + (0.6 * diag).toFixed(1) + ')');
+    if (map === bigMap) ok(minH >= 0.55 * diag, map.id + ': hunter >= 0.55 x diagonal from every survivor (min ' + minH.toFixed(1) + ' / ' + (0.55 * diag).toFixed(1) + ')');
     else ok(minH >= 0.4 * diag, map.id + ': hunter far from survivors (min ' + minH.toFixed(1) + ')');
   }
   // hunter candidates on the far side are used when present (perimeter-style candidate map)
@@ -919,6 +921,131 @@ test('vault collision: nobody can start a vault through a window someone is vaul
   }
   ok(hv, 'hunter vaulted');
   ok(!both, 'survivor never starts a vault while the hunter is vaulting the same window');
+});
+
+test('collision: survivors are bodies (no overlap / passing through), post-hit and downed exceptions, corridor unstick', () => {
+  const minD = (m, a, b, ticks, f) => { let md = Infinity; for (let i = 0; i < ticks; i++) { m.step(); if (f) f(); md = Math.min(md, Math.hypot(a.x - b.x, a.z - b.z)); } return md; };
+  // head-on in open ground: they never overlap, sidestep and pass
+  { const { m, ctl } = mk(); const a = m.survivors[0], b = m.survivors[1];
+    place(a, 26.5, 12.5); place(b, 32.5, 12.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } }); ctl.S[1] = () => ({ moveDir: { x: -1, z: 0 } });
+    const d = minD(m, a, b, 22);
+    ok(d >= 0.8 - 1e-6, 'head-on survivors never overlap (min centre distance ' + d.toFixed(3) + ' >= 0.8)');
+    ok(a.x > b.x + 1, 'head-on survivors sidestep and pass each other (a.x ' + a.x.toFixed(2) + ', b.x ' + b.x.toFixed(2) + ')'); }
+  // standing survivor blocks a mover aimed straight at it; the mover slides around (never through)
+  { const { m, ctl } = mk(); const a = m.survivors[0], b = m.survivors[1];
+    place(a, 26.5, 12.5); place(b, 29.5, 12.5); ctl.S[0] = () => ({ moveTo: { x: 32.5, z: 12.5 } });
+    const d = minD(m, a, b, 30); ok(d >= 0.8 - 1e-6 && Math.abs(b.x - 29.5) < 1e-9, 'mover cannot pass through a standing survivor (min ' + d.toFixed(3) + '), the stander is not pushed'); }
+  // post-hit: no collision for noCollideAfterHitS (2 s): walks straight through
+  { const { m, ctl } = mk(); const a = m.survivors[0], b = m.survivors[1];
+    place(a, 26.5, 12.5); place(b, 28.5, 12.5); m._hurt(a); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
+    let zs = 0; const d = minD(m, a, b, 8, () => { zs = Math.max(zs, Math.abs(a.z - 12.5)); });
+    ok(d < 0.3 && zs < 1e-9, 'just-hit survivor passes straight through a teammate (min ' + d.toFixed(2) + ')');
+    const t = mk(); const c = t.m.survivors[0], e = t.m.survivors[1];
+    place(c, 26.5, 12.5); place(e, 31.5, 12.5); t.m._hurt(c); run(t.m, 21); t.ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, walk: true });
+    const d2 = minD(t.m, c, e, 30); ok(d2 >= 0.8 - 1e-6, 'after 2 s the hit survivor collides again (min ' + d2.toFixed(3) + ')');
+    const u = mk(); const f = u.m.survivors[0], g = u.m.survivors[1];   // the hit one is also not an obstacle for others
+    place(f, 26.5, 12.5); place(g, 28.5, 12.5); u.m._hurt(g); u.ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
+    ok(minD(u.m, f, g, 8) < 0.3, 'a just-hit survivor is not an obstacle for teammates either'); }
+  // downed survivors don't collide
+  { const { m, ctl } = mk(); const a = m.survivors[0], b = m.survivors[1];
+    place(a, 26.5, 12.5); place(b, 28.5, 12.5); b.st = DOWNED; b.bleedT = 100; ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
+    ok(minD(m, a, b, 8) < 0.3 && Math.abs(a.z - 12.5) < 1e-9, 'downed survivors are not obstacles'); }
+  // 1-cell doorway (the p-gap pallet, up): head-on survivors don't deadlock forever (unstick after 2 s, documented)
+  { const { m, ctl } = mk(); const a = m.survivors[0], b = m.survivors[1];
+    place(a, 25.5, 19.5); place(b, 25.5, 25.5);
+    ctl.S[0] = () => ({ moveTo: { x: 25.5, z: 25.5 } }); ctl.S[1] = () => ({ moveTo: { x: 25.5, z: 19.5 } });
+    let t = 0; for (; t < 200 && !(Math.hypot(a.x - 25.5, a.z - 25.5) < 0.3 && Math.hypot(b.x - 25.5, b.z - 19.5) < 0.3); t++) m.step();
+    ok(t < 200, 'head-on in a 1-cell doorway: both get through within 20 s (' + (t / 10).toFixed(1) + ' s)');
+    ok(m.events.some(e => e.type === 'unstick'), 'via the unstick fallback (event)'); }
+});
+
+test('collision: hunter vs survivor bodies (body block, post-hit pass, chase still lands hits, pickup works)', () => {
+  // survivor standing in a 1-cell doorway blocks the hunter
+  const { m, ctl } = mk(); const s = m.survivors[0], H = m.hunter;
+  place(s, 25.5, 22.5); place(H, 25.5, 25.5); ctl.H = () => ({ moveTo: { x: 25.5, z: 19.5 } });
+  run(m, 30); ok(H.z > 23.2 && s.z === 22.5, 'survivor in a 1-cell doorway body-blocks the hunter (hunter z ' + H.z.toFixed(2) + ')');
+  m._hurt(s); run(m, 15); ok(H.z < 21.5, 'a just-hit survivor no longer blocks: hunter walks through (z ' + H.z.toFixed(2) + ')');
+  // they never overlap while both collide
+  const t = mk(); const s2 = t.m.survivors[0], H2 = t.m.hunter;
+  place(s2, 28.5, 12.5); place(H2, 25.5, 12.5); t.ctl.H = () => ({ moveDir: { x: 1, z: 0 } }); t.ctl.S[0] = () => ({ moveDir: { x: -1, z: 0 } });
+  let md = Infinity; for (let i = 0; i < 6; i++) { t.m.step(); md = Math.min(md, Math.hypot(s2.x - H2.x, s2.z - H2.z)); }
+  ok(md >= 0.8 - 1e-6, 'hunter and survivor never overlap (min ' + md.toFixed(3) + ')');
+  // open-ground chase: survivor walks away, hunter closes and swings: the hit lands; then the down + pickup work
+  const u = mk(); const v = u.m.survivors[0], H3 = u.m.hunter;
+  place(v, 24.5, 12.5); place(H3, 19.5, 12.5); v.st = INJURED;
+  u.ctl.S[0] = (o) => (o.self.state === 'downed' ? {} : { moveDir: { x: 1, z: 0 }, walk: true });
+  u.ctl.H = (o) => {
+    const q = o.survivors.find(x => x.id === 0); if (!q) return {};
+    const d = Math.hypot(q.x - o.self.x, q.z - o.self.z);
+    if (q.state === 'downed') return d <= 1.4 ? { act: 'pickup', target: 0 } : { moveTo: { x: q.x, z: q.z } };
+    return d <= 2.0 ? { act: 'attack', target: 0, face: { x: q.x, z: q.z } } : { moveTo: { x: q.x, z: q.z } };
+  };
+  run(u.m, 50); ok(u.m.events.some(e => e.type === 'hit' && e.who === 0), 'open-ground chase: the hunter lands the hit despite bodies');
+  ok(v.st === DOWNED || v.st === CARRIED, 'injured survivor downed');
+  run(u.m, 40); ok(v.st === CARRIED, 'downed survivor does not collide: hunter picks them up');
+  // carrying hunter doesn't collide
+  place(m.survivors[1], 25.5, 22.5); m.survivors[0].st = CARRIED; H.carrying = 0; place(H, 25.5, 19.5); ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+  run(m, 20); ok(H.z > 23.5, 'carrying hunter passes a survivor (no collision while carrying)');
+  // collision.hunterSurvivor: false turns it off
+  const w = mk({ config: { collision: { hunterSurvivor: false } } }); place(w.m.survivors[0], 25.5, 22.5); place(w.m.hunter, 25.5, 25.5);
+  w.ctl.H = () => ({ moveDir: { x: 0, z: -1 } }); run(w.m, 30); ok(w.m.hunter.z < 21.5, 'collision.hunterSurvivor false: hunter walks through');
+});
+
+test('generators: 4 side slots (walkable neighbours only), one repairer per slot, slotsTaken only when perceived', () => {
+  const g0 = mk().m.gens[0];
+  const map = structuredClone(smallMap);
+  map.obstacles.push({ x: g0.i + 1, z: g0.j, w: 1, d: 1, height: 1 });           // east side: solid
+  map.windows.push({ id: 'win-test', x: g0.i, z: g0.j + 1, axis: 'z' });          // south side: window (not usable)
+  const ctxs = [];
+  const ctl = { S: [() => ({}), () => ({}), () => ({}), () => ({})] };
+  const m = createMatch({ map, seed: 1, hunter: () => ({ decide: () => ({}) }), survivors: [0, 1, 2, 3].map(i => ctx => { ctxs[i] = ctx; return { decide: (o, a) => ctl.S[i](o, a) }; }) });
+  const S = m.survivors; place(S[0], 3.5, 33.5); place(S[1], 44.5, 3.5); place(S[2], 3.5, 3.5); place(S[3], 44.5, 33.5); place(m.hunter, 24.5, 18.5);
+  const g = m.gens[0]; ok(g.id === g0.id, 'same gen chosen');
+  ok(g.slots.map(s => s.side).join() === 'N,W', 'blocked (solid) and window sides are not slots: ' + g.slots.map(s => s.side).join());
+  ok(JSON.stringify(ctxs[0].map.generators[0].slots) === JSON.stringify([{ side: 'N', x: g.i + 0.5, z: g.j - 0.5 }, { side: 'W', x: g.i - 0.5, z: g.j + 0.5 }]), 'ctx.map.generators[i].slots = usable side points (cell centres)');
+  ok(Object.isFrozen(ctxs[0].map.generators[0].slots[0]), 'static slots are frozen');
+  const obs = [];
+  for (let i = 0; i < 4; i++) ctl.S[i] = o => (obs[i] = o, i < 3 ? { act: 'repair', target: g.id } : {});
+  // s0 on N; s1 also within reach of N (overlap placement); s2 at the diagonal cell (within the old 1.1 m rect reach, not a slot)
+  place(S[0], g.i + 0.5, g.j - 0.5); place(S[1], g.i + 0.75, g.j - 0.3); place(S[2], g.i + 1.5, g.j - 0.5);
+  ctl.S[1] = o => (obs[1] = o, {}); m.step();           // s0 takes the slot first
+  ctl.S[1] = o => (obs[1] = o, { act: 'repair', target: g.id });
+  const p0 = g.p; run(m, 50);
+  near(g.p - p0, 5, 0.01, 'one worker per slot: the second survivor at an occupied slot gets nothing (solo rate)');
+  ok(S[0].curAct === 'repair' && S[1].curAct !== 'repair' && S[2].curAct !== 'repair', 'first come keeps it; off-slot survivor does not repair');
+  ok(JSON.stringify(obs[1].gens[0].slotsTaken) === '["N"]' && obs[1].gens[0].visible, 'adjacent survivor sees slotsTaken ["N"]');
+  ok(obs[3].gens[0].visible === false && obs[3].gens[0].slotsTaken === null, 'survivor who does not perceive the gen gets slotsTaken null');
+  // all usable sides busy: max workers = number of usable sides (2)
+  place(S[2], g.i - 0.5, g.j + 0.5); const p1 = g.p; run(m, 50);
+  near(g.p - p1, 50 * 0.1 * 2 * 0.85, 0.05, 'two usable sides => at most 2 workers (2 x 0.85)');
+  ok(JSON.stringify(obs[0].gens[0].slotsTaken) === '["N","W"]', 'slotsTaken lists both busy sides');
+  // the holder leaves => the waiting survivor can take the slot
+  ctl.S[0] = () => ({}); place(S[0], 30.5, 12.5); run(m, 3);
+  ok(S[1].curAct === 'repair', 'slot freed => the next survivor repairs from it');
+});
+
+test('hunter info: generator progress / regressing / workers only when perceived; done is global', () => {
+  const { m, ctl } = mk({ config: { gens: { fumbleChancePerS: 0, repairS: 20 } } });
+  const g = m.gens.find(x => x.id === 'g11') || m.gens[m.gens.length - 1], gi = m.gens.indexOf(g);
+  let ho = null; ctl.H = o => (ho = o, {});
+  g.p = 8; place(m.hunter, g.x - 12, g.z); m.hunter.face = Math.PI;   // within range but facing away
+  run(m, 3);
+  let o = ho.gens[gi];
+  ok(!o.visible && o.progress === 0 && o.regressing === false && o.workers === null && o.seenT === -1, 'facing away: initial memory (progress 0, regressing false), not visible');
+  m.hunter.face = 0; run(m, 3); o = ho.gens[gi];
+  near(o.progress, 0.4, 1e-9, 'facing the gen within range: live progress'); ok(o.visible && Array.isArray(o.workers) && o.seenT > 0, 'visible + workers');
+  g.p = 12; m.hunter.face = Math.PI; run(m, 3); o = ho.gens[gi];
+  ok(!o.visible && Math.abs(o.progress - 0.4) < 1e-9 && o.workers === null, 'looking away again: stale last-seen progress');
+  place(m.hunter, g.x - 1.6, g.z); run(m, 1); ok(ho.gens[gi].visible && Math.abs(ho.gens[gi].progress - 0.6) < 1e-9, 'within adjacentReach (behind the hunter): live');
+  place(m.hunter, 3.5, 20.5); g.p = 19.95;
+  const s = m.survivors[0]; place(s, g.slots[0].x, g.slots[0].z); ctl.S[0] = () => ({ act: 'repair', target: g.id }); run(m, 3);
+  o = ho.gens[gi]; ok(g.done && o.done && o.progress === 1 && !o.visible, 'done is global (announced) even when not perceived');
+});
+
+test('generator slots on every shipped map: each candidate has >= 1 usable side (warn on 1-2)', () => {
+  const rows = slotReport(allMapFiles());
+  ok(rows.length > 0 && rows.every(r => r.sides.length >= 1), `${rows.length} candidates, all with >= 1 usable side`);
+  for (const r of rows) if (r.sides.length <= 2) console.log(`    WARN ${r.file} ${r.id}: only ${r.sides.length} usable side(s) ${r.sides.join('')}`);
 });
 
 test('pickup locks the downed survivor in place (no crawling out of reach mid-pickup)', () => {

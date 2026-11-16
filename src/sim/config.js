@@ -54,6 +54,16 @@ export const defaultConfig = {
     palletVaultS: 1.2,      // dropped pallet
     palletDropS: 0.3,
     rescueS: 1,
+    noCollideAfterHitS: 2,  // after taking damage (any hit, incl. an Endurance hit) a survivor collides with nobody for this long
+  },
+
+  collision: {              // character bodies (circles of radius `radius`); see README "Collision"
+    survivors: true,        // survivor <-> survivor bodies block each other
+    hunterSurvivor: true,   // hunter <-> survivor bodies block each other (body blocking)
+    // Non-colliding: downed / carried / hooked / dead / escaped survivors, anyone mid-vault, a carrying hunter, and a
+    // survivor within survivor.noCollideAfterHitS of being hit. Nav is static (no dynamic avoidance in the planner).
+    unstickS: 2,            // a survivor pushing against another SURVIVOR without progress for this long ...
+    unstickGhostS: 1,       // ... stops colliding with survivors for this long (anti-deadlock in 1-cell corridors; 0 = off)
   },
 
   hunter: {
@@ -118,7 +128,8 @@ export const defaultConfig = {
   },
 
   spawn: {
-    groupRadius: 15,       // m: the 4 survivors spawn within this (pairwise and path distance from the anchor)
+    groupRadius: 15,        // m: the 4 survivors spawn within this (pairwise and path distance from the anchor)
+    minSep: 3,              // m: minimum pairwise distance between survivors at spawn
     hunterMinFrac: 0.8,     // hunter candidates eligible if path dist from the anchor >= this x farthest inset walkable cell
     edgeInset: 4,           // m: fallback hunter spawn must be at least this far inside the outline
   },
@@ -141,7 +152,7 @@ export const defaultConfig = {
   },
 
   reach: {                  // interaction ranges (m)
-    repair: 1.1,            // survivor centre to generator rectangle
+    repairSlot: 0.6,        // survivor centre to a generator side-slot point (centre of the walkable N/E/S/W neighbour cell)
     heal: 1.6,              // centre to centre
     rescue: 1.8,            // survivor centre to hook centre
     pallet: 1.2,            // survivor centre to pallet footprint rectangle (spec: 1.2)
