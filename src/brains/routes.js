@@ -99,8 +99,10 @@ export class RouteEval {
     }
   }
 
-  // prepare both fields; returns false if unusable
-  prepare(obs, me, hp, chaseS) {
+  // prepare both fields; returns false if unusable. hunterDelayS: the hunter is busy (visible pallet break) and
+  // starts moving only after this long
+  prepare(obs, me, hp, chaseS, hunterDelayS = 0) {
+    this.hDelay = hunterDelayS;
     if (!this.isAnchor) {
       this.isAnchor = new Uint8Array(this.W * this.H); for (const cells of this.anchorCells) for (const c of cells) this.isAnchor[c] = 1;
       const solid = this.L.solid; for (let c = 0; c < solid.length; c++) { const b = solid[c] && !this.isAnchor[c] ? 1 : 0; this.blkS[c] = b; this.blkH[c] = b; }
@@ -114,6 +116,8 @@ export class RouteEval {
   }
 
   reachable(x, z) { const i = Math.floor(x), j = Math.floor(z); if (i < 0 || j < 0 || i >= this.W || j >= this.H) return false; return this.fS[j * this.W + i] >= 0; }
+  // hunter path distance to (x,z) incl. its busy time (as metres at its speed); Infinity outside the field
+  hDist(x, z) { const i = Math.floor(x), j = Math.floor(z); if (i < 0 || j < 0 || i >= this.W || j >= this.H) return Infinity; const v = this.fH[j * this.W + i]; return v >= 0 ? v / 10 + this.vH * (this.hDelay || 0) : Infinity; }
   sDist(x, z) { const i = Math.floor(x), j = Math.floor(z); const v = this.fS[j * this.W + i]; return v >= 0 ? v / 10 : Infinity; }
 
   // my path to (x,z) as cells from me to there, by descending my field
@@ -138,7 +142,7 @@ export class RouteEval {
     return out.reverse();
   }
 
-  gapAt(cell, t) { const hd = this.fH[cell]; return (hd >= 0 ? hd / 10 : this.R + 10) - this.vH * t - this.reach; }
+  gapAt(cell, t) { const hd = this.fH[cell]; return (hd >= 0 ? hd / 10 : this.R + 10) - this.vH * Math.max(0, t - (this.hDelay || 0)) - this.reach; }
 
   // min gap (m) along my path to (x,z) over `horizon` s (or until arrival if untilArrival); also the arrival time.
   // cont: after arrival, continue straight (best of 7 onward directions) for the rest of the horizon.
