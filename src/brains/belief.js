@@ -65,14 +65,37 @@ export class SurvivorBelief {
     this.notesRead = 0;
     this.lastGruntT = -1; this.lastScratchT = -1; this.lastNoiseT = -99;
     this.carry = 0;                                    // fractional "cells to spread" carried between updates
-    // start: survivors spawn together near the edge opposite the hunter -> mass on the far side of the map
-    const sp = ctx.spawn;
-    for (let k = 0; k < 4; k++) {
-      const p = this.p[k];
-      let tot = 0;
-      for (const c of this.cells) { const d = Math.hypot(this.cx[c] - sp.x, this.cz[c] - sp.z); p[c] = d * d; tot += p[c]; }
-      for (const c of this.cells) p[c] /= tot;
+    // start: the hunter knows the spawn rules. Survivors spawn as a group (within spawn.groupRadius) around one of the
+    // map's survivor anchors, and the hunter is placed on a candidate whose path distance from that anchor is at least
+    // spawn.hunterMinFrac x the farthest walkable cell. So the plausible anchors are the ones my own spawn is
+    // consistent with; put each survivor's mass in tight blobs around those.
+    this.initFromSpawnRules(ctx);
+  }
+
+  initFromSpawnRules(ctx) {
+    const M = ctx.map, sp = ctx.spawn, nav = ctx.nav, sc = ctx.config.spawn || {};
+    const frac = sc.hunterMinFrac ?? 0.8, group = sc.groupRadius ?? 12;
+    const anchors = (M.spawns && M.spawns.survivors) || [];
+    const plausible = [];
+    for (const a of anchors) {
+      let maxD = 0;
+      for (const c of this.cells) { const d = nav.dist({ x: this.cx[c], z: this.cz[c] }, a); if (d < Infinity && d > maxD) maxD = d; }
+      const dMe = nav.dist(sp, a);
+      if (dMe < Infinity && dMe >= frac * maxD - this.cs * 2) plausible.push(a);
     }
+    const sigma = Math.max(this.cs, group / 2);     // survivors sit within ~group m of the anchor
+    for (let k = 0; k < 4; k++) {
+      const p = this.p[k]; p.fill(0);
+      let tot = 0;
+      for (const c of this.cells) {
+        let v = 0;
+        if (plausible.length) for (const a of plausible) v += Math.exp(-((this.cx[c] - a.x) ** 2 + (this.cz[c] - a.z) ** 2) / (2 * sigma * sigma));
+        else { const d = Math.hypot(this.cx[c] - sp.x, this.cz[c] - sp.z); v = d ** 4; }   // no anchors: "far from me"
+        p[c] = v; tot += v;
+      }
+      if (tot > 0) for (const c of this.cells) p[c] /= tot;
+    }
+    this.plausibleAnchors = plausible;
   }
 
   cellAt(x, z) {
