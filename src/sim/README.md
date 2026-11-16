@@ -200,7 +200,9 @@ Survivor `obs`:
           protectedS /* remaining Endurance+Haste, null if none */, elusiveS /* remaining Elusive, null if none */,
           chased /* chase music */, intentCooldownS },
   hunter: { x,z,vx,vz,facing,fx,fz,carrying,windup,cooldown,stunned,
-            vaulting, vault: { window /* id */, fromX, fromZ, toX, toZ, progress /* 0..1 */ } | null } | null,   // only if visible now
+            vaulting, vault: { window /* id */, fromX, fromZ, toX, toZ, progress /* 0..1 */ } | null,
+            act /* 'breakPallet'|'kickGen'|'pickup'|'hook'|'openGate'|'drop'|null */, actTarget /* pallet/gen/hook/gate id, survivor id */,
+            actProgress /* 0..1 of the interaction's duration, null if none */ } | null,   // only if visible now (previous tick's act)
   lastHunter: { x,z,vx,vz,facing,t } | null,
   terror: { layer: 1|2|3, approx } | null,   // heard terror-radius layer (thirds of 32 m, 1 = outermost), lagged; approx = band midpoint m
   teammates: [{ id,x,z,vx,vz,facing,state }],                                       // visible now

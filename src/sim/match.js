@@ -29,6 +29,8 @@ function rectDist(x, z, x0, z0, x1, z1) {
   const dz = z < z0 ? z0 - z : (z > z1 ? z - z1 : 0);
   return Math.sqrt(dx * dx + dz * dz);
 }
+// hunter timed interactions -> config.hunter duration key (survivors see these on a visible hunter: obs.hunter.act)
+const HUNTER_ACT_S = { breakPallet: 'breakPalletS', kickGen: 'kickS', pickup: 'pickupS', hook: 'hookS', drop: 'dropS', openGate: 'openGateS' };
 const mkSlots = n => Array.from({ length: n }, () => ({ id: -1, tick: -9 }));
 const hyp = (a, b) => Math.sqrt(a * a + b * b);   // Math.hypot is slow in V8
 const r2 = v => Math.round(v * 100) / 100;
@@ -529,6 +531,16 @@ export class Match {
     return { window: wi !== undefined ? this.md.windows[wi].id : null, fromX: v.x0, fromZ: v.z0, toX: v.x1, toZ: v.z1, progress: Math.min(1, v.t / v.dur) };
   }
 
+  // The visible hunter's timed interaction (the animation is visible): breakPallet / kickGen / pickup / hook / openGate /
+  // drop, its target (pallet / gen / gate / hook id, survivor id) and progress 0..1 of the interaction's duration.
+  // Reflects the hunter's latest act (previous tick, like vaulting). Stun / windup / vault have their own fields.
+  _hunterActObs() {
+    const H = this.hunter, dur = H.curAct ? HUNTER_ACT_S[H.curAct] : undefined;
+    if (dur === undefined) return { act: null, actTarget: null, actProgress: null };
+    const d = this.cfg.hunter[dur];
+    return { act: H.curAct, actTarget: H.curTgt, actProgress: d > 0 ? Math.min(1, H.prog / d) : 1 };
+  }
+
   _camObs(s) {
     if (!(this.cfg.survivor.camera && this.cfg.survivor.camera.enabled)) return null;
     this._camPos(s);
@@ -564,7 +576,8 @@ export class Match {
       hunter = { x: H.x, z: H.z, vx: H.vx, vz: H.vz, facing: H.face, fx: Math.cos(H.face), fz: Math.sin(H.face),
         carrying: H.carrying >= 0, windup: H.windT > 0, cooldown: H.cdT > 0, stunned: H.stunT > 0,
         // a visible vault is visible: which window, from where to where, how far along (no hidden state)
-        vaulting: !!H.vault, vault: H.vault ? this._vaultObs(H.vault) : null };
+        vaulting: !!H.vault, vault: H.vault ? this._vaultObs(H.vault) : null,
+        ...this._hunterActObs() };   // act / actTarget / actProgress: a visible break, kick, pickup, hook, gate
       m.lastHunter = { x: H.x, z: H.z, vx: H.vx, vz: H.vz, facing: H.face, t: this.t };
     }
     const dh = hyp(H.x - s.x, H.z - s.z);
@@ -1325,11 +1338,14 @@ export class Match {
     const al = hc.palletStunAlongM;
     const stun = axisX ? (H.x >= p.x0 - al && H.x <= p.x1 + al && H.z >= p.z0 && H.z <= p.z1)
                        : (H.z >= p.z0 - al && H.z <= p.z1 + al && H.x >= p.x0 && H.x <= p.x1);
-    // push actors standing in the (now solid) footprint out to the nearest approach side
+    // push actors whose body overlaps the (now solid) footprint out to the nearer approach side: the centre inside it,
+    // or the body circle (radius R) reaching into it; otherwise the actor is left overlapping a solid cell and can stick
+    const off = Math.max(0.5, this.R + 0.1);
     for (const a of [H, ...this.survivors]) {
       if ((a.st !== undefined && a.st >= S_DEAD) || a.vault) continue;
-      if (a.x >= p.x0 && a.x < p.x1 && a.z >= p.z0 && a.z < p.z1) {
-        if (axisX) a.x = a.x < p.cx ? p.x0 - 0.5 : p.x1 + 0.5; else a.z = a.z < p.cz ? p.z0 - 0.5 : p.z1 + 0.5;
+      if (rectDist(a.x, a.z, p.x0, p.z0, p.x1, p.z1) < this.R - 1e-9) {
+        if (axisX) a.x = a.x < p.cx ? Math.min(a.x, p.x0 - off) : Math.max(a.x, p.x1 + off);
+        else a.z = a.z < p.cz ? Math.min(a.z, p.z0 - off) : Math.max(a.z, p.z1 + off);
       }
     }
     if (stun) this._stunHunter(hc.palletStunS);

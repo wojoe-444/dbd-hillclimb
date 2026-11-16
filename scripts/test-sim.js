@@ -151,6 +151,24 @@ test('survivor obs: a visible hunter vault is visible (vaulting, window, from/to
   ok(o.hunter.vault.toZ === wz + 1.5 && o.hunter.vault.progress > 0 && o.hunter.vault.progress < 1, 'landing point and progress visible');
 });
 
+test('survivor obs: a visible hunter interaction (pallet break) is visible: act, actTarget, actProgress; hidden when unseen', () => {
+  const { m, ctl } = mk({ config: { survivor: { camera: { enabled: false } } } });
+  let o = null; ctl.S[0] = x => (o = x, {}); ctl.H = () => ({});
+  const p = m.md.pallets.find(q => q.id === 'p-gap');                 // (25,22) axis z
+  m.ps[p.index] = 1; for (const c of p.cells) m.coll[c] = 1; m.palVersion++; m.droppedCount++;
+  place(m.hunter, 25.5, 23.5); place(m.survivors[0], 25.5, 28.5);
+  run(m, 2);
+  ok(o.hunter && o.hunter.act === null && o.hunter.actTarget === null && o.hunter.actProgress === null, 'idle hunter: act null');
+  ctl.H = () => ({ act: 'breakPallet', target: 'p-gap' });
+  run(m, 6);                                                          // obs reflects the previous tick's act
+  ok(o.hunter && o.hunter.act === 'breakPallet' && o.hunter.actTarget === 'p-gap', 'breaking: act breakPallet + pallet id');
+  near(o.hunter.actProgress, 0.5 / 2.34, 0.05, 'break progress as a fraction of breakPalletS');
+  const p1 = o.hunter.actProgress; run(m, 5); ok(o.hunter.actProgress > p1, 'progress grows');
+  // out of sight (tall house wall): no hunter, so no interaction info
+  place(m.survivors[0], 14.5, 12.5); place(m.hunter, 5.5, 12.5); ctl.H = () => ({ act: 'breakPallet' });
+  run(m, 3); ok(o.hunter === null, 'unseen hunter: obs.hunter null (no interaction leak)');
+});
+
 test('survivor camera: clamped by walls, FOV-limited, body awareness, peeking around a corner', () => {
   const { m, ctl } = mk();
   let sObs = null, hObs = null;
@@ -586,6 +604,18 @@ test('pallet drop: 0.3 s, stuns hunter within footprint +-1 m along axis (2 s), 
   // pushed out if standing in the footprint when it drops
   const w = mk(); place(w.m.survivors[0], 25.5, 22.5); place(w.m.hunter, 40.5, 5.5); w.ctl.S[0] = () => ({ act: 'dropPallet' });
   run(w.m, 3); ok(circleFree(w.m.coll, w.m.W, w.m.Hh, w.m.survivors[0].x, w.m.survivors[0].z, 0.4), 'actor standing in the pallet cell is pushed to a free spot');
+  // body overlapping the footprint (centre outside it, within the radius): the hunter is pushed out too, on its own side
+  for (const hz of [23.2, 21.75]) {
+    const v = mk(); place(v.m.survivors[0], 25.5, hz > 22.5 ? 20.9 : 24.1); place(v.m.hunter, 25.5, hz);
+    v.ctl.S[0] = () => ({ act: 'dropPallet', target: 'p-gap' }); v.ctl.H = () => ({});
+    run(v.m, 3); const H = v.m.hunter;
+    ok(v.m.ps[p.index] === 1, `pallet dropped (hunter z ${hz})`);
+    ok(circleFree(v.m.coll, v.m.W, v.m.Hh, H.x, H.z, 0.4), `hunter body overlapping the footprint (z ${hz}) is pushed free (z=${H.z.toFixed(2)})`);
+    ok(hz > 22.5 ? H.z >= 23.4 : H.z <= 21.6, `pushed to the side it was on (z ${hz} -> ${H.z.toFixed(2)})`);
+  }
+  // an actor clear of the footprint is not moved
+  const q = mk(); place(q.m.survivors[0], 25.5, 20.9); place(q.m.hunter, 25.5, 23.5); q.ctl.S[0] = () => ({ act: 'dropPallet', target: 'p-gap' });
+  run(q.m, 3); ok(q.m.hunter.z === 23.5, 'hunter 0.5 m from the footprint is not pushed');
 });
 
 test('attack: 0.35 s windup, hit needs range 2.2 + facing, injured -> downed, boost, cooldowns 2.7 / 1.5 s', () => {

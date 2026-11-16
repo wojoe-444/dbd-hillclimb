@@ -278,7 +278,12 @@ export class SurvivorBelief {
       const s = m - (distW * Math.hypot(pt.x - me.x, pt.z - me.z)) / 100;
       if (s > bs) { bs = s; best = pt; }
     }
-    return best;
+    // go to the hottest cell inside the winning kernel, not to the kernel's centre: next to a tall wall the kernel
+    // centre can sit outside while its mass is inside (e.g. a shack interior), so the hunter arrived, saw nothing,
+    // re-picked the same centre and parked there for minutes; at the hot cell itself it sees (and clears) that mass
+    let hc = -1, hv = -Infinity;
+    for (const n of hot) if ((this.cx[n] - best.x) ** 2 + (this.cz[n] - best.z) ** 2 <= r2 && h[n] > hv) { hv = h[n]; hc = n; }
+    return hc >= 0 ? { x: this.cx[hc], z: this.cz[hc] } : best;
   }
 }
 

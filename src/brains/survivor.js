@@ -77,6 +77,7 @@ import { LoopModel } from './loops.js';
 import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
+import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
@@ -87,6 +88,9 @@ function rectDist(x, z, x0, z0, x1, z1) {
   const dz = z < z0 ? z0 - z : (z > z1 ? z - z1 : 0);
   return hyp(dx, dz);
 }
+// "at" a pallet = within the engine's drop reach (config.reach.pallet, 1.2 m) of its footprint, minus a small epsilon so
+// float error never decides it (a loop side point sits 1.1 m from the footprint, which can come out as 1.1000000000000014)
+const atPallet = (me, p, reach) => rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= reach - 1e-6;
 
 export function makeSurvivor(P) {
   return (ctx) => {
@@ -128,6 +132,7 @@ export function makeSurvivor(P) {
     const occupiedUntil = new Map();   // anchor k -> time: the hunter is in / just cleared it (visible vault)
     let blT0 = 0;                 // Bloodlust clock start (chase start / my hit / observed pallet break)
     let prevMyState = 'healthy', prevPal = null;
+    let brk = null, brkSeenT = -99;   // visible hunter pallet break this tick ({ i, remainS }) / last tick one was seen
     const slots = makeSlotPicker(ctx.config.reach.repairSlot);   // generator side slots (one repairer per side)
     let fleePoint = null, fleeT = -99;
     let sneakStart = -1;
@@ -372,13 +377,17 @@ export function makeSurvivor(P) {
     // run-away vs the hunter closing in (it can't pass the window cell; it may also already be on the landing side),
     // with the real attack: plant within 90% range, windup (whole ticks) at lunge speed, hit if within range + margin.
     const HC = ctx.config.hunter, vS0 = ctx.config.survivor.runSpeed;
+    // a window vault starts when my body is within R + 0.3 of the window cell (0.5 + 0.7 = 1.2 m from its centre); fast
+    // needs a straight run-up of fastVaultRunupM (2.5 m) by then, + 0.2 m slack for steering
+    const SV = ctx.config.survivor, RUNUP_TO_CENTRE = (SV.fastVaultRunupM ?? 2.5) + 0.5 + (ctx.config.radius ?? 0.4) + 0.3 + 0.2;
     const range = HC.attackRange ?? 2.2, windup = Math.ceil((HC.windupS ?? 0.35) * 10 - 1e-9) / 10, lunge = HC.lungeSpeedMult ?? 1.5;
     function vaultSafe(a, c, me, hp, vH, tv, margin = P.vaultSafetyMarginM, hunterLead = 0) {
       const P0 = loops.sidePt[c], Q0 = loops.sidePt[c ^ 1];
       const ax = (Q0.x - P0.x) / 3.2, az = (Q0.z - P0.z) / 3.2;
       const u = (pt) => (pt.x - a.c.x) * ax + (pt.z - a.c.z) * az, w = (pt) => -(pt.x - a.c.x) * az + (pt.z - a.c.z) * ax;
       let us = Math.min(-1.0, u(me)), uh = u(hp) + hunterLead;
-      const lat = Math.abs(w(hp)), hSide = uh < 0 ? -1 : 1, vS = me.boosted ? vS0 * 1.65 : vS0;
+      let lat = Math.abs(w(hp));
+      const hSide = uh < 0 ? -1 : 1, vS = me.boosted ? vS0 * 1.65 : vS0;
       const dt = 0.05, start = -1.0;
       let t = 0, tVault = -1, wind = -1;
       for (let step = 0; step < 60; step++, t += dt) {
@@ -389,7 +398,9 @@ export function makeSurvivor(P) {
         // hunter
         const du = us - uh, dist = Math.hypot(du, lat);
         const spd = wind >= 0 ? vH * lunge : vH;
-        if (dist > 0.6) { uh += Math.sign(du) * Math.min(Math.abs(du), spd * dt * Math.abs(du) / dist); if (hSide < 0) uh = Math.min(uh, -0.6); }
+        // the hunter closes in 2D: along the axis and sideways (it was only along the axis: a hunter coming from the
+        // side never got close in the replay, so holding looked safe until it was on top of me)
+        if (dist > 0.6) { const st = Math.min(dist - 0.6, spd * dt); uh += st * du / dist; lat -= st * lat / dist; if (hSide < 0) uh = Math.min(uh, -0.6); }
         if (wind < 0 && Math.hypot(us - uh, lat) <= 0.9 * range) wind = t;
         if (wind >= 0 && t - wind >= windup - 1e-9) return Math.hypot(us - uh, lat) > range + margin;
       }
@@ -399,12 +410,14 @@ export function makeSurvivor(P) {
       const P0 = loops.sidePt[c], a = anchors[c >> 1];
       const vx = a.c.x - from.x, vz = a.c.z - from.z, L = Math.hypot(vx, vz) || 1;
       const ax = (loops.sidePt[c ^ 1].x - P0.x) / 3.2, az = (loops.sidePt[c ^ 1].z - P0.z) / 3.2;
-      return L >= 2.5 + 1.0 && (vx * ax + vz * az) / L >= Math.cos(25 * Math.PI / 180);
+      return L >= RUNUP_TO_CENTRE && (vx * ax + vz * az) / L >= Math.cos(25 * Math.PI / 180);
     };
-    // run-up point: 2 m further out than the entry, on the axis (a straight run from there gives a fast vault)
+    // run-up point: further out than the entry, on the axis, so a straight run from there gives a fast vault (the
+    // engine starts the vault ~1.2 m from the window centre, and the run-up must reach 2.5 m by then)
     const runupPt = (c) => {
       const P0 = loops.sidePt[c], Q0 = loops.sidePt[c ^ 1], ax = (Q0.x - P0.x) / 3.2, az = (Q0.z - P0.z) / 3.2;
-      const A = { x: P0.x - ax * 2.0, z: P0.z - az * 2.0 }, i = Math.floor(A.x), j = Math.floor(A.z);
+      const out = RUNUP_TO_CENTRE + 0.2 - 1.6;
+      const A = { x: P0.x - ax * out, z: P0.z - az * out }, i = Math.floor(A.x), j = Math.floor(A.z);
       return i >= 0 && j >= 0 && i < M.w && j < M.h && !loops.solid[j * M.w + i] && !loops.solid[Math.floor(P0.z - az) * M.w + Math.floor(P0.x - ax)] ? A : null;
     };
     const hunterPos = (obs) => {             // visible hunter, else last sighting carried forward, else the belief's guess
@@ -412,6 +425,14 @@ export function makeSurvivor(P) {
       const lh = obs.lastHunter;
       if (lh && obs.t - lh.t < 3) { const k = Math.min(1.5, obs.t - lh.t); return { x: lh.x + (lh.vx || 0) * k, z: lh.z + (lh.vz || 0) * k, vx: lh.vx, vz: lh.vz }; }
       return lh;   // (no belief guess here: fleeing from a wrong guess measured worse)
+    };
+    // entry race on the route fields (prepared by chooseRoute): path lengths around walls + the hunter's busy time
+    // (pallet break), same loopRace margin; the Euclidean race above misjudges entries behind a wall
+    const racePath = (Pt) => { const ds = routes.sDist(Pt.x, Pt.z), dh = routes.hDist(Pt.x, Pt.z); return ds < Infinity && ds < P.loopRace * dh; };
+    // crossing c would land me on the hunter's side (path distances; nav.dist counts the hunter's vault / pallet costs)
+    const landsBad = (api, me, hp, c) => {
+      const Qt = loops.sidePt[c ^ 1];
+      return landingOnHunterSide(api.nav.dist(me, Qt), api.nav.dist(hp, Qt) + (brk ? routes.vH0 * brk.remainS : 0), routes.reach);
     };
     function chooseCircuit(obs, api, me, hp, h, extra) {
       const vl = vaultsLeft(obs), ps = palletState(obs), R = P.loopTravelMaxM;
@@ -421,7 +442,8 @@ export function makeSurvivor(P) {
         for (let d = 0; d < 2; d++) {
           const c = 2 * a.k + d, Pt = loops.sidePt[c];
           const dmE = d2(me, Pt), dhP = d2(hp, Pt);
-          if (dmE > R || !(dmE < P.loopRace * dhP)) continue;
+          if (dmE > R || !(dmE < P.loopRace * dhP) && !racePath(Pt)) continue;
+          if (dmE > 1.5 && landsBad(api, me, hp, c)) continue;
           // the hunter is heading for it: it would cut us off there
           if (h && P.avoidHeading > 0.5) { const tx = Pt.x - h.x, tz = Pt.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dhP < dmE + 4) continue; }
           let best = null, be = 0;
@@ -444,7 +466,7 @@ export function makeSurvivor(P) {
     // the min survivor-hunter path gap (routes.js); loops add holdW x their distance held per lap if reached in time.
     function chooseRoute(obs, api, me, hp, h, extra) {
       const chaseS = me.chased ? obs.t - blT0 : 0;
-      if (!routes.prepare(obs, me, hp, chaseS)) return false;
+      if (!routes.prepare(obs, me, hp, chaseS, brk ? brk.remainS : 0)) return false;
       const Hz = P.holdHorizonS, r0 = Math.min(30, Math.max(6, routes.vS * Hz * 0.5));   // first leg ~ half the horizon
       let best = null, bs = -Infinity;
       for (let k = 0; k < 12; k++) {
@@ -517,6 +539,13 @@ export function makeSurvivor(P) {
 
     function chase(obs, api, me, h, depth = 0) {
       if (depth > 3) return null;
+      // the visible hunter is breaking a pallet: that pallet is as good as gone, and the break time is mine to run
+      // (tileplay.js); a break that just started forces a re-plan instead of waiting behind the pallet
+      brk = palletBreakInfo(obs, M, ctx.config);
+      if (brk) { obs = withPalletGone(obs, brk.i); if (brkSeenT < obs.t - 0.25) routeT = -99; brkSeenT = obs.t; }
+      // the visible hunter's body stands in a dropped pallet's lane (bodies collide: I can't get through it):
+      // busy for now (not standing pallets: a hunter there is what a stun drop is for; windows: A/B'd worse)
+      if (h && !h.vaulting) for (const a of anchors) if (a.kind === 'p' && obs.pallets[a.i] === 'dropped' && laneBlockedBy(h, a)) { occupiedUntil.set(a.k, Math.max(occupiedUntil.get(a.k) ?? -1, obs.t + 0.5)); if (circ && circ.seq.some((x) => (x >> 1) === a.k)) routeT = -99; }
       const mates = P.chaseToMatesW !== 0 ? matesOnGens(obs) : [];
       const fl = fleeingMates(obs, me);
       const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
@@ -546,7 +575,7 @@ export function makeSurvivor(P) {
         }
         // the hunter is nearer my next entry than I am (it cut ahead / is on the far side): run the loop the other way
         const hP = api.nav.dist(hp, Pt), hQ = api.nav.dist(hp, Qt);   // path distances (fields to fixed points get cached)
-        if (circ.phase === 'toP' && obs.t >= circ.lockT && hP + 0.5 < api.nav.dist(me, Pt) && hQ > hP && circ.seq.length > 1) { reverseCirc(obs); return chase(obs, api, me, h, depth + 1); }
+        if (circ.phase === 'toP' && obs.t >= circ.lockT && hP + 0.5 < api.nav.dist(me, Pt) && hQ > hP && circ.seq.length > 1) { reverseCirc(obs); if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; } return chase(obs, api, me, h, depth + 1); }
         if (circ.phase === 'toP') {
           // running crossing (a real leg leads into it): keep the momentum for a fast vault while the hunter is on us;
           // hold crossing (zero leg: mind-game at one anchor): wait at the entry until the hunter is close
@@ -570,7 +599,7 @@ export function makeSurvivor(P) {
           if (!onMySide && obs.t >= circ.lockT && circ.seq.length > 1) {
             const k = circ.seq.length;
             const revNext = circ.seq[(circ.i - 1 + k) % k] ^ 1;
-            if (loops.sidePt[revNext] !== Pt) { reverseCirc(obs); return chase(obs, api, me, h, depth + 1); }
+            if (loops.sidePt[revNext] !== Pt) { reverseCirc(obs); if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; } return chase(obs, api, me, h, depth + 1); }
           }
           // vault safety (real attack envelope): go while a vault is still safe; a hold ends before it stops being
           // safe (the hunter 0.3 s closer); a window the hunter cleared moments ago (clearance) is not re-vaulted
@@ -591,7 +620,7 @@ export function makeSurvivor(P) {
         // crossing
         if (a.kind === 'p' && obs.pallets[a.i] === 'up') {
           const p = a.p;
-          const near = rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= 1.1;
+          const near = atPallet(me, p, ctx.config.reach.pallet ?? 1.2);
           const ms = d2(Pt, me) <= d2(Qt, me) ? 'P' : 'Q', hs = hP <= hQ ? 'P' : 'Q';
           if (near && (hs === 'P' || dhm < 2.5) && dhm < 12) {
             const dec = palletDecision(obs, a, hp, h, me, dhm);
