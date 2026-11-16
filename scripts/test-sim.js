@@ -586,6 +586,18 @@ test('pallet drop: 0.3 s, stuns hunter within footprint +-1 m along axis (2 s), 
   // pushed out if standing in the footprint when it drops
   const w = mk(); place(w.m.survivors[0], 25.5, 22.5); place(w.m.hunter, 40.5, 5.5); w.ctl.S[0] = () => ({ act: 'dropPallet' });
   run(w.m, 3); ok(circleFree(w.m.coll, w.m.W, w.m.Hh, w.m.survivors[0].x, w.m.survivors[0].z, 0.4), 'actor standing in the pallet cell is pushed to a free spot');
+  // body overlapping the footprint (centre outside it, within the radius): the hunter is pushed out too, on its own side
+  for (const hz of [23.2, 21.75]) {
+    const v = mk(); place(v.m.survivors[0], 25.5, hz > 22.5 ? 20.9 : 24.1); place(v.m.hunter, 25.5, hz);
+    v.ctl.S[0] = () => ({ act: 'dropPallet', target: 'p-gap' }); v.ctl.H = () => ({});
+    run(v.m, 3); const H = v.m.hunter;
+    ok(v.m.ps[p.index] === 1, `pallet dropped (hunter z ${hz})`);
+    ok(circleFree(v.m.coll, v.m.W, v.m.Hh, H.x, H.z, 0.4), `hunter body overlapping the footprint (z ${hz}) is pushed free (z=${H.z.toFixed(2)})`);
+    ok(hz > 22.5 ? H.z >= 23.4 : H.z <= 21.6, `pushed to the side it was on (z ${hz} -> ${H.z.toFixed(2)})`);
+  }
+  // an actor clear of the footprint is not moved
+  const q = mk(); place(q.m.survivors[0], 25.5, 20.9); place(q.m.hunter, 25.5, 23.5); q.ctl.S[0] = () => ({ act: 'dropPallet', target: 'p-gap' });
+  run(q.m, 3); ok(q.m.hunter.z === 23.5, 'hunter 0.5 m from the footprint is not pushed');
 });
 
 test('attack: 0.35 s windup, hit needs range 2.2 + facing, injured -> downed, boost, cooldowns 2.7 / 1.5 s', () => {
