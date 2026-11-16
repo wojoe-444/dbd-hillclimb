@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-export function createPool({ threads, mapPath, hunterBrain = 'param', survivorBrain = 'param' }) {
+export function createPool({ threads, mapPath, hunterBrain = 'param', survivorBrain = 'param', metrics = [] }) {
   const workers = [], idle = [], queue = [], pending = new Map();
   let nextId = 0;
   const pump = () => {
@@ -17,7 +17,7 @@ export function createPool({ threads, mapPath, hunterBrain = 'param', survivorBr
     }
   };
   for (let i = 0; i < threads; i++) {
-    const w = new Worker(join(here, 'worker.js'), { workerData: { mapPath, hunterBrain, survivorBrain } });
+    const w = new Worker(join(here, 'worker.js'), { workerData: { mapPath, hunterBrain, survivorBrain, metrics } });
     w.on('message', ({ id, results }) => { pending.get(id)(results); pending.delete(id); idle.push(w); pump(); });
     w.on('error', (e) => { console.error(e); process.exit(1); });
     workers.push(w); idle.push(w);
