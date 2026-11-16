@@ -17,7 +17,7 @@ export const gasHeavenLayout = {
     { pool: 'maze', x: 88, z: 8 },            // mazetile NE (between 1 and 2)
     { pool: 'maze', x: 8, z: 24 },            // mazetile W (10)
     { pool: 'maze', x: 72, z: 72 },           // mazetile S (5)
-    { pool: 'carpile', x: 24, z: 40 },        // car pile (BITIC)
+    { tile: 'infinite-loop', x: 24, z: 40 },  // user probe: deliberately game-breaking infinite loop (was car pile BITIC)
     { pool: 'jg', x: 56, z: 56 },             // user: one jungle gym v1 + one v2 on every variant (was car pile MID)
     { pool: 'jg', x: 88, z: 40 },             // ...second jungle gym (was car pile 3/4)
     { pool: 'carpile', x: 8, z: 56 },         // car pile (8/9)

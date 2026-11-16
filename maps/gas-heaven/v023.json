@@ -42,44 +42,8 @@
  "eyeHeight": 1.6,
  "obstacles": [
   {
-   "id": "o-t20-rock-low-1",
-   "x": 17,
-   "z": 1,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t20-rock-low-2",
-   "x": 21,
-   "z": 1,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t27-rock-low-1",
-   "x": 81,
-   "z": 1,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t27-rock-low-2",
-   "x": 86,
-   "z": 1,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t29-rock-1",
-   "x": 97,
+   "id": "o-t22-rock-1",
+   "x": 37,
    "z": 1,
    "w": 2,
    "d": 2,
@@ -87,18 +51,45 @@
    "kind": "rock"
   },
   {
-   "id": "o-t22-car-low-1",
-   "x": 34,
-   "z": 2,
+   "id": "o-t23-tree-1",
+   "x": 44,
+   "z": 1,
    "w": 2,
-   "d": 3,
-   "height": 1.1,
-   "kind": "car"
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
   },
   {
    "id": "o-t24-rock-1",
-   "x": 50,
-   "z": 3,
+   "x": 49,
+   "z": 1,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t29-rock-low-1",
+   "x": 89,
+   "z": 1,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t29-rock-low-2",
+   "x": 93,
+   "z": 1,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t20-rock-1",
+   "x": 19,
+   "z": 2,
    "w": 2,
    "d": 2,
    "height": 2.6,
@@ -106,43 +97,61 @@
   },
   {
    "id": "o-t26-rock-1",
-   "x": 75,
-   "z": 4,
+   "x": 66,
+   "z": 3,
    "w": 2,
    "d": 2,
    "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t27-rock-low-3",
-   "x": 85,
+   "id": "o-t30-rock-1",
+   "x": 100,
+   "z": 3,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t25-tree-1",
+   "x": 61,
    "z": 4,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
   },
   {
-   "id": "o-t20-rock-low-3",
-   "x": 20,
+   "id": "o-t22-rock-2",
+   "x": 33,
    "z": 5,
-   "w": 1,
-   "d": 1,
-   "height": 1,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t27-rock-low-4",
-   "x": 81,
+   "id": "o-t24-rock-2",
+   "x": 53,
    "z": 5,
-   "w": 1,
-   "d": 1,
-   "height": 1,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t28-tree-1",
+   "id": "o-t29-rock-low-3",
    "x": 92,
+   "z": 5,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t31-tree-1",
+   "x": 108,
    "z": 5,
    "w": 2,
    "d": 2,
@@ -150,17 +159,8 @@
    "kind": "tree"
   },
   {
-   "id": "o-t29-rock-2",
-   "x": 101,
-   "z": 5,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t20-rock-low-4",
-   "x": 17,
+   "id": "o-t29-rock-low-4",
+   "x": 89,
    "z": 6,
    "w": 1,
    "d": 1,
@@ -168,82 +168,55 @@
    "kind": "rock"
   },
   {
-   "id": "o-t31-wall-1",
-   "x": 19,
+   "id": "o-t34-rock-1",
+   "x": 33,
    "z": 9,
-   "w": 3,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t36-rock-low-1",
-   "x": 105,
-   "z": 9,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t36-rock-low-2",
-   "x": 110,
-   "z": 9,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t17-wall-1",
-   "x": 76,
-   "z": 10,
-   "w": 6,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-1",
-   "x": 92,
-   "z": 10,
-   "w": 10,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t31-rock-1",
-   "x": 18,
-   "z": 11,
-   "w": 3,
-   "d": 3,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t15-wall-low-1",
-   "x": 29,
-   "z": 11,
-   "w": 5,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t32-rock-1",
-   "x": 44,
-   "z": 11,
    "w": 2,
    "d": 2,
    "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t17-wall-2",
-   "x": 76,
-   "z": 11,
-   "w": 1,
+   "id": "o-t35-rock-1",
+   "x": 41,
+   "z": 9,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t36-tree-1",
+   "x": 52,
+   "z": 9,
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t37-tree-1",
+   "x": 58,
+   "z": 9,
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t41-rock-1",
+   "x": 109,
+   "z": 9,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t02-wall-1",
+   "x": 89,
+   "z": 10,
+   "w": 2,
    "d": 1,
    "height": 3,
    "kind": "wall"
@@ -251,6 +224,51 @@
   {
    "id": "o-t02-wall-2",
    "x": 92,
+   "z": 10,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t02-wall-3",
+   "x": 96,
+   "z": 10,
+   "w": 7,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t39-rock-1",
+   "x": 76,
+   "z": 11,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t40-rock-1",
+   "x": 82,
+   "z": 11,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t02-wall-4",
+   "x": 89,
+   "z": 11,
+   "w": 1,
+   "d": 6,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t02-wall-5",
+   "x": 102,
    "z": 11,
    "w": 1,
    "d": 2,
@@ -258,210 +276,138 @@
    "kind": "wall"
   },
   {
-   "id": "o-t02-wall-3",
-   "x": 89,
+   "id": "o-t32-tree-1",
+   "x": 17,
    "z": 12,
-   "w": 2,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-4",
-   "x": 94,
-   "z": 12,
-   "w": 8,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t36-rock-low-3",
-   "x": 109,
-   "z": 12,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t17-wall-3",
-   "x": 76,
-   "z": 13,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t17-wall-4",
-   "x": 81,
-   "z": 13,
-   "w": 5,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-5",
-   "x": 89,
-   "z": 13,
-   "w": 1,
-   "d": 5,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-6",
-   "x": 94,
-   "z": 13,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-7",
-   "x": 101,
-   "z": 13,
-   "w": 1,
-   "d": 2,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t36-rock-low-4",
-   "x": 105,
-   "z": 13,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t17-wall-5",
-   "x": 83,
-   "z": 14,
-   "w": 1,
-   "d": 6,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t17-wall-6",
-   "x": 85,
-   "z": 14,
-   "w": 1,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-8",
-   "x": 92,
-   "z": 14,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t15-car-low-1",
-   "x": 25,
-   "z": 16,
-   "w": 2,
-   "d": 3,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t02-wall-9",
-   "x": 95,
-   "z": 16,
-   "w": 2,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-10",
-   "x": 98,
-   "z": 16,
-   "w": 2,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-11",
-   "x": 101,
-   "z": 16,
-   "w": 1,
-   "d": 6,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t37-rock-low-1",
-   "x": 2,
-   "z": 17,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t37-rock-low-2",
-   "x": 6,
-   "z": 17,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t15-wall-1",
-   "x": 29,
-   "z": 17,
-   "w": 8,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t40-rock-low-1",
-   "x": 46,
-   "z": 17,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t02-wall-12",
-   "x": 99,
-   "z": 17,
-   "w": 1,
-   "d": 3,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t39-tree-1",
-   "x": 21,
-   "z": 18,
    "w": 2,
    "d": 2,
    "height": 5,
    "kind": "tree"
   },
   {
-   "id": "o-t40-rock-low-2",
-   "x": 43,
+   "id": "o-t36-tree-2",
+   "x": 51,
+   "z": 12,
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t37-tree-2",
+   "x": 59,
+   "z": 12,
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t02-wall-6",
+   "x": 99,
+   "z": 12,
+   "w": 1,
+   "d": 6,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t33-tree-1",
+   "x": 28,
+   "z": 13,
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t34-rock-2",
+   "x": 37,
+   "z": 13,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t35-rock-2",
+   "x": 45,
+   "z": 13,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t02-wall-7",
+   "x": 92,
+   "z": 13,
+   "w": 4,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t41-rock-2",
+   "x": 105,
+   "z": 13,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t02-wall-8",
+   "x": 102,
+   "z": 14,
+   "w": 1,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t02-wall-9",
+   "x": 92,
+   "z": 16,
+   "w": 1,
+   "d": 5,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t02-wall-10",
+   "x": 102,
+   "z": 16,
+   "w": 1,
+   "d": 3,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t02-wall-11",
+   "x": 96,
+   "z": 17,
+   "w": 3,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t44-rock-low-1",
+   "x": 22,
    "z": 18,
    "w": 1,
    "d": 1,
    "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t45-rock-1",
+   "x": 27,
+   "z": 18,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
    "kind": "rock"
   },
   {
@@ -474,21 +420,30 @@
    "kind": "wall"
   },
   {
-   "id": "o-t42-wall-1",
-   "x": 110,
+   "id": "o-t19-wall-1",
+   "x": 65,
    "z": 18,
-   "w": 1,
-   "d": 3,
+   "w": 3,
+   "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t38-rock-1",
-   "x": 12,
+   "id": "o-t02-wall-12",
+   "x": 89,
+   "z": 18,
+   "w": 1,
+   "d": 5,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t44-rock-low-2",
+   "x": 18,
    "z": 19,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
+   "w": 1,
+   "d": 1,
+   "height": 1,
    "kind": "rock"
   },
   {
@@ -501,8 +456,17 @@
    "kind": "wall"
   },
   {
-   "id": "o-t41-rock-1",
-   "x": 66,
+   "id": "o-t19-wall-2",
+   "x": 65,
+   "z": 19,
+   "w": 1,
+   "d": 4,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t49-rock-1",
+   "x": 106,
    "z": 19,
    "w": 2,
    "d": 2,
@@ -510,58 +474,76 @@
    "kind": "rock"
   },
   {
-   "id": "o-t17-wall-7",
-   "x": 82,
-   "z": 19,
-   "w": 1,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
+   "id": "o-t42-tree-1",
+   "x": 1,
+   "z": 20,
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
   },
   {
-   "id": "o-t17-wall-8",
-   "x": 84,
-   "z": 19,
-   "w": 1,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t02-wall-13",
-   "x": 90,
-   "z": 19,
-   "w": 7,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t42-rock-1",
-   "x": 106,
-   "z": 19,
-   "w": 3,
-   "d": 3,
+   "id": "o-t46-rock-1",
+   "x": 35,
+   "z": 20,
+   "w": 2,
+   "d": 2,
    "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t17-wall-9",
-   "x": 74,
+   "id": "o-t47-car-low-1",
+   "x": 43,
+   "z": 20,
+   "w": 3,
+   "d": 2,
+   "height": 1.1,
+   "kind": "car"
+  },
+  {
+   "id": "o-t19-wall-3",
+   "x": 71,
+   "z": 20,
+   "w": 4,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t19-wall-4",
+   "x": 76,
+   "z": 20,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t48-rock-1",
+   "x": 83,
+   "z": 20,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t02-wall-13",
+   "x": 93,
+   "z": 20,
+   "w": 5,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t02-wall-14",
+   "x": 102,
    "z": 20,
    "w": 1,
    "d": 3,
    "height": 3,
    "kind": "wall"
-  },
-  {
-   "id": "o-t37-rock-low-3",
-   "x": 3,
-   "z": 21,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
   },
   {
    "id": "o-t00-wall-3",
@@ -573,112 +555,112 @@
    "kind": "wall"
   },
   {
-   "id": "o-t02-wall-14",
-   "x": 91,
+   "id": "o-t19-wall-5",
+   "x": 77,
    "z": 21,
-   "w": 4,
-   "d": 1,
+   "w": 1,
+   "d": 5,
    "height": 3,
    "kind": "wall"
+  },
+  {
+   "id": "o-t44-rock-low-3",
+   "x": 17,
+   "z": 22,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t44-rock-low-4",
+   "x": 22,
+   "z": 22,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
   },
   {
    "id": "o-t02-wall-15",
+   "x": 90,
+   "z": 22,
+   "w": 5,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t02-wall-16",
    "x": 97,
-   "z": 21,
-   "w": 4,
+   "z": 22,
+   "w": 5,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t37-rock-low-4",
-   "x": 6,
-   "z": 22,
+   "id": "o-t19-wall-6",
+   "x": 65,
+   "z": 25,
    "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t40-rock-low-3",
-   "x": 42,
-   "z": 22,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t40-rock-low-4",
-   "x": 46,
-   "z": 22,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t17-wall-10",
-   "x": 75,
-   "z": 22,
-   "w": 4,
-   "d": 1,
+   "d": 4,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t17-wall-11",
-   "x": 81,
-   "z": 22,
-   "w": 4,
-   "d": 1,
+   "id": "o-t19-wall-7",
+   "x": 74,
+   "z": 25,
+   "w": 1,
+   "d": 5,
    "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t53-rock-low-1",
+   "x": 94,
+   "z": 25,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t54-wall-low-1",
+   "x": 97,
+   "z": 25,
+   "w": 2,
+   "d": 1,
+   "height": 1,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t54-wall-low-2",
+   "x": 100,
+   "z": 25,
+   "w": 3,
+   "d": 1,
+   "height": 1,
    "kind": "wall"
   },
   {
    "id": "o-t03-wall-1",
-   "x": 12,
-   "z": 25,
-   "w": 6,
+   "x": 10,
+   "z": 26,
+   "w": 10,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t49-car-low-1",
-   "x": 82,
-   "z": 25,
-   "w": 3,
+   "id": "o-t51-tree-1",
+   "x": 29,
+   "z": 26,
+   "w": 2,
    "d": 2,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t03-wall-2",
-   "x": 12,
-   "z": 26,
-   "w": 1,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t03-wall-3",
-   "x": 19,
-   "z": 26,
-   "w": 1,
-   "d": 7,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t46-rock-1",
-   "x": 42,
-   "z": 26,
-   "w": 3,
-   "d": 3,
-   "height": 2.6,
-   "kind": "rock"
+   "height": 5,
+   "kind": "tree"
   },
   {
    "id": "o-t00-wall-4",
@@ -690,119 +672,119 @@
    "kind": "wall"
   },
   {
-   "id": "o-t47-rock-1",
-   "x": 67,
+   "id": "o-t19-wall-8",
+   "x": 68,
    "z": 26,
-   "w": 3,
+   "w": 1,
    "d": 3,
-   "height": 2.6,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t53-rock-low-2",
+   "x": 91,
+   "z": 26,
+   "w": 1,
+   "d": 1,
+   "height": 1,
    "kind": "rock"
   },
   {
-   "id": "o-t43-rock-1",
+   "id": "o-t54-wall-low-3",
+   "x": 102,
+   "z": 26,
+   "w": 1,
+   "d": 3,
+   "height": 1,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t50-car-low-1",
    "x": 4,
    "z": 27,
+   "w": 2,
+   "d": 3,
+   "height": 1.1,
+   "kind": "car"
+  },
+  {
+   "id": "o-t03-wall-2",
+   "x": 19,
+   "z": 27,
+   "w": 1,
+   "d": 2,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t16-wall-1",
+   "x": 38,
+   "z": 27,
+   "w": 1,
+   "d": 8,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t19-wall-9",
+   "x": 69,
+   "z": 27,
+   "w": 5,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t03-wall-3",
+   "x": 10,
+   "z": 28,
+   "w": 8,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t03-wall-4",
+   "x": 21,
+   "z": 28,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t55-rock-1",
+   "x": 107,
+   "z": 28,
    "w": 2,
    "d": 2,
    "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t03-wall-4",
-   "x": 21,
-   "z": 27,
+   "id": "o-t03-wall-5",
+   "x": 10,
+   "z": 29,
+   "w": 1,
+   "d": 2,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t03-wall-6",
+   "x": 17,
+   "z": 29,
    "w": 1,
    "d": 4,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t47-wall-1",
-   "x": 65,
-   "z": 27,
-   "w": 1,
-   "d": 3,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t48-rock-1",
-   "x": 74,
-   "z": 27,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t19-wall-1",
-   "x": 91,
-   "z": 27,
-   "w": 6,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t19-wall-2",
-   "x": 98,
-   "z": 27,
-   "w": 3,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t03-wall-5",
-   "x": 10,
-   "z": 28,
-   "w": 3,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t03-wall-6",
-   "x": 14,
-   "z": 28,
-   "w": 4,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t44-rock-1",
-   "x": 27,
-   "z": 28,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t45-tree-1",
-   "x": 33,
-   "z": 28,
-   "w": 2,
-   "d": 2,
-   "height": 5,
-   "kind": "tree"
-  },
-  {
-   "id": "o-t19-wall-3",
-   "x": 91,
-   "z": 28,
-   "w": 1,
-   "d": 3,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
    "id": "o-t03-wall-7",
-   "x": 10,
+   "x": 22,
    "z": 29,
    "w": 1,
-   "d": 9,
+   "d": 5,
    "height": 3,
    "kind": "wall"
   },
@@ -816,30 +798,30 @@
    "kind": "wall"
   },
   {
-   "id": "o-t49-car-low-2",
-   "x": 82,
+   "id": "o-t19-wall-10",
+   "x": 73,
    "z": 29,
-   "w": 3,
-   "d": 2,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t03-wall-8",
-   "x": 12,
-   "z": 30,
-   "w": 5,
+   "w": 1,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t46-wall-1",
-   "x": 43,
+   "id": "o-t03-wall-8",
+   "x": 19,
    "z": 30,
-   "w": 3,
-   "d": 1,
+   "w": 1,
+   "d": 4,
    "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t16-wall-low-1",
+   "x": 44,
+   "z": 30,
+   "w": 1,
+   "d": 5,
+   "height": 1,
    "kind": "wall"
   },
   {
@@ -852,151 +834,106 @@
    "kind": "wall"
   },
   {
-   "id": "o-t03-wall-9",
-   "x": 12,
-   "z": 31,
+   "id": "o-t53-rock-low-3",
+   "x": 90,
+   "z": 30,
    "w": 1,
-   "d": 7,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t53-rock-low-4",
+   "x": 94,
+   "z": 30,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t03-wall-9",
+   "x": 10,
+   "z": 32,
+   "w": 1,
+   "d": 6,
    "height": 3,
    "kind": "wall"
   },
   {
    "id": "o-t03-wall-10",
-   "x": 16,
-   "z": 31,
-   "w": 1,
-   "d": 2,
+   "x": 12,
+   "z": 32,
+   "w": 2,
+   "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t19-wall-4",
-   "x": 91,
+   "id": "o-t03-wall-11",
+   "x": 15,
    "z": 32,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t56-rock-1",
+   "x": 5,
+   "z": 33,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t03-wall-12",
+   "x": 12,
+   "z": 33,
    "w": 1,
    "d": 3,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t51-rock-low-1",
-   "x": 6,
-   "z": 33,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t03-wall-11",
-   "x": 21,
-   "z": 33,
-   "w": 1,
+   "id": "o-t12-wall-1",
+   "x": 81,
+   "z": 34,
+   "w": 2,
    "d": 5,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t55-rock-1",
-   "x": 49,
-   "z": 33,
+   "id": "o-t61-car-low-1",
+   "x": 106,
+   "z": 34,
    "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t58-rock-low-1",
-   "x": 105,
-   "z": 33,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t58-rock-low-2",
-   "x": 109,
-   "z": 33,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t51-rock-low-2",
-   "x": 3,
-   "z": 34,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t03-wall-12",
-   "x": 16,
-   "z": 34,
-   "w": 1,
-   "d": 2,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t53-wall-1",
-   "x": 38,
-   "z": 34,
-   "w": 1,
    "d": 3,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t54-rock-1",
-   "x": 43,
-   "z": 34,
-   "w": 2,
-   "d": 1,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t19-rock-low-1",
-   "x": 96,
-   "z": 34,
-   "w": 3,
-   "d": 2,
-   "height": 1,
-   "kind": "rock"
+   "height": 1.1,
+   "kind": "car"
   },
   {
    "id": "o-t03-wall-13",
-   "x": 17,
+   "x": 15,
    "z": 35,
-   "w": 3,
+   "w": 7,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t53-rock-1",
-   "x": 34,
+   "id": "o-t57-rock-1",
+   "x": 28,
    "z": 35,
-   "w": 3,
-   "d": 3,
+   "w": 2,
+   "d": 2,
    "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t54-rock-2",
-   "x": 43,
-   "z": 35,
-   "w": 1,
-   "d": 1,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t54-wall-1",
+   "id": "o-t16-wall-2",
    "x": 44,
    "z": 35,
    "w": 1,
@@ -1005,53 +942,35 @@
    "kind": "wall"
   },
   {
-   "id": "o-t55-wall-1",
+   "id": "o-t13-wall-1",
    "x": 49,
    "z": 35,
-   "w": 33,
+   "w": 32,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t16-wall-1",
+   "id": "o-t12-wall-2",
+   "x": 73,
+   "z": 36,
+   "w": 1,
+   "d": 3,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t12-wall-3",
    "x": 76,
    "z": 36,
-   "w": 1,
-   "d": 2,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t57-wall-1",
-   "x": 81,
-   "z": 36,
-   "w": 1,
-   "d": 9,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t03-wall-14",
-   "x": 13,
-   "z": 37,
-   "w": 2,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t03-wall-15",
-   "x": 16,
-   "z": 37,
    "w": 5,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t55-rock-2",
-   "x": 53,
+   "id": "o-t56-rock-2",
+   "x": 1,
    "z": 37,
    "w": 2,
    "d": 2,
@@ -1059,53 +978,53 @@
    "kind": "rock"
   },
   {
-   "id": "o-t16-rock-low-1",
-   "x": 68,
+   "id": "o-t03-wall-14",
+   "x": 11,
    "z": 37,
-   "w": 2,
-   "d": 3,
-   "height": 1,
-   "kind": "rock"
+   "w": 4,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
   },
   {
-   "id": "o-t58-rock-low-3",
-   "x": 108,
+   "id": "o-t03-wall-15",
+   "x": 17,
    "z": 37,
-   "w": 1,
+   "w": 4,
    "d": 1,
-   "height": 1,
-   "kind": "rock"
+   "height": 3,
+   "kind": "wall"
   },
   {
-   "id": "o-t51-rock-low-3",
-   "x": 2,
-   "z": 38,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
+   "id": "o-t16-car-low-1",
+   "x": 37,
+   "z": 37,
+   "w": 3,
+   "d": 2,
+   "height": 1.1,
+   "kind": "car"
   },
   {
-   "id": "o-t51-rock-low-4",
-   "x": 6,
-   "z": 38,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t58-rock-low-4",
-   "x": 105,
-   "z": 38,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t16-wall-2",
+   "id": "o-t12-wall-4",
    "x": 76,
+   "z": 37,
+   "w": 1,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t12-wall-5",
+   "x": 85,
+   "z": 38,
+   "w": 1,
+   "d": 6,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t12-wall-6",
+   "x": 81,
    "z": 39,
    "w": 1,
    "d": 6,
@@ -1113,8 +1032,17 @@
    "kind": "wall"
   },
   {
+   "id": "o-t13-car-low-1",
+   "x": 49,
+   "z": 40,
+   "w": 2,
+   "d": 3,
+   "height": 1.1,
+   "kind": "car"
+  },
+  {
    "id": "o-t64-rock-low-1",
-   "x": 105,
+   "x": 17,
    "z": 41,
    "w": 1,
    "d": 1,
@@ -1122,286 +1050,223 @@
    "kind": "rock"
   },
   {
-   "id": "o-t05-car-low-1",
-   "x": 35,
-   "z": 42,
-   "w": 1,
-   "d": 2,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t62-rock-low-1",
-   "x": 57,
-   "z": 42,
+   "id": "o-t64-rock-low-2",
+   "x": 21,
+   "z": 41,
    "w": 1,
    "d": 1,
    "height": 1,
    "kind": "rock"
   },
   {
-   "id": "o-t63-tree-1",
-   "x": 82,
+   "id": "o-t05-wall-1",
+   "x": 25,
+   "z": 41,
+   "w": 3,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t05-wall-2",
+   "x": 29,
+   "z": 41,
+   "w": 5,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t05-wall-3",
+   "x": 35,
+   "z": 41,
+   "w": 3,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t13-wall-2",
+   "x": 53,
+   "z": 41,
+   "w": 8,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t12-wall-7",
+   "x": 73,
+   "z": 41,
+   "w": 1,
+   "d": 5,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t63-rock-1",
+   "x": 11,
+   "z": 42,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t05-wall-4",
+   "x": 25,
    "z": 42,
    "w": 1,
-   "d": 2,
-   "height": 5,
-   "kind": "tree"
+   "d": 13,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t05-wall-5",
+   "x": 31,
+   "z": 42,
+   "w": 1,
+   "d": 13,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t05-wall-6",
+   "x": 37,
+   "z": 42,
+   "w": 1,
+   "d": 13,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t66-car-low-1",
+   "x": 66,
+   "z": 42,
+   "w": 2,
+   "d": 3,
+   "height": 1.1,
+   "kind": "car"
   },
   {
    "id": "o-t07-wall-1",
    "x": 93,
    "z": 42,
    "w": 2,
-   "d": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t12-wall-8",
+   "x": 79,
+   "z": 43,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t12-wall-9",
+   "x": 82,
+   "z": 43,
+   "w": 1,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t12-wall-10",
+   "x": 84,
+   "z": 43,
+   "w": 1,
+   "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
    "id": "o-t07-wall-2",
+   "x": 93,
+   "z": 43,
+   "w": 1,
+   "d": 4,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t07-wall-3",
    "x": 99,
-   "z": 42,
+   "z": 43,
    "w": 1,
    "d": 3,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t07-wall-3",
+   "id": "o-t07-wall-4",
    "x": 102,
-   "z": 42,
+   "z": 43,
+   "w": 1,
+   "d": 4,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t62-rock-1",
+   "x": 3,
+   "z": 44,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t07-wall-5",
+   "x": 94,
+   "z": 44,
+   "w": 5,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t64-rock-low-3",
+   "x": 20,
+   "z": 45,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t12-wall-11",
+   "x": 74,
+   "z": 45,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t64-rock-low-4",
+   "x": 17,
+   "z": 46,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t07-wall-6",
+   "x": 90,
+   "z": 46,
    "w": 1,
    "d": 6,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t64-rock-low-2",
-   "x": 108,
-   "z": 42,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t59-tree-1",
-   "x": 2,
-   "z": 43,
-   "w": 2,
-   "d": 2,
-   "height": 5,
-   "kind": "tree"
-  },
-  {
-   "id": "o-t05-car-1",
-   "x": 27,
-   "z": 43,
-   "w": 2,
-   "d": 1,
-   "height": 2.4,
-   "kind": "car"
-  },
-  {
-   "id": "o-t05-car-2",
-   "x": 30,
-   "z": 43,
-   "w": 3,
-   "d": 1,
-   "height": 2.4,
-   "kind": "car"
-  },
-  {
-   "id": "o-t62-rock-low-2",
-   "x": 61,
-   "z": 43,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t07-wall-4",
-   "x": 95,
-   "z": 43,
-   "w": 4,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t59-tree-2",
-   "x": 5,
-   "z": 44,
-   "w": 2,
-   "d": 2,
-   "height": 5,
-   "kind": "tree"
-  },
-  {
-   "id": "o-t60-tree-1",
-   "x": 9,
-   "z": 44,
-   "w": 2,
-   "d": 2,
-   "height": 5,
-   "kind": "tree"
-  },
-  {
-   "id": "o-t05-car-3",
-   "x": 26,
-   "z": 44,
-   "w": 1,
-   "d": 4,
-   "height": 2.4,
-   "kind": "car"
-  },
-  {
-   "id": "o-t05-car-4",
-   "x": 35,
-   "z": 44,
-   "w": 1,
-   "d": 3,
-   "height": 2.4,
-   "kind": "car"
-  },
-  {
-   "id": "o-t16-wall-3",
-   "x": 69,
-   "z": 44,
-   "w": 3,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t16-wall-4",
-   "x": 73,
-   "z": 44,
-   "w": 3,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t07-wall-5",
-   "x": 93,
-   "z": 44,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t07-wall-6",
-   "x": 90,
-   "z": 45,
-   "w": 1,
-   "d": 7,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t14-wall-low-1",
-   "x": 49,
-   "z": 46,
-   "w": 5,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t62-rock-low-3",
-   "x": 57,
-   "z": 46,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t62-rock-low-4",
-   "x": 62,
-   "z": 46,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t64-rock-low-3",
-   "x": 105,
-   "z": 46,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t64-rock-low-4",
-   "x": 109,
-   "z": 46,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t05-car-5",
-   "x": 29,
-   "z": 47,
-   "w": 2,
-   "d": 2,
-   "height": 2.4,
-   "kind": "car"
-  },
-  {
-   "id": "o-t05-car-low-2",
-   "x": 31,
-   "z": 47,
-   "w": 1,
-   "d": 2,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t14-crate-low-1",
-   "x": 42,
-   "z": 47,
-   "w": 2,
-   "d": 2,
-   "height": 1,
-   "kind": "crate"
-  },
-  {
-   "id": "o-t14-wall-low-2",
-   "x": 49,
-   "z": 47,
-   "w": 1,
-   "d": 2,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t65-rock-low-1",
-   "x": 2,
-   "z": 49,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t65-rock-low-2",
-   "x": 6,
-   "z": 49,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t67-rock-1",
+   "id": "o-t70-rock-1",
    "x": 21,
    "z": 49,
    "w": 2,
@@ -1410,34 +1275,7 @@
    "kind": "rock"
   },
   {
-   "id": "o-t05-car-low-3",
-   "x": 26,
-   "z": 49,
-   "w": 1,
-   "d": 4,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t05-car-low-4",
-   "x": 35,
-   "z": 49,
-   "w": 1,
-   "d": 4,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t69-rock-1",
-   "x": 65,
-   "z": 49,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t71-wall-1",
+   "id": "o-t74-wall-1",
    "x": 81,
    "z": 49,
    "w": 1,
@@ -1450,27 +1288,27 @@
    "x": 102,
    "z": 49,
    "w": 1,
-   "d": 6,
+   "d": 5,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t14-wall-low-3",
-   "x": 49,
-   "z": 50,
-   "w": 1,
-   "d": 3,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t70-rock-1",
-   "x": 75,
+   "id": "o-t74-rock-1",
+   "x": 83,
    "z": 50,
    "w": 2,
    "d": 2,
    "height": 2.6,
    "kind": "rock"
+  },
+  {
+   "id": "o-t18-wall-1",
+   "x": 49,
+   "z": 51,
+   "w": 1,
+   "d": 8,
+   "height": 3,
+   "kind": "wall"
   },
   {
    "id": "o-t07-wall-8",
@@ -1483,7 +1321,7 @@
   },
   {
    "id": "o-t07-wall-9",
-   "x": 94,
+   "x": 93,
    "z": 51,
    "w": 4,
    "d": 1,
@@ -1491,62 +1329,8 @@
    "kind": "wall"
   },
   {
-   "id": "o-t66-car-low-1",
-   "x": 10,
-   "z": 52,
-   "w": 3,
-   "d": 2,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t05-car-low-5",
-   "x": 27,
-   "z": 52,
-   "w": 4,
-   "d": 1,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t05-car-low-6",
-   "x": 32,
-   "z": 52,
-   "w": 3,
-   "d": 1,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t14-wall-low-4",
-   "x": 42,
-   "z": 52,
-   "w": 2,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t14-wall-low-5",
-   "x": 45,
-   "z": 52,
-   "w": 2,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t14-wall-low-6",
-   "x": 50,
-   "z": 52,
-   "w": 4,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t68-rock-1",
-   "x": 59,
+   "id": "o-t69-rock-1",
+   "x": 11,
    "z": 52,
    "w": 2,
    "d": 2,
@@ -1554,16 +1338,7 @@
    "kind": "rock"
   },
   {
-   "id": "o-t65-rock-low-3",
-   "x": 3,
-   "z": 53,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t67-rock-2",
+   "id": "o-t70-rock-2",
    "x": 17,
    "z": 53,
    "w": 2,
@@ -1572,26 +1347,17 @@
    "kind": "rock"
   },
   {
-   "id": "o-t69-rock-2",
-   "x": 69,
-   "z": 53,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t65-rock-low-4",
-   "x": 6,
-   "z": 54,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
    "id": "o-t07-wall-10",
    "x": 100,
+   "z": 53,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t05-wall-7",
+   "x": 26,
    "z": 54,
    "w": 2,
    "d": 1,
@@ -1599,8 +1365,53 @@
    "kind": "wall"
   },
   {
-   "id": "o-t74-wall-1",
-   "x": 75,
+   "id": "o-t05-wall-8",
+   "x": 29,
+   "z": 54,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t05-wall-9",
+   "x": 32,
+   "z": 54,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t05-wall-10",
+   "x": 35,
+   "z": 54,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t18-wall-low-1",
+   "x": 43,
+   "z": 54,
+   "w": 1,
+   "d": 5,
+   "height": 1,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t76-wall-low-1",
+   "x": 1,
+   "z": 57,
+   "w": 1,
+   "d": 2,
+   "height": 1,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t06-wall-1",
+   "x": 58,
    "z": 57,
    "w": 6,
    "d": 1,
@@ -1608,79 +1419,61 @@
    "kind": "wall"
   },
   {
-   "id": "o-t76-rock-1",
-   "x": 93,
+   "id": "o-t06-wall-2",
+   "x": 65,
    "z": 57,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
+   "w": 6,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t14-wall-1",
+   "x": 73,
+   "z": 57,
+   "w": 8,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t81-rock-low-1",
+   "x": 105,
+   "z": 57,
+   "w": 1,
+   "d": 1,
+   "height": 1,
    "kind": "rock"
   },
   {
-   "id": "o-t08-car-low-1",
-   "x": 13,
-   "z": 58,
-   "w": 4,
+   "id": "o-t81-rock-low-2",
+   "x": 109,
+   "z": 57,
+   "w": 1,
    "d": 1,
-   "height": 1.1,
-   "kind": "car"
+   "height": 1,
+   "kind": "rock"
   },
   {
-   "id": "o-t08-car-1",
-   "x": 18,
+   "id": "o-t06-wall-3",
+   "x": 70,
    "z": 58,
-   "w": 4,
-   "d": 1,
-   "height": 2.4,
-   "kind": "car"
-  },
-  {
-   "id": "o-t18-wall-1",
-   "x": 36,
-   "z": 58,
-   "w": 3,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t13-wall-1",
-   "x": 45,
-   "z": 58,
-   "w": 2,
+   "w": 1,
    "d": 2,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-2",
-   "x": 51,
+   "id": "o-t14-wall-2",
+   "x": 73,
    "z": 58,
    "w": 1,
-   "d": 3,
+   "d": 5,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-3",
-   "x": 54,
-   "z": 58,
-   "w": 1,
-   "d": 6,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t06-wall-1",
-   "x": 65,
-   "z": 58,
-   "w": 2,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t74-wall-2",
+   "id": "o-t14-wall-3",
    "x": 75,
    "z": 58,
    "w": 1,
@@ -1689,71 +1482,53 @@
    "kind": "wall"
   },
   {
-   "id": "o-t18-wall-2",
-   "x": 38,
-   "z": 59,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t13-wall-4",
-   "x": 47,
-   "z": 59,
-   "w": 4,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t06-wall-2",
-   "x": 57,
-   "z": 59,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t06-wall-3",
-   "x": 60,
-   "z": 59,
-   "w": 1,
-   "d": 3,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t06-wall-4",
-   "x": 66,
-   "z": 59,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t74-car-low-1",
-   "x": 76,
+   "id": "o-t08-car-low-1",
+   "x": 9,
    "z": 59,
    "w": 2,
-   "d": 3,
+   "d": 2,
    "height": 1.1,
    "kind": "car"
   },
   {
-   "id": "o-t75-wall-low-1",
-   "x": 81,
+   "id": "o-t77-rock-1",
+   "x": 28,
    "z": 59,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t78-rock-1",
+   "x": 34,
+   "z": 59,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t76-wall-low-2",
+   "x": 1,
+   "z": 60,
    "w": 1,
-   "d": 4,
+   "d": 3,
    "height": 1,
    "kind": "wall"
   },
   {
-   "id": "o-t08-car-2",
+   "id": "o-t08-car-1",
    "x": 12,
+   "z": 60,
+   "w": 1,
+   "d": 3,
+   "height": 2.4,
+   "kind": "car"
+  },
+  {
+   "id": "o-t08-car-2",
+   "x": 15,
    "z": 60,
    "w": 2,
    "d": 2,
@@ -1761,17 +1536,26 @@
    "kind": "car"
   },
   {
-   "id": "o-t18-wall-3",
-   "x": 26,
+   "id": "o-t08-car-3",
+   "x": 18,
    "z": 60,
    "w": 2,
+   "d": 2,
+   "height": 2.4,
+   "kind": "car"
+  },
+  {
+   "id": "o-t06-wall-4",
+   "x": 58,
+   "z": 60,
+   "w": 3,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t18-wall-4",
-   "x": 29,
+   "id": "o-t14-wall-4",
+   "x": 78,
    "z": 60,
    "w": 4,
    "d": 1,
@@ -1779,62 +1563,35 @@
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-5",
-   "x": 45,
+   "id": "o-t14-wall-5",
+   "x": 84,
    "z": 60,
-   "w": 1,
-   "d": 4,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t06-wall-5",
-   "x": 61,
-   "z": 60,
-   "w": 5,
+   "w": 2,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t77-car-low-1",
-   "x": 99,
-   "z": 60,
+   "id": "o-t08-car-low-2",
+   "x": 21,
+   "z": 61,
+   "w": 1,
+   "d": 4,
+   "height": 1.1,
+   "kind": "car"
+  },
+  {
+   "id": "o-t18-car-low-1",
+   "x": 48,
+   "z": 61,
    "w": 3,
    "d": 2,
    "height": 1.1,
    "kind": "car"
   },
   {
-   "id": "o-t73-tree-1",
-   "x": 2,
-   "z": 61,
-   "w": 2,
-   "d": 2,
-   "height": 5,
-   "kind": "tree"
-  },
-  {
-   "id": "o-t08-car-low-2",
-   "x": 19,
-   "z": 61,
-   "w": 2,
-   "d": 2,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t18-wall-5",
-   "x": 26,
-   "z": 61,
-   "w": 1,
-   "d": 5,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t13-wall-6",
-   "x": 42,
+   "id": "o-t06-wall-5",
+   "x": 59,
    "z": 61,
    "w": 1,
    "d": 7,
@@ -1842,81 +1599,81 @@
    "kind": "wall"
   },
   {
-   "id": "o-t76-rock-2",
-   "x": 89,
+   "id": "o-t14-wall-6",
+   "x": 85,
    "z": 61,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t06-wall-6",
-   "x": 69,
-   "z": 62,
    "w": 1,
    "d": 6,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t75-wall-low-2",
-   "x": 82,
-   "z": 62,
-   "w": 2,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t75-wall-low-3",
-   "x": 85,
-   "z": 62,
-   "w": 2,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t08-car-3",
-   "x": 12,
-   "z": 63,
+   "id": "o-t79-tree-1",
+   "x": 92,
+   "z": 61,
    "w": 2,
    "d": 2,
-   "height": 2.4,
-   "kind": "car"
+   "height": 5,
+   "kind": "tree"
   },
   {
-   "id": "o-t08-car-4",
-   "x": 18,
-   "z": 64,
-   "w": 3,
-   "d": 2,
-   "height": 2.4,
-   "kind": "car"
-  },
-  {
-   "id": "o-t18-wall-6",
-   "x": 29,
-   "z": 65,
+   "id": "o-t81-rock-low-3",
+   "x": 108,
+   "z": 61,
    "w": 1,
-   "d": 5,
-   "height": 3,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t76-wall-low-3",
+   "x": 2,
+   "z": 62,
+   "w": 3,
+   "d": 1,
+   "height": 1,
    "kind": "wall"
   },
   {
-   "id": "o-t18-wall-7",
-   "x": 38,
-   "z": 65,
+   "id": "o-t06-wall-6",
+   "x": 67,
+   "z": 62,
    "w": 1,
    "d": 4,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-7",
-   "x": 54,
-   "z": 65,
+   "id": "o-t81-rock-low-4",
+   "x": 105,
+   "z": 62,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t08-car-low-3",
+   "x": 12,
+   "z": 64,
+   "w": 1,
+   "d": 4,
+   "height": 1.1,
+   "kind": "car"
+  },
+  {
+   "id": "o-t14-wall-7",
+   "x": 73,
+   "z": 64,
+   "w": 1,
+   "d": 6,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t14-wall-8",
+   "x": 82,
+   "z": 64,
    "w": 1,
    "d": 6,
    "height": 3,
@@ -1924,70 +1681,106 @@
   },
   {
    "id": "o-t06-wall-7",
-   "x": 57,
+   "x": 58,
    "z": 65,
-   "w": 1,
-   "d": 5,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t82-tree-1",
-   "x": 90,
-   "z": 65,
-   "w": 2,
-   "d": 2,
-   "height": 5,
-   "kind": "tree"
-  },
-  {
-   "id": "o-t79-rock-1",
-   "x": 3,
-   "z": 66,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t18-wall-8",
-   "x": 35,
-   "z": 66,
    "w": 1,
    "d": 3,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t08-car-5",
-   "x": 12,
-   "z": 67,
-   "w": 3,
-   "d": 1,
+   "id": "o-t08-car-4",
+   "x": 14,
+   "z": 66,
+   "w": 2,
+   "d": 3,
    "height": 2.4,
    "kind": "car"
   },
   {
-   "id": "o-t08-car-low-3",
-   "x": 16,
-   "z": 67,
-   "w": 4,
+   "id": "o-t08-car-5",
+   "x": 21,
+   "z": 66,
+   "w": 1,
+   "d": 4,
+   "height": 2.4,
+   "kind": "car"
+  },
+  {
+   "id": "o-t11-wall-1",
+   "x": 26,
+   "z": 66,
+   "w": 1,
+   "d": 7,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t83-rock-1",
+   "x": 43,
+   "z": 66,
+   "w": 1,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t84-rock-1",
+   "x": 51,
+   "z": 66,
+   "w": 2,
    "d": 1,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t06-wall-8",
+   "x": 60,
+   "z": 66,
+   "w": 4,
+   "d": 2,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t08-car-low-4",
+   "x": 17,
+   "z": 67,
+   "w": 2,
+   "d": 2,
    "height": 1.1,
    "kind": "car"
   },
   {
-   "id": "o-t18-wall-9",
-   "x": 30,
+   "id": "o-t83-rock-2",
+   "x": 44,
    "z": 67,
-   "w": 5,
+   "w": 1,
+   "d": 1,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t84-wall-1",
+   "x": 48,
+   "z": 67,
+   "w": 10,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-8",
-   "x": 43,
+   "id": "o-t06-wall-9",
+   "x": 64,
+   "z": 67,
+   "w": 9,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t14-wall-9",
+   "x": 74,
    "z": 67,
    "w": 1,
    "d": 1,
@@ -1995,53 +1788,17 @@
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-9",
-   "x": 46,
+   "id": "o-t14-wall-10",
+   "x": 76,
    "z": 67,
-   "w": 8,
-   "d": 1,
+   "w": 1,
+   "d": 3,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-10",
-   "x": 55,
-   "z": 67,
-   "w": 2,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t06-wall-8",
-   "x": 58,
-   "z": 67,
-   "w": 11,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t06-wall-9",
-   "x": 70,
-   "z": 67,
-   "w": 5,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t80-rock-1",
-   "x": 75,
-   "z": 68,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t81-tree-1",
-   "x": 81,
+   "id": "o-t82-tree-1",
+   "x": 5,
    "z": 68,
    "w": 2,
    "d": 2,
@@ -2049,17 +1806,26 @@
    "kind": "tree"
   },
   {
-   "id": "o-t08-car-low-4",
-   "x": 11,
-   "z": 69,
-   "w": 2,
+   "id": "o-t06-wall-10",
+   "x": 67,
+   "z": 68,
+   "w": 1,
    "d": 2,
-   "height": 1.1,
-   "kind": "car"
+   "height": 3,
+   "kind": "wall"
   },
   {
-   "id": "o-t18-wall-10",
-   "x": 30,
+   "id": "o-t14-wall-11",
+   "x": 77,
+   "z": 68,
+   "w": 5,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t11-wall-2",
+   "x": 27,
    "z": 69,
    "w": 1,
    "d": 1,
@@ -2067,31 +1833,40 @@
    "kind": "wall"
   },
   {
-   "id": "o-t06-wall-10",
-   "x": 58,
+   "id": "o-t11-wall-3",
+   "x": 29,
    "z": 69,
-   "w": 2,
+   "w": 4,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t13-wall-11",
-   "x": 52,
-   "z": 70,
-   "w": 2,
+   "id": "o-t06-wall-11",
+   "x": 61,
+   "z": 69,
+   "w": 6,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t84-rock-1",
-   "x": 57,
-   "z": 73,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
+   "id": "o-t14-wall-12",
+   "x": 81,
+   "z": 69,
+   "w": 1,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t11-wall-4",
+   "x": 38,
+   "z": 72,
+   "w": 1,
+   "d": 6,
+   "height": 3,
+   "kind": "wall"
   },
   {
    "id": "o-t04-wall-1",
@@ -2112,15 +1887,6 @@
    "kind": "wall"
   },
   {
-   "id": "o-t86-rock-1",
-   "x": 93,
-   "z": 73,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
    "id": "o-t04-wall-3",
    "x": 77,
    "z": 74,
@@ -2133,32 +1899,14 @@
    "id": "o-t01-wall-1",
    "x": 11,
    "z": 75,
-   "w": 2,
+   "w": 10,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t01-wall-2",
-   "x": 15,
-   "z": 75,
-   "w": 6,
-   "d": 1,
-   "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t11-wall-low-1",
-   "x": 30,
-   "z": 75,
-   "w": 5,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t12-tree-1",
-   "x": 51,
+   "id": "o-t17-tree-1",
+   "x": 43,
    "z": 75,
    "w": 2,
    "d": 2,
@@ -2166,37 +1914,37 @@
    "kind": "tree"
   },
   {
-   "id": "o-t83-rock-1",
-   "x": 3,
-   "z": 76,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t01-wall-3",
+   "id": "o-t01-wall-2",
    "x": 11,
    "z": 76,
    "w": 1,
-   "d": 9,
+   "d": 5,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t01-wall-4",
+   "id": "o-t01-wall-3",
    "x": 20,
    "z": 76,
    "w": 1,
-   "d": 2,
+   "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t12-rock-low-1",
+   "id": "o-t17-rock-low-1",
    "x": 47,
    "z": 76,
    "w": 2,
+   "d": 2,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t15-rock-low-1",
+   "x": 64,
+   "z": 76,
+   "w": 3,
    "d": 2,
    "height": 1,
    "kind": "rock"
@@ -2229,13 +1977,40 @@
    "kind": "wall"
   },
   {
-   "id": "o-t84-rock-2",
-   "x": 61,
-   "z": 77,
+   "id": "o-t85-tree-1",
+   "x": 93,
+   "z": 76,
    "w": 2,
    "d": 2,
-   "height": 2.6,
-   "kind": "rock"
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t11-wall-5",
+   "x": 34,
+   "z": 77,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t11-wall-6",
+   "x": 37,
+   "z": 77,
+   "w": 1,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t15-wall-1",
+   "x": 59,
+   "z": 77,
+   "w": 1,
+   "d": 3,
+   "height": 3,
+   "kind": "wall"
   },
   {
    "id": "o-t04-wall-7",
@@ -2274,16 +2049,7 @@
    "kind": "wall"
   },
   {
-   "id": "o-t86-rock-2",
-   "x": 89,
-   "z": 77,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t01-wall-5",
+   "id": "o-t01-wall-4",
    "x": 20,
    "z": 79,
    "w": 1,
@@ -2292,22 +2058,13 @@
    "kind": "wall"
   },
   {
-   "id": "o-t12-wall-1",
-   "x": 46,
+   "id": "o-t17-wall-1",
+   "x": 49,
    "z": 79,
    "w": 1,
    "d": 4,
    "height": 3,
    "kind": "wall"
-  },
-  {
-   "id": "o-t11-car-low-1",
-   "x": 37,
-   "z": 80,
-   "w": 2,
-   "d": 3,
-   "height": 1.1,
-   "kind": "car"
   },
   {
    "id": "o-t04-wall-11",
@@ -2319,8 +2076,26 @@
    "kind": "wall"
   },
   {
-   "id": "o-t87-rock-1",
-   "x": 1,
+   "id": "o-t87-rock-low-1",
+   "x": 25,
+   "z": 81,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t87-rock-low-2",
+   "x": 30,
+   "z": 81,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t88-rock-1",
+   "x": 37,
    "z": 81,
    "w": 2,
    "d": 2,
@@ -2328,30 +2103,12 @@
    "kind": "rock"
   },
   {
-   "id": "o-t11-wall-1",
-   "x": 27,
+   "id": "o-t15-wall-2",
+   "x": 59,
    "z": 81,
-   "w": 8,
-   "d": 1,
+   "w": 1,
+   "d": 4,
    "height": 3,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t88-wall-low-1",
-   "x": 57,
-   "z": 81,
-   "w": 2,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
-  },
-  {
-   "id": "o-t88-wall-low-2",
-   "x": 60,
-   "z": 81,
-   "w": 3,
-   "d": 1,
-   "height": 1,
    "kind": "wall"
   },
   {
@@ -2373,22 +2130,22 @@
    "kind": "wall"
   },
   {
-   "id": "o-t12-rock-1",
-   "x": 48,
+   "id": "o-t86-tree-1",
+   "x": 5,
+   "z": 82,
+   "w": 2,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t17-rock-1",
+   "x": 44,
    "z": 82,
    "w": 4,
    "d": 3,
    "height": 2.6,
    "kind": "rock"
-  },
-  {
-   "id": "o-t88-wall-low-3",
-   "x": 62,
-   "z": 82,
-   "w": 1,
-   "d": 3,
-   "height": 1,
-   "kind": "wall"
   },
   {
    "id": "o-t04-wall-14",
@@ -2405,6 +2162,15 @@
    "z": 82,
    "w": 2,
    "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t01-wall-5",
+   "x": 11,
+   "z": 83,
+   "w": 1,
+   "d": 2,
    "height": 3,
    "kind": "wall"
   },
@@ -2437,25 +2203,52 @@
   },
   {
    "id": "o-t01-wall-7",
-   "x": 19,
+   "x": 18,
    "z": 84,
-   "w": 1,
+   "w": 2,
    "d": 1,
    "height": 3,
    "kind": "wall"
   },
   {
-   "id": "o-t89-rock-1",
-   "x": 67,
+   "id": "o-t87-rock-low-3",
+   "x": 26,
    "z": 84,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
+   "w": 1,
+   "d": 1,
+   "height": 1,
    "kind": "rock"
   },
   {
-   "id": "o-t87-rock-2",
-   "x": 5,
+   "id": "o-t15-wall-3",
+   "x": 60,
+   "z": 84,
+   "w": 5,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t15-wall-4",
+   "x": 66,
+   "z": 84,
+   "w": 3,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t87-rock-low-4",
+   "x": 30,
+   "z": 85,
+   "w": 1,
+   "d": 1,
+   "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t88-rock-2",
+   "x": 33,
    "z": 85,
    "w": 2,
    "d": 2,
@@ -2481,26 +2274,17 @@
    "kind": "wall"
   },
   {
-   "id": "o-t94-rock-low-1",
-   "x": 30,
-   "z": 89,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t95-rock-1",
-   "x": 33,
+   "id": "o-t90-tree-1",
+   "x": 2,
    "z": 89,
    "w": 2,
    "d": 2,
-   "height": 2.6,
-   "kind": "rock"
+   "height": 5,
+   "kind": "tree"
   },
   {
-   "id": "o-t97-rock-1",
-   "x": 53,
+   "id": "o-t92-rock-1",
+   "x": 21,
    "z": 89,
    "w": 2,
    "d": 2,
@@ -2509,159 +2293,123 @@
   },
   {
    "id": "o-t93-rock-low-1",
-   "x": 22,
-   "z": 90,
+   "x": 26,
+   "z": 89,
    "w": 1,
    "d": 1,
    "height": 1,
    "kind": "rock"
-  },
-  {
-   "id": "o-t94-rock-low-2",
-   "x": 27,
-   "z": 90,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t98-car-low-1",
-   "x": 60,
-   "z": 90,
-   "w": 2,
-   "d": 3,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t100-rock-low-1",
-   "x": 81,
-   "z": 90,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t92-wall-low-1",
-   "x": 14,
-   "z": 91,
-   "w": 1,
-   "d": 4,
-   "height": 1,
-   "kind": "wall"
   },
   {
    "id": "o-t93-rock-low-2",
-   "x": 18,
-   "z": 91,
+   "x": 30,
+   "z": 89,
    "w": 1,
    "d": 1,
    "height": 1,
    "kind": "rock"
   },
   {
-   "id": "o-t100-rock-low-2",
-   "x": 85,
-   "z": 91,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t101-car-low-1",
-   "x": 90,
-   "z": 91,
-   "w": 2,
-   "d": 3,
-   "height": 1.1,
-   "kind": "car"
-  },
-  {
-   "id": "o-t96-tree-1",
-   "x": 45,
-   "z": 92,
+   "id": "o-t94-tree-1",
+   "x": 34,
+   "z": 89,
    "w": 2,
    "d": 2,
    "height": 5,
    "kind": "tree"
   },
   {
-   "id": "o-t99-rock-1",
-   "x": 75,
-   "z": 92,
+   "id": "o-t100-wall-low-1",
+   "x": 81,
+   "z": 89,
+   "w": 1,
+   "d": 2,
+   "height": 1,
+   "kind": "wall"
+  },
+  {
+   "id": "o-t101-rock-1",
+   "x": 93,
+   "z": 89,
    "w": 2,
    "d": 2,
    "height": 2.6,
    "kind": "rock"
   },
   {
-   "id": "o-t95-rock-2",
-   "x": 37,
-   "z": 93,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t97-rock-2",
-   "x": 49,
-   "z": 93,
-   "w": 2,
-   "d": 2,
-   "height": 2.6,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t92-wall-low-2",
+   "id": "o-t91-tree-1",
    "x": 9,
-   "z": 94,
+   "z": 90,
    "w": 2,
-   "d": 1,
+   "d": 2,
+   "height": 5,
+   "kind": "tree"
+  },
+  {
+   "id": "o-t96-car-low-1",
+   "x": 50,
+   "z": 90,
+   "w": 2,
+   "d": 3,
+   "height": 1.1,
+   "kind": "car"
+  },
+  {
+   "id": "o-t98-rock-1",
+   "x": 67,
+   "z": 90,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t99-car-low-1",
+   "x": 76,
+   "z": 90,
+   "w": 2,
+   "d": 3,
+   "height": 1.1,
+   "kind": "car"
+  },
+  {
+   "id": "o-t100-wall-low-2",
+   "x": 81,
+   "z": 92,
+   "w": 1,
+   "d": 3,
    "height": 1,
    "kind": "wall"
   },
   {
-   "id": "o-t92-wall-low-3",
-   "x": 12,
-   "z": 94,
+   "id": "o-t92-rock-2",
+   "x": 17,
+   "z": 93,
    "w": 2,
-   "d": 1,
-   "height": 1,
-   "kind": "wall"
+   "d": 2,
+   "height": 2.6,
+   "kind": "rock"
   },
   {
    "id": "o-t93-rock-low-3",
-   "x": 17,
-   "z": 94,
+   "x": 27,
+   "z": 93,
    "w": 1,
    "d": 1,
    "height": 1,
+   "kind": "rock"
+  },
+  {
+   "id": "o-t101-rock-2",
+   "x": 89,
+   "z": 93,
+   "w": 2,
+   "d": 2,
+   "height": 2.6,
    "kind": "rock"
   },
   {
    "id": "o-t93-rock-low-4",
-   "x": 22,
-   "z": 94,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t94-rock-low-3",
-   "x": 26,
-   "z": 94,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t94-rock-low-4",
    "x": 30,
    "z": 94,
    "w": 1,
@@ -2670,35 +2418,20 @@
    "kind": "rock"
   },
   {
-   "id": "o-t100-rock-low-3",
-   "x": 81,
+   "id": "o-t100-wall-low-3",
+   "x": 82,
    "z": 94,
-   "w": 1,
+   "w": 3,
    "d": 1,
    "height": 1,
-   "kind": "rock"
-  },
-  {
-   "id": "o-t100-rock-low-4",
-   "x": 86,
-   "z": 94,
-   "w": 1,
-   "d": 1,
-   "height": 1,
-   "kind": "rock"
+   "kind": "wall"
   }
  ],
  "windows": [
   {
-   "id": "w-t17-1",
-   "x": 76,
-   "z": 12,
-   "axis": "x"
-  },
-  {
    "id": "w-t02-1",
-   "x": 92,
-   "z": 13,
+   "x": 102,
+   "z": 19,
    "axis": "x"
   },
   {
@@ -2709,14 +2442,8 @@
   },
   {
    "id": "w-t19-1",
-   "x": 97,
-   "z": 27,
-   "axis": "z"
-  },
-  {
-   "id": "w-t03-1",
-   "x": 13,
-   "z": 28,
+   "x": 75,
+   "z": 20,
    "axis": "z"
   },
   {
@@ -2726,28 +2453,64 @@
    "axis": "x"
   },
   {
-   "id": "w-t16-1",
-   "x": 76,
-   "z": 38,
+   "id": "w-t03-1",
+   "x": 19,
+   "z": 29,
    "axis": "x"
   },
   {
-   "id": "w-t07-1",
-   "x": 102,
-   "z": 48,
-   "axis": "x"
-  },
-  {
-   "id": "w-t18-1",
+   "id": "w-t05-1",
    "x": 28,
-   "z": 60,
+   "z": 41,
    "axis": "z"
   },
   {
-   "id": "w-t13-1",
-   "x": 54,
-   "z": 64,
+   "id": "w-t05-2",
+   "x": 34,
+   "z": 41,
+   "axis": "z"
+  },
+  {
+   "id": "w-t12-1",
+   "x": 83,
+   "z": 43,
+   "axis": "z"
+  },
+  {
+   "id": "w-t07-1",
+   "x": 92,
+   "z": 51,
+   "axis": "z"
+  },
+  {
+   "id": "w-t05-3",
+   "x": 28,
+   "z": 54,
+   "axis": "z"
+  },
+  {
+   "id": "w-t05-4",
+   "x": 34,
+   "z": 54,
+   "axis": "z"
+  },
+  {
+   "id": "w-t06-1",
+   "x": 64,
+   "z": 57,
+   "axis": "z"
+  },
+  {
+   "id": "w-t14-1",
+   "x": 73,
+   "z": 63,
    "axis": "x"
+  },
+  {
+   "id": "w-t11-1",
+   "x": 28,
+   "z": 69,
+   "axis": "z"
   },
   {
    "id": "w-t04-1",
@@ -2756,10 +2519,22 @@
    "axis": "z"
   },
   {
+   "id": "w-t11-2",
+   "x": 36,
+   "z": 77,
+   "axis": "z"
+  },
+  {
    "id": "w-t01-1",
-   "x": 20,
-   "z": 78,
-   "axis": "x"
+   "x": 17,
+   "z": 84,
+   "axis": "z"
+  },
+  {
+   "id": "w-t15-1",
+   "x": 65,
+   "z": 84,
+   "axis": "z"
   },
   {
    "id": "w-t04-2",
@@ -2770,398 +2545,377 @@
  ],
  "pallets": [
   {
-   "id": "p-t17-1",
-   "x": 83,
-   "z": 20,
-   "axis": "x",
-   "length": 2
-  },
-  {
-   "id": "p-t42-1",
-   "x": 109,
-   "z": 20,
+   "id": "p-t02-1",
+   "x": 91,
+   "z": 10,
    "axis": "z",
    "length": 1
   },
   {
-   "id": "p-t47-1",
-   "x": 66,
-   "z": 27,
-   "axis": "z",
+   "id": "p-t02-2",
+   "x": 102,
+   "z": 13,
+   "axis": "x",
    "length": 1
   },
   {
-   "id": "p-t49-1",
-   "x": 83,
-   "z": 27,
-   "axis": "x",
-   "length": 2
-  },
-  {
-   "id": "p-t46-1",
-   "x": 43,
-   "z": 29,
-   "axis": "x",
+   "id": "p-t54-1",
+   "x": 99,
+   "z": 25,
+   "axis": "z",
    "length": 1
   },
   {
    "id": "p-t19-1",
-   "x": 91,
+   "x": 66,
+   "z": 27,
+   "axis": "z",
+   "length": 2
+  },
+  {
+   "id": "p-t03-1",
+   "x": 10,
    "z": 31,
    "axis": "x",
    "length": 1
   },
   {
-   "id": "p-t53-1",
-   "x": 37,
-   "z": 36,
-   "axis": "z",
-   "length": 1
-  },
-  {
-   "id": "p-t16-1",
-   "x": 72,
-   "z": 44,
+   "id": "p-t03-2",
+   "x": 14,
+   "z": 32,
    "axis": "z",
    "length": 1
   },
   {
    "id": "p-t07-1",
-   "x": 91,
-   "z": 46,
+   "x": 100,
+   "z": 44,
    "axis": "z",
    "length": 2
   },
   {
-   "id": "p-t14-1",
+   "id": "p-t18-1",
    "x": 49,
-   "z": 49,
+   "z": 59,
+   "axis": "x",
+   "length": 2
+  },
+  {
+   "id": "p-t08-1",
+   "x": 12,
+   "z": 63,
    "axis": "x",
    "length": 1
   },
   {
-   "id": "p-t06-1",
-   "x": 58,
-   "z": 60,
+   "id": "p-t14-1",
+   "x": 83,
+   "z": 65,
    "axis": "z",
    "length": 2
   },
   {
-   "id": "p-t75-1",
-   "x": 84,
-   "z": 62,
+   "id": "p-t04-1",
+   "x": 77,
+   "z": 77,
    "axis": "z",
    "length": 1
   },
   {
-   "id": "p-t08-1",
-   "x": 15,
-   "z": 67,
-   "axis": "z",
-   "length": 1
-  },
-  {
-   "id": "p-t18-1",
-   "x": 36,
-   "z": 67,
-   "axis": "z",
-   "length": 2
-  },
-  {
-   "id": "p-t11-1",
-   "x": 35,
-   "z": 81,
-   "axis": "z",
-   "length": 2
-  },
-  {
-   "id": "p-t88-1",
+   "id": "p-t15-1",
    "x": 59,
-   "z": 81,
-   "axis": "z",
+   "z": 80,
+   "axis": "x",
    "length": 1
   },
   {
-   "id": "p-t12-1",
-   "x": 47,
+   "id": "p-t01-1",
+   "x": 11,
+   "z": 81,
+   "axis": "x",
+   "length": 2
+  },
+  {
+   "id": "p-t04-2",
+   "x": 83,
    "z": 82,
    "axis": "z",
    "length": 1
   },
   {
-   "id": "p-t01-1",
-   "x": 17,
-   "z": 84,
-   "axis": "z",
-   "length": 2
+   "id": "p-t100-1",
+   "x": 81,
+   "z": 91,
+   "axis": "x",
+   "length": 1
   }
  ],
  "generators": [
   {
    "id": "g1",
-   "x": 18.5,
-   "z": 21.5
+   "x": 52.5,
+   "z": 76.5
   },
   {
    "id": "g2",
-   "x": 48.5,
-   "z": 65.5
+   "x": 106.5,
+   "z": 2.5
   },
   {
    "id": "g3",
-   "x": 68.5,
-   "z": 3.5
+   "x": 90.5,
+   "z": 58.5
   },
   {
    "id": "g4",
-   "x": 96.5,
-   "z": 22.5
+   "x": 59.5,
+   "z": 51.5
   },
   {
    "id": "g5",
-   "x": 5.5,
-   "z": 58.5
+   "x": 26.5,
+   "z": 10.5
   },
   {
    "id": "g6",
-   "x": 98.5,
-   "z": 58.5
+   "x": 37.5,
+   "z": 93.5
   },
   {
    "id": "g7",
-   "x": 22.5,
-   "z": 86.5
+   "x": 10.5,
+   "z": 65.5
   },
   {
    "id": "g8",
    "x": 58.5,
-   "z": 93.5
+   "z": 2.5
   },
   {
    "id": "g9",
-   "x": 46.5,
-   "z": 43.5
+   "x": 30.5,
+   "z": 73.5
   },
   {
    "id": "g10",
-   "x": 93.5,
-   "z": 90.5
+   "x": 109.5,
+   "z": 37.5
   },
   {
    "id": "g11",
-   "x": 20.5,
-   "z": 43.5
+   "x": 91.5,
+   "z": 84.5
   }
  ],
  "hooks": [
   {
    "id": "h01",
-   "x": 92.5,
-   "z": 2.5
+   "x": 50.5,
+   "z": 0.5
   },
   {
    "id": "h02",
-   "x": 32.5,
-   "z": 6.5
+   "x": 100.5,
+   "z": 0.5
   },
   {
    "id": "h03",
-   "x": 60.5,
-   "z": 16.5
+   "x": 22.5,
+   "z": 5.5
   },
   {
    "id": "h04",
-   "x": 20.5,
-   "z": 18.5
+   "x": 78.5,
+   "z": 6.5
   },
   {
    "id": "h05",
-   "x": 10.5,
-   "z": 20.5
+   "x": 2.5,
+   "z": 16.5
   },
   {
    "id": "h06",
-   "x": 106.5,
-   "z": 28.5
+   "x": 108.5,
+   "z": 22.5
   },
   {
    "id": "h07",
-   "x": 6.5,
-   "z": 36.5
+   "x": 45.5,
+   "z": 26.5
   },
   {
    "id": "h08",
-   "x": 46.5,
-   "z": 36.5
+   "x": 78.5,
+   "z": 30.5
   },
   {
    "id": "h09",
-   "x": 84.5,
+   "x": 14.5,
    "z": 42.5
   },
   {
    "id": "h10",
-   "x": 32.5,
-   "z": 54.5
+   "x": 106.5,
+   "z": 44.5
   },
   {
    "id": "h11",
-   "x": 72.5,
-   "z": 56.5
+   "x": 66.5,
+   "z": 50.5
   },
   {
    "id": "h12",
-   "x": 104.5,
-   "z": 56.5
+   "x": 86.5,
+   "z": 53.5
   },
   {
    "id": "h13",
-   "x": 8.5,
-   "z": 70.5
+   "x": 24.5,
+   "z": 56.5
   },
   {
    "id": "h14",
-   "x": 44.5,
-   "z": 70.5
+   "x": 68.5,
+   "z": 62.5
   },
   {
    "id": "h15",
-   "x": 6.5,
-   "z": 78.5
+   "x": 38.5,
+   "z": 68.5
   },
   {
    "id": "h16",
-   "x": 84.5,
-   "z": 80.5
+   "x": 0.5,
+   "z": 78.5
   },
   {
    "id": "h17",
    "x": 64.5,
-   "z": 82.5
+   "z": 80.5
   },
   {
    "id": "h18",
-   "x": 88.5,
-   "z": 82.5
-  },
-  {
-   "id": "h19",
-   "x": 9.5,
+   "x": 20.5,
    "z": 86.5
   },
   {
+   "id": "h19",
+   "x": 60.5,
+   "z": 91.5
+  },
+  {
    "id": "h20",
-   "x": 38.5,
-   "z": 90.5
+   "x": 94.5,
+   "z": 91.5
   }
  ],
  "exitGates": [
   {
-   "id": "gate-s",
+   "id": "gate-w",
    "lever": {
-    "x": 69.5,
-    "z": 94.5
+    "x": 1.5,
+    "z": 77.5
    },
    "exit": {
-    "x": 67.5,
-    "z": 95.5
+    "x": 0.5,
+    "z": 75.5
    }
   },
   {
-   "id": "gate-n",
+   "id": "gate-e",
    "lever": {
-    "x": 58.5,
-    "z": 1.5
+    "x": 94.5,
+    "z": 66.5
    },
    "exit": {
-    "x": 60.5,
-    "z": 0.5
+    "x": 95.5,
+    "z": 68.5
    }
   }
  ],
  "spawns": {
   "hunter": [
    {
-    "x": 13.5,
-    "z": 23.5
+    "x": 7.5,
+    "z": 38.5
    },
    {
-    "x": 44.5,
+    "x": 19.5,
+    "z": 21.5
+   },
+   {
+    "x": 28.5,
+    "z": 4.5
+   },
+   {
+    "x": 59.5,
     "z": 7.5
    },
    {
-    "x": 86.5,
+    "x": 92.5,
     "z": 7.5
    },
    {
     "x": 107.5,
-    "z": 16.5
+    "z": 25.5
    },
    {
-    "x": 104.5,
-    "z": 59.5
+    "x": 107.5,
+    "z": 53.5
    },
    {
-    "x": 88.5,
-    "z": 65.5
+    "x": 74.5,
+    "z": 89.5
    },
    {
-    "x": 72.5,
-    "z": 90.5
-   },
-   {
-    "x": 25.5,
+    "x": 32.5,
     "z": 88.5
    },
    {
     "x": 6.5,
-    "z": 79.5
-   },
-   {
-    "x": 4.5,
-    "z": 55.5
+    "z": 71.5
    }
   ],
   "survivors": [
    {
-    "x": 7.5,
-    "z": 41.5
+    "x": 5.5,
+    "z": 21.5
    },
    {
-    "x": 24.5,
+    "x": 40.5,
+    "z": 6.5
+   },
+   {
+    "x": 77.5,
     "z": 4.5
    },
    {
-    "x": 65.5,
-    "z": 7.5
-   },
-   {
     "x": 106.5,
-    "z": 4.5
+    "z": 10.5
    },
    {
-    "x": 104.5,
-    "z": 27.5
+    "x": 105.5,
+    "z": 39.5
    },
    {
-    "x": 106.5,
-    "z": 49.5
+    "x": 93.5,
+    "z": 56.5
    },
    {
-    "x": 91.5,
-    "z": 85.5
+    "x": 89.5,
+    "z": 76.5
    },
    {
-    "x": 48.5,
-    "z": 89.5
+    "x": 54.5,
+    "z": 90.5
    },
    {
-    "x": 4.5,
+    "x": 14.5,
     "z": 91.5
    },
    {
     "x": 7.5,
-    "z": 67.5
+    "z": 56.5
    }
   ]
  },
@@ -3256,7 +3010,7 @@
  },
  "mapgen": {
   "generator": "mapgen/gas-heaven@1",
-  "seed": 1357185841,
+  "seed": 2406040084,
   "tiles": [
    {
     "id": "t00",
@@ -3280,7 +3034,7 @@
     "x": 8,
     "z": 72,
     "size": 16,
-    "rot": 0,
+    "rot": 1,
     "mirror": false,
     "pallets": 1,
     "windows": 1,
@@ -3288,17 +3042,17 @@
    },
    {
     "id": "t02",
-    "tile": "maze-c",
+    "tile": "maze-a",
     "category": "maze",
     "role": "maze",
     "x": 88,
     "z": 8,
     "size": 16,
-    "rot": 0,
+    "rot": 2,
     "mirror": true,
-    "pallets": 0,
+    "pallets": 2,
     "windows": 1,
-    "rating": "weak"
+    "rating": "strong"
    },
    {
     "id": "t03",
@@ -3308,11 +3062,11 @@
     "x": 8,
     "z": 24,
     "size": 16,
-    "rot": 3,
+    "rot": 0,
     "mirror": false,
-    "pallets": 0,
+    "pallets": 2,
     "windows": 1,
-    "rating": "weak"
+    "rating": "strong"
    },
    {
     "id": "t04",
@@ -3324,41 +3078,41 @@
     "size": 16,
     "rot": 3,
     "mirror": false,
-    "pallets": 0,
+    "pallets": 2,
     "windows": 2,
-    "rating": "weak"
+    "rating": "strong"
    },
    {
     "id": "t05",
-    "tile": "carpile-a",
-    "category": "carpile",
-    "role": "carpile",
+    "tile": "infinite-loop",
+    "category": "landmark",
+    "role": "landmark",
     "x": 24,
     "z": 40,
     "size": 16,
-    "rot": 3,
-    "mirror": false,
+    "rot": 2,
+    "mirror": true,
     "pallets": 0,
-    "windows": 0,
-    "rating": "none"
+    "windows": 4,
+    "rating": "strong"
    },
    {
     "id": "t06",
-    "tile": "jgv1",
+    "tile": "jgv2",
     "category": "loop",
     "role": "loop",
     "x": 56,
     "z": 56,
     "size": 16,
-    "rot": 2,
-    "mirror": false,
-    "pallets": 1,
-    "windows": 0,
+    "rot": 1,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 1,
     "rating": "strong"
    },
    {
     "id": "t07",
-    "tile": "jgv2",
+    "tile": "jgv1",
     "category": "loop",
     "role": "loop",
     "x": 88,
@@ -3378,7 +3132,7 @@
     "x": 8,
     "z": 56,
     "size": 16,
-    "rot": 0,
+    "rot": 1,
     "mirror": true,
     "pallets": 1,
     "windows": 0,
@@ -3389,8 +3143,8 @@
     "tile": "gate",
     "category": "gate",
     "role": "gate",
-    "x": 64,
-    "z": 88,
+    "x": 0,
+    "z": 72,
     "size": 8,
     "rot": 0,
     "mirror": false,
@@ -3403,8 +3157,8 @@
     "tile": "gate",
     "category": "gate",
     "role": "gate",
-    "x": 56,
-    "z": 0,
+    "x": 88,
+    "z": 64,
     "size": 8,
     "rot": 0,
     "mirror": false,
@@ -3414,67 +3168,39 @@
    },
    {
     "id": "t11",
-    "tile": "filler-wallcar",
-    "category": "filler",
+    "tile": "tl-wall",
+    "category": "loop",
     "role": "loop",
     "x": 24,
-    "z": 72,
+    "z": 64,
     "size": 16,
-    "rot": 2,
-    "mirror": true,
-    "pallets": 1,
-    "windows": 0,
+    "rot": 3,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 2,
     "rating": "weak"
    },
    {
     "id": "t12",
-    "tile": "filler-rock",
-    "category": "filler",
+    "tile": "jgv1",
+    "category": "loop",
     "role": "loop",
-    "x": 40,
-    "z": 72,
+    "x": 72,
+    "z": 32,
     "size": 16,
     "rot": 2,
     "mirror": false,
-    "pallets": 1,
-    "windows": 0,
-    "rating": "weak"
-   },
-   {
-    "id": "t13",
-    "tile": "jgv2",
-    "category": "loop",
-    "role": "loop",
-    "x": 40,
-    "z": 56,
-    "size": 16,
-    "rot": 2,
-    "mirror": true,
     "pallets": 0,
     "windows": 1,
     "rating": "strong"
    },
    {
-    "id": "t14",
-    "tile": "filler-junk",
-    "category": "filler",
-    "role": "loop",
-    "x": 40,
-    "z": 40,
-    "size": 16,
-    "rot": 2,
-    "mirror": false,
-    "pallets": 1,
-    "windows": 0,
-    "rating": "weak"
-   },
-   {
-    "id": "t15",
+    "id": "t13",
     "tile": "filler-wallcar",
     "category": "filler",
     "role": "loop",
-    "x": 24,
-    "z": 8,
+    "x": 48,
+    "z": 32,
     "size": 16,
     "rot": 2,
     "mirror": false,
@@ -3483,70 +3209,98 @@
     "rating": "none"
    },
    {
-    "id": "t16",
-    "tile": "filler-windowl",
-    "category": "filler",
-    "role": "loop",
-    "x": 64,
-    "z": 32,
-    "size": 16,
-    "rot": 1,
-    "mirror": true,
-    "pallets": 1,
-    "windows": 1,
-    "rating": "strong"
-   },
-   {
-    "id": "t17",
-    "tile": "jgv1",
+    "id": "t14",
+    "tile": "jgv2",
     "category": "loop",
     "role": "loop",
     "x": 72,
-    "z": 8,
+    "z": 56,
     "size": 16,
-    "rot": 3,
+    "rot": 0,
     "mirror": true,
     "pallets": 1,
     "windows": 1,
     "rating": "strong"
    },
    {
-    "id": "t18",
-    "tile": "jgv1",
-    "category": "loop",
+    "id": "t15",
+    "tile": "filler-windowl",
+    "category": "filler",
     "role": "loop",
-    "x": 24,
-    "z": 56,
+    "x": 56,
+    "z": 72,
     "size": 16,
-    "rot": 0,
-    "mirror": false,
+    "rot": 2,
+    "mirror": true,
     "pallets": 1,
     "windows": 1,
     "rating": "strong"
    },
    {
-    "id": "t19",
-    "tile": "filler-windowl",
+    "id": "t16",
+    "tile": "filler-wallcar",
     "category": "filler",
     "role": "loop",
-    "x": 88,
+    "x": 32,
     "z": 24,
     "size": 16,
-    "rot": 0,
+    "rot": 3,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t17",
+    "tile": "filler-rock",
+    "category": "filler",
+    "role": "loop",
+    "x": 40,
+    "z": 72,
+    "size": 16,
+    "rot": 2,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t18",
+    "tile": "filler-wallcar",
+    "category": "filler",
+    "role": "loop",
+    "x": 40,
+    "z": 48,
+    "size": 16,
+    "rot": 1,
     "mirror": false,
+    "pallets": 1,
+    "windows": 0,
+    "rating": "weak"
+   },
+   {
+    "id": "t19",
+    "tile": "jgv1",
+    "category": "loop",
+    "role": "loop",
+    "x": 64,
+    "z": 16,
+    "size": 16,
+    "rot": 0,
+    "mirror": true,
     "pallets": 1,
     "windows": 1,
     "rating": "strong"
    },
    {
     "id": "t20",
-    "tile": "dead-rocks",
+    "tile": "dead-tallrock",
     "category": "dead",
     "role": "ring",
     "x": 16,
     "z": 0,
     "size": 8,
-    "rot": 3,
+    "rot": 0,
     "mirror": false,
     "pallets": 0,
     "windows": 0,
@@ -3560,7 +3314,7 @@
     "x": 24,
     "z": 0,
     "size": 8,
-    "rot": 1,
+    "rot": 0,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -3568,13 +3322,13 @@
    },
    {
     "id": "t22",
-    "tile": "dead-car",
+    "tile": "dead-tallrock2",
     "category": "dead",
     "role": "ring",
     "x": 32,
     "z": 0,
     "size": 8,
-    "rot": 3,
+    "rot": 2,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -3582,10 +3336,38 @@
    },
    {
     "id": "t23",
-    "tile": "dead-gen",
+    "tile": "dead-tree",
     "category": "dead",
     "role": "ring",
     "x": 40,
+    "z": 0,
+    "size": 8,
+    "rot": 0,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t24",
+    "tile": "dead-tallrock2",
+    "category": "dead",
+    "role": "ring",
+    "x": 48,
+    "z": 0,
+    "size": 8,
+    "rot": 0,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t25",
+    "tile": "dead-tree",
+    "category": "dead",
+    "role": "ring",
+    "x": 56,
     "z": 0,
     "size": 8,
     "rot": 1,
@@ -3595,22 +3377,8 @@
     "rating": "none"
    },
    {
-    "id": "t24",
+    "id": "t26",
     "tile": "dead-tallrock",
-    "category": "dead",
-    "role": "ring",
-    "x": 48,
-    "z": 0,
-    "size": 8,
-    "rot": 3,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t25",
-    "tile": "dead-gen",
     "category": "dead",
     "role": "ring",
     "x": 64,
@@ -3623,56 +3391,42 @@
     "rating": "none"
    },
    {
-    "id": "t26",
-    "tile": "dead-tallrock",
+    "id": "t27",
+    "tile": "dead-empty",
     "category": "dead",
     "role": "ring",
     "x": 72,
     "z": 0,
     "size": 8,
-    "rot": 2,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t27",
-    "tile": "dead-rocks",
-    "category": "dead",
-    "role": "ring",
-    "x": 80,
-    "z": 0,
-    "size": 8,
-    "rot": 0,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t28",
-    "tile": "dead-tree",
-    "category": "dead",
-    "role": "ring",
-    "x": 88,
-    "z": 0,
-    "size": 8,
-    "rot": 2,
+    "rot": 3,
     "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
-    "id": "t29",
-    "tile": "dead-tallrock2",
+    "id": "t28",
+    "tile": "dead-empty",
     "category": "dead",
     "role": "ring",
-    "x": 96,
+    "x": 80,
     "z": 0,
     "size": 8,
-    "rot": 0,
+    "rot": 1,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t29",
+    "tile": "dead-rocks",
+    "category": "dead",
+    "role": "ring",
+    "x": 88,
+    "z": 0,
+    "size": 8,
+    "rot": 3,
     "mirror": false,
     "pallets": 0,
     "windows": 0,
@@ -3680,13 +3434,13 @@
    },
    {
     "id": "t30",
-    "tile": "dead-gen",
+    "tile": "dead-tallrock",
     "category": "dead",
     "role": "ring",
-    "x": 104,
+    "x": 96,
     "z": 0,
     "size": 8,
-    "rot": 2,
+    "rot": 1,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -3694,8 +3448,22 @@
    },
    {
     "id": "t31",
-    "tile": "small-rock",
-    "category": "filler",
+    "tile": "dead-tree",
+    "category": "dead",
+    "role": "ring",
+    "x": 104,
+    "z": 0,
+    "size": 8,
+    "rot": 2,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t32",
+    "tile": "dead-tree",
+    "category": "dead",
     "role": "ring",
     "x": 16,
     "z": 8,
@@ -3707,39 +3475,25 @@
     "rating": "none"
    },
    {
-    "id": "t32",
-    "tile": "dead-tallrock",
-    "category": "dead",
-    "role": "inner",
-    "x": 40,
-    "z": 8,
-    "size": 8,
-    "rot": 1,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
     "id": "t33",
-    "tile": "dead-gen",
+    "tile": "dead-tree",
     "category": "dead",
     "role": "inner",
-    "x": 48,
+    "x": 24,
     "z": 8,
     "size": 8,
-    "rot": 3,
-    "mirror": true,
+    "rot": 2,
+    "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t34",
-    "tile": "dead-gen",
+    "tile": "dead-tallrock2",
     "category": "dead",
     "role": "inner",
-    "x": 56,
+    "x": 32,
     "z": 8,
     "size": 8,
     "rot": 0,
@@ -3750,10 +3504,38 @@
    },
    {
     "id": "t35",
-    "tile": "dead-empty",
+    "tile": "dead-tallrock2",
     "category": "dead",
     "role": "inner",
-    "x": 64,
+    "x": 40,
+    "z": 8,
+    "size": 8,
+    "rot": 1,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t36",
+    "tile": "small-tree",
+    "category": "filler",
+    "role": "inner",
+    "x": 48,
+    "z": 8,
+    "size": 8,
+    "rot": 1,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t37",
+    "tile": "small-tree",
+    "category": "filler",
+    "role": "inner",
+    "x": 56,
     "z": 8,
     "size": 8,
     "rot": 3,
@@ -3763,42 +3545,14 @@
     "rating": "none"
    },
    {
-    "id": "t36",
-    "tile": "dead-rocks",
+    "id": "t38",
+    "tile": "dead-gen",
     "category": "dead",
-    "role": "ring",
-    "x": 104,
+    "role": "inner",
+    "x": 64,
     "z": 8,
     "size": 8,
-    "rot": 0,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t37",
-    "tile": "dead-rocks",
-    "category": "dead",
-    "role": "ring",
-    "x": 0,
-    "z": 16,
-    "size": 8,
-    "rot": 1,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t38",
-    "tile": "dead-tallrock",
-    "category": "dead",
-    "role": "ring",
-    "x": 8,
-    "z": 16,
-    "size": 8,
-    "rot": 1,
+    "rot": 2,
     "mirror": false,
     "pallets": 0,
     "windows": 0,
@@ -3806,11 +3560,11 @@
    },
    {
     "id": "t39",
-    "tile": "dead-tree",
+    "tile": "dead-tallrock",
     "category": "dead",
-    "role": "ring",
-    "x": 16,
-    "z": 16,
+    "role": "inner",
+    "x": 72,
+    "z": 8,
     "size": 8,
     "rot": 1,
     "mirror": false,
@@ -3820,25 +3574,11 @@
    },
    {
     "id": "t40",
-    "tile": "dead-rocks",
-    "category": "dead",
-    "role": "inner",
-    "x": 40,
-    "z": 16,
-    "size": 8,
-    "rot": 1,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t41",
     "tile": "dead-tallrock",
     "category": "dead",
     "role": "inner",
-    "x": 64,
-    "z": 16,
+    "x": 80,
+    "z": 8,
     "size": 8,
     "rot": 3,
     "mirror": true,
@@ -3847,28 +3587,42 @@
     "rating": "none"
    },
    {
-    "id": "t42",
-    "tile": "small-rock",
-    "category": "filler",
+    "id": "t41",
+    "tile": "dead-tallrock2",
+    "category": "dead",
     "role": "ring",
     "x": 104,
-    "z": 16,
+    "z": 8,
     "size": 8,
-    "rot": 2,
+    "rot": 0,
     "mirror": true,
-    "pallets": 1,
+    "pallets": 0,
     "windows": 0,
-    "rating": "weak"
+    "rating": "none"
    },
    {
-    "id": "t43",
-    "tile": "dead-tallrock",
+    "id": "t42",
+    "tile": "dead-tree",
     "category": "dead",
     "role": "ring",
     "x": 0,
-    "z": 24,
+    "z": 16,
     "size": 8,
-    "rot": 1,
+    "rot": 3,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t43",
+    "tile": "dead-empty",
+    "category": "dead",
+    "role": "ring",
+    "x": 8,
+    "z": 16,
+    "size": 8,
+    "rot": 0,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -3876,11 +3630,11 @@
    },
    {
     "id": "t44",
-    "tile": "dead-tallrock",
+    "tile": "dead-rocks",
     "category": "dead",
-    "role": "inner",
-    "x": 24,
-    "z": 24,
+    "role": "ring",
+    "x": 16,
+    "z": 16,
     "size": 8,
     "rot": 2,
     "mirror": true,
@@ -3890,13 +3644,13 @@
    },
    {
     "id": "t45",
-    "tile": "dead-tree",
+    "tile": "dead-tallrock",
     "category": "dead",
     "role": "inner",
-    "x": 32,
-    "z": 24,
+    "x": 24,
+    "z": 16,
     "size": 8,
-    "rot": 3,
+    "rot": 0,
     "mirror": false,
     "pallets": 0,
     "windows": 0,
@@ -3904,39 +3658,53 @@
    },
    {
     "id": "t46",
-    "tile": "small-rock",
-    "category": "filler",
+    "tile": "dead-tallrock",
+    "category": "dead",
     "role": "inner",
-    "x": 40,
-    "z": 24,
+    "x": 32,
+    "z": 16,
     "size": 8,
-    "rot": 3,
-    "mirror": true,
-    "pallets": 1,
+    "rot": 2,
+    "mirror": false,
+    "pallets": 0,
     "windows": 0,
-    "rating": "weak"
+    "rating": "none"
    },
    {
     "id": "t47",
-    "tile": "small-rock",
-    "category": "filler",
+    "tile": "dead-car",
+    "category": "dead",
     "role": "inner",
-    "x": 64,
-    "z": 24,
+    "x": 40,
+    "z": 16,
     "size": 8,
-    "rot": 0,
-    "mirror": true,
-    "pallets": 1,
+    "rot": 2,
+    "mirror": false,
+    "pallets": 0,
     "windows": 0,
-    "rating": "weak"
+    "rating": "none"
    },
    {
     "id": "t48",
     "tile": "dead-tallrock",
     "category": "dead",
     "role": "inner",
-    "x": 72,
-    "z": 24,
+    "x": 80,
+    "z": 16,
+    "size": 8,
+    "rot": 2,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t49",
+    "tile": "dead-tallrock",
+    "category": "dead",
+    "role": "ring",
+    "x": 104,
+    "z": 16,
     "size": 8,
     "rot": 3,
     "mirror": false,
@@ -3945,28 +3713,14 @@
     "rating": "none"
    },
    {
-    "id": "t49",
-    "tile": "small-car",
-    "category": "filler",
-    "role": "inner",
-    "x": 80,
-    "z": 24,
-    "size": 8,
-    "rot": 3,
-    "mirror": true,
-    "pallets": 1,
-    "windows": 0,
-    "rating": "weak"
-   },
-   {
     "id": "t50",
-    "tile": "dead-gen",
+    "tile": "dead-car",
     "category": "dead",
     "role": "ring",
-    "x": 104,
+    "x": 0,
     "z": 24,
     "size": 8,
-    "rot": 0,
+    "rot": 1,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -3974,11 +3728,11 @@
    },
    {
     "id": "t51",
-    "tile": "dead-rocks",
+    "tile": "dead-tree",
     "category": "dead",
-    "role": "ring",
-    "x": 0,
-    "z": 32,
+    "role": "inner",
+    "x": 24,
+    "z": 24,
     "size": 8,
     "rot": 1,
     "mirror": false,
@@ -3991,50 +3745,50 @@
     "tile": "dead-empty",
     "category": "dead",
     "role": "inner",
-    "x": 24,
-    "z": 32,
+    "x": 80,
+    "z": 24,
     "size": 8,
-    "rot": 3,
-    "mirror": true,
+    "rot": 1,
+    "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t53",
-    "tile": "small-rock",
+    "tile": "dead-rocks",
+    "category": "dead",
+    "role": "inner",
+    "x": 88,
+    "z": 24,
+    "size": 8,
+    "rot": 1,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t54",
+    "tile": "small-lowl",
     "category": "filler",
     "role": "inner",
-    "x": 32,
-    "z": 32,
+    "x": 96,
+    "z": 24,
     "size": 8,
-    "rot": 2,
+    "rot": 0,
     "mirror": true,
     "pallets": 1,
     "windows": 0,
     "rating": "weak"
    },
    {
-    "id": "t54",
+    "id": "t55",
     "tile": "dead-tallrock",
     "category": "dead",
-    "role": "inner",
-    "x": 40,
-    "z": 32,
-    "size": 8,
-    "rot": 0,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t55",
-    "tile": "dead-tallrock2",
-    "category": "dead",
-    "role": "inner",
-    "x": 48,
-    "z": 32,
+    "role": "ring",
+    "x": 104,
+    "z": 24,
     "size": 8,
     "rot": 2,
     "mirror": false,
@@ -4044,10 +3798,24 @@
    },
    {
     "id": "t56",
-    "tile": "dead-empty",
+    "tile": "dead-tallrock2",
+    "category": "dead",
+    "role": "ring",
+    "x": 0,
+    "z": 32,
+    "size": 8,
+    "rot": 0,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t57",
+    "tile": "dead-tallrock",
     "category": "dead",
     "role": "inner",
-    "x": 56,
+    "x": 24,
     "z": 32,
     "size": 8,
     "rot": 1,
@@ -4057,28 +3825,14 @@
     "rating": "none"
    },
    {
-    "id": "t57",
+    "id": "t58",
     "tile": "dead-gen",
     "category": "dead",
     "role": "inner",
-    "x": 80,
+    "x": 64,
     "z": 32,
     "size": 8,
-    "rot": 3,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t58",
-    "tile": "dead-rocks",
-    "category": "dead",
-    "role": "ring",
-    "x": 104,
-    "z": 32,
-    "size": 8,
-    "rot": 3,
+    "rot": 1,
     "mirror": false,
     "pallets": 0,
     "windows": 0,
@@ -4086,25 +3840,25 @@
    },
    {
     "id": "t59",
-    "tile": "small-tree",
-    "category": "filler",
-    "role": "ring",
-    "x": 0,
-    "z": 40,
+    "tile": "dead-gen",
+    "category": "dead",
+    "role": "inner",
+    "x": 88,
+    "z": 32,
     "size": 8,
-    "rot": 2,
-    "mirror": false,
+    "rot": 1,
+    "mirror": true,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t60",
-    "tile": "dead-tree",
+    "tile": "dead-empty",
     "category": "dead",
     "role": "inner",
-    "x": 8,
-    "z": 40,
+    "x": 96,
+    "z": 32,
     "size": 8,
     "rot": 3,
     "mirror": false,
@@ -4114,13 +3868,13 @@
    },
    {
     "id": "t61",
-    "tile": "dead-gen",
+    "tile": "dead-car",
     "category": "dead",
-    "role": "inner",
-    "x": 16,
-    "z": 40,
+    "role": "ring",
+    "x": 104,
+    "z": 32,
     "size": 8,
-    "rot": 2,
+    "rot": 3,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -4128,28 +3882,28 @@
    },
    {
     "id": "t62",
-    "tile": "dead-rocks",
+    "tile": "dead-tallrock",
     "category": "dead",
-    "role": "inner",
-    "x": 56,
+    "role": "ring",
+    "x": 0,
     "z": 40,
     "size": 8,
     "rot": 2,
-    "mirror": false,
+    "mirror": true,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t63",
-    "tile": "dead-tree",
+    "tile": "dead-tallrock",
     "category": "dead",
     "role": "inner",
-    "x": 80,
+    "x": 8,
     "z": 40,
     "size": 8,
-    "rot": 3,
-    "mirror": true,
+    "rot": 0,
+    "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
@@ -4158,25 +3912,25 @@
     "id": "t64",
     "tile": "dead-rocks",
     "category": "dead",
-    "role": "ring",
-    "x": 104,
+    "role": "inner",
+    "x": 16,
     "z": 40,
     "size": 8,
     "rot": 3,
-    "mirror": true,
+    "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t65",
-    "tile": "dead-rocks",
+    "tile": "dead-empty",
     "category": "dead",
-    "role": "ring",
-    "x": 0,
-    "z": 48,
+    "role": "inner",
+    "x": 40,
+    "z": 40,
     "size": 8,
-    "rot": 1,
+    "rot": 2,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -4187,6 +3941,48 @@
     "tile": "dead-car",
     "category": "dead",
     "role": "inner",
+    "x": 64,
+    "z": 40,
+    "size": 8,
+    "rot": 3,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t67",
+    "tile": "dead-empty",
+    "category": "dead",
+    "role": "ring",
+    "x": 104,
+    "z": 40,
+    "size": 8,
+    "rot": 0,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t68",
+    "tile": "dead-gen",
+    "category": "dead",
+    "role": "ring",
+    "x": 0,
+    "z": 48,
+    "size": 8,
+    "rot": 3,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t69",
+    "tile": "dead-tallrock",
+    "category": "dead",
+    "role": "inner",
     "x": 8,
     "z": 48,
     "size": 8,
@@ -4197,70 +3993,28 @@
     "rating": "none"
    },
    {
-    "id": "t67",
+    "id": "t70",
     "tile": "dead-tallrock2",
     "category": "dead",
     "role": "inner",
     "x": 16,
     "z": 48,
     "size": 8,
-    "rot": 3,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t68",
-    "tile": "dead-tallrock",
-    "category": "dead",
-    "role": "inner",
-    "x": 56,
-    "z": 48,
-    "size": 8,
-    "rot": 2,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t69",
-    "tile": "dead-tallrock2",
-    "category": "dead",
-    "role": "inner",
-    "x": 64,
-    "z": 48,
-    "size": 8,
     "rot": 1,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t70",
-    "tile": "dead-tallrock",
-    "category": "dead",
-    "role": "inner",
-    "x": 72,
-    "z": 48,
-    "size": 8,
-    "rot": 0,
-    "mirror": true,
+    "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t71",
-    "tile": "dead-empty",
+    "tile": "dead-gen",
     "category": "dead",
     "role": "inner",
-    "x": 80,
+    "x": 56,
     "z": 48,
     "size": 8,
-    "rot": 0,
+    "rot": 1,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -4268,95 +4022,25 @@
    },
    {
     "id": "t72",
-    "tile": "dead-empty",
+    "tile": "dead-gen",
     "category": "dead",
-    "role": "ring",
-    "x": 104,
+    "role": "inner",
+    "x": 64,
     "z": 48,
     "size": 8,
     "rot": 0,
-    "mirror": true,
+    "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t73",
-    "tile": "dead-tree",
-    "category": "dead",
-    "role": "ring",
-    "x": 0,
-    "z": 56,
-    "size": 8,
-    "rot": 2,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t74",
-    "tile": "dead-car",
+    "tile": "dead-empty",
     "category": "dead",
     "role": "inner",
     "x": 72,
-    "z": 56,
-    "size": 8,
-    "rot": 1,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t75",
-    "tile": "small-lowl",
-    "category": "filler",
-    "role": "inner",
-    "x": 80,
-    "z": 56,
-    "size": 8,
-    "rot": 2,
-    "mirror": true,
-    "pallets": 1,
-    "windows": 0,
-    "rating": "weak"
-   },
-   {
-    "id": "t76",
-    "tile": "dead-tallrock2",
-    "category": "dead",
-    "role": "ring",
-    "x": 88,
-    "z": 56,
-    "size": 8,
-    "rot": 1,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t77",
-    "tile": "dead-car",
-    "category": "dead",
-    "role": "ring",
-    "x": 96,
-    "z": 56,
-    "size": 8,
-    "rot": 2,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t78",
-    "tile": "dead-empty",
-    "category": "dead",
-    "role": "ring",
-    "x": 104,
-    "z": 56,
+    "z": 48,
     "size": 8,
     "rot": 3,
     "mirror": true,
@@ -4365,26 +4049,82 @@
     "rating": "none"
    },
    {
-    "id": "t79",
+    "id": "t74",
     "tile": "dead-tallrock",
     "category": "dead",
-    "role": "ring",
-    "x": 0,
-    "z": 64,
+    "role": "inner",
+    "x": 80,
+    "z": 48,
     "size": 8,
     "rot": 0,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t75",
+    "tile": "dead-gen",
+    "category": "dead",
+    "role": "ring",
+    "x": 104,
+    "z": 48,
+    "size": 8,
+    "rot": 0,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t76",
+    "tile": "small-lowl",
+    "category": "filler",
+    "role": "ring",
+    "x": 0,
+    "z": 56,
+    "size": 8,
+    "rot": 3,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t77",
+    "tile": "dead-tallrock",
+    "category": "dead",
+    "role": "inner",
+    "x": 24,
+    "z": 56,
+    "size": 8,
+    "rot": 1,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
-    "id": "t80",
+    "id": "t78",
     "tile": "dead-tallrock",
     "category": "dead",
     "role": "inner",
-    "x": 72,
-    "z": 64,
+    "x": 32,
+    "z": 56,
+    "size": 8,
+    "rot": 3,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t79",
+    "tile": "dead-tree",
+    "category": "dead",
+    "role": "ring",
+    "x": 88,
+    "z": 56,
     "size": 8,
     "rot": 2,
     "mirror": false,
@@ -4393,12 +4133,26 @@
     "rating": "none"
    },
    {
-    "id": "t81",
-    "tile": "dead-tree",
+    "id": "t80",
+    "tile": "dead-gen",
     "category": "dead",
-    "role": "inner",
-    "x": 80,
-    "z": 64,
+    "role": "ring",
+    "x": 96,
+    "z": 56,
+    "size": 8,
+    "rot": 0,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t81",
+    "tile": "dead-rocks",
+    "category": "dead",
+    "role": "ring",
+    "x": 104,
+    "z": 56,
     "size": 8,
     "rot": 3,
     "mirror": false,
@@ -4411,11 +4165,11 @@
     "tile": "dead-tree",
     "category": "dead",
     "role": "ring",
-    "x": 88,
+    "x": 0,
     "z": 64,
     "size": 8,
-    "rot": 0,
-    "mirror": false,
+    "rot": 1,
+    "mirror": true,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
@@ -4424,22 +4178,36 @@
     "id": "t83",
     "tile": "dead-tallrock",
     "category": "dead",
-    "role": "ring",
-    "x": 0,
-    "z": 72,
+    "role": "inner",
+    "x": 40,
+    "z": 64,
     "size": 8,
-    "rot": 2,
-    "mirror": false,
+    "rot": 0,
+    "mirror": true,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t84",
-    "tile": "dead-tallrock2",
+    "tile": "dead-tallrock",
     "category": "dead",
     "role": "inner",
-    "x": 56,
+    "x": 48,
+    "z": 64,
+    "size": 8,
+    "rot": 0,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t85",
+    "tile": "dead-tree",
+    "category": "dead",
+    "role": "ring",
+    "x": 88,
     "z": 72,
     "size": 8,
     "rot": 1,
@@ -4449,39 +4217,25 @@
     "rating": "none"
    },
    {
-    "id": "t85",
-    "tile": "dead-empty",
+    "id": "t86",
+    "tile": "dead-tree",
     "category": "dead",
-    "role": "inner",
-    "x": 64,
-    "z": 72,
+    "role": "ring",
+    "x": 0,
+    "z": 80,
     "size": 8,
-    "rot": 0,
+    "rot": 1,
     "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
-    "id": "t86",
-    "tile": "dead-tallrock2",
-    "category": "dead",
-    "role": "ring",
-    "x": 88,
-    "z": 72,
-    "size": 8,
-    "rot": 0,
-    "mirror": true,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
     "id": "t87",
-    "tile": "dead-tallrock2",
+    "tile": "dead-rocks",
     "category": "dead",
-    "role": "ring",
-    "x": 0,
+    "role": "inner",
+    "x": 24,
     "z": 80,
     "size": 8,
     "rot": 0,
@@ -4492,27 +4246,27 @@
    },
    {
     "id": "t88",
-    "tile": "small-lowl",
-    "category": "filler",
+    "tile": "dead-tallrock2",
+    "category": "dead",
     "role": "inner",
-    "x": 56,
+    "x": 32,
     "z": 80,
     "size": 8,
-    "rot": 0,
-    "mirror": true,
-    "pallets": 1,
+    "rot": 1,
+    "mirror": false,
+    "pallets": 0,
     "windows": 0,
-    "rating": "weak"
+    "rating": "none"
    },
    {
     "id": "t89",
-    "tile": "dead-tallrock",
+    "tile": "dead-gen",
     "category": "dead",
-    "role": "inner",
-    "x": 64,
+    "role": "ring",
+    "x": 88,
     "z": 80,
     "size": 8,
-    "rot": 2,
+    "rot": 0,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -4520,11 +4274,11 @@
    },
    {
     "id": "t90",
-    "tile": "dead-empty",
+    "tile": "dead-tree",
     "category": "dead",
     "role": "ring",
-    "x": 88,
-    "z": 80,
+    "x": 0,
+    "z": 88,
     "size": 8,
     "rot": 0,
     "mirror": false,
@@ -4534,10 +4288,10 @@
    },
    {
     "id": "t91",
-    "tile": "dead-empty",
+    "tile": "dead-tree",
     "category": "dead",
     "role": "ring",
-    "x": 0,
+    "x": 8,
     "z": 88,
     "size": 8,
     "rot": 3,
@@ -4548,14 +4302,14 @@
    },
    {
     "id": "t92",
-    "tile": "small-lowl",
-    "category": "filler",
+    "tile": "dead-tallrock2",
+    "category": "dead",
     "role": "ring",
-    "x": 8,
+    "x": 16,
     "z": 88,
     "size": 8,
-    "rot": 2,
-    "mirror": false,
+    "rot": 0,
+    "mirror": true,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
@@ -4565,10 +4319,10 @@
     "tile": "dead-rocks",
     "category": "dead",
     "role": "ring",
-    "x": 16,
+    "x": 24,
     "z": 88,
     "size": 8,
-    "rot": 2,
+    "rot": 1,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -4576,21 +4330,7 @@
    },
    {
     "id": "t94",
-    "tile": "dead-rocks",
-    "category": "dead",
-    "role": "ring",
-    "x": 24,
-    "z": 88,
-    "size": 8,
-    "rot": 1,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t95",
-    "tile": "dead-tallrock2",
+    "tile": "dead-tree",
     "category": "dead",
     "role": "ring",
     "x": 32,
@@ -4603,14 +4343,28 @@
     "rating": "none"
    },
    {
-    "id": "t96",
-    "tile": "dead-tree",
+    "id": "t95",
+    "tile": "dead-gen",
     "category": "dead",
     "role": "ring",
     "x": 40,
     "z": 88,
     "size": 8,
-    "rot": 1,
+    "rot": 2,
+    "mirror": true,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t96",
+    "tile": "dead-car",
+    "category": "dead",
+    "role": "ring",
+    "x": 48,
+    "z": 88,
+    "size": 8,
+    "rot": 3,
     "mirror": true,
     "pallets": 0,
     "windows": 0,
@@ -4618,24 +4372,38 @@
    },
    {
     "id": "t97",
-    "tile": "dead-tallrock2",
+    "tile": "dead-empty",
     "category": "dead",
     "role": "ring",
-    "x": 48,
+    "x": 56,
     "z": 88,
     "size": 8,
     "rot": 0,
-    "mirror": true,
+    "mirror": false,
     "pallets": 0,
     "windows": 0,
     "rating": "none"
    },
    {
     "id": "t98",
+    "tile": "dead-tallrock",
+    "category": "dead",
+    "role": "ring",
+    "x": 64,
+    "z": 88,
+    "size": 8,
+    "rot": 0,
+    "mirror": false,
+    "pallets": 0,
+    "windows": 0,
+    "rating": "none"
+   },
+   {
+    "id": "t99",
     "tile": "dead-car",
     "category": "dead",
     "role": "ring",
-    "x": 56,
+    "x": 72,
     "z": 88,
     "size": 8,
     "rot": 1,
@@ -4645,11 +4413,25 @@
     "rating": "none"
    },
    {
-    "id": "t99",
-    "tile": "dead-tallrock",
+    "id": "t100",
+    "tile": "small-lowl",
+    "category": "filler",
+    "role": "ring",
+    "x": 80,
+    "z": 88,
+    "size": 8,
+    "rot": 3,
+    "mirror": false,
+    "pallets": 1,
+    "windows": 0,
+    "rating": "weak"
+   },
+   {
+    "id": "t101",
+    "tile": "dead-tallrock2",
     "category": "dead",
     "role": "ring",
-    "x": 72,
+    "x": 88,
     "z": 88,
     "size": 8,
     "rot": 2,
@@ -4657,74 +4439,44 @@
     "pallets": 0,
     "windows": 0,
     "rating": "none"
-   },
-   {
-    "id": "t100",
-    "tile": "dead-rocks",
-    "category": "dead",
-    "role": "ring",
-    "x": 80,
-    "z": 88,
-    "size": 8,
-    "rot": 2,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
-   },
-   {
-    "id": "t101",
-    "tile": "dead-car",
-    "category": "dead",
-    "role": "ring",
-    "x": 88,
-    "z": 88,
-    "size": 8,
-    "rot": 3,
-    "mirror": false,
-    "pallets": 0,
-    "windows": 0,
-    "rating": "none"
    }
   ],
   "stats": {
-   "pallets": 18,
-   "windows": 13,
-   "strongLoops": 8,
-   "weakLoops": 15,
-   "deadTileFraction": 0.545,
-   "deadZoneFraction": 0.411,
+   "pallets": 15,
+   "windows": 19,
+   "strongLoops": 11,
+   "weakLoops": 6,
+   "deadTileFraction": 0.603,
+   "deadZoneFraction": 0.392,
    "generators": 11,
    "hooks": 20,
    "maxHookDistance": 26,
    "gates": [
-    "gate-s",
-    "gate-n"
+    "gate-w",
+    "gate-e"
    ],
    "tileCounts": {
-    "tl-wall": 1,
+    "tl-wall": 2,
     "shack": 1,
-    "maze-c": 2,
+    "maze-a": 1,
+    "maze-c": 1,
     "maze-b": 1,
-    "carpile-a": 1,
-    "jgv1": 3,
+    "infinite-loop": 1,
     "jgv2": 2,
+    "jgv1": 3,
     "carpile-b": 1,
     "gate": 2,
-    "filler-wallcar": 2,
+    "filler-wallcar": 3,
+    "filler-windowl": 1,
     "filler-rock": 1,
-    "filler-junk": 1,
-    "filler-windowl": 2,
-    "dead-rocks": 13,
+    "dead-tallrock": 20,
     "dead-empty": 10,
-    "dead-car": 6,
-    "dead-gen": 8,
-    "dead-tallrock": 16,
-    "dead-tree": 9,
     "dead-tallrock2": 10,
-    "small-rock": 5,
-    "small-car": 1,
-    "small-tree": 1,
+    "dead-tree": 14,
+    "dead-rocks": 7,
+    "small-tree": 2,
+    "dead-gen": 10,
+    "dead-car": 6,
     "small-lowl": 3
    }
   }

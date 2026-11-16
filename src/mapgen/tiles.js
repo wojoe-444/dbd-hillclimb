@@ -438,6 +438,28 @@ tile({
   id: 'dead-tallrock2', name: 'Dead zone: two small tall rocks (no pallet, set apart)', size: 8, category: 'dead', rate: deadRate,
   rows: ['........', '.RR.....', '.RR.....', '........', '......H.', '.....RR.', '.....RR.', '........'],
 });
+tile({
+  id: 'infinite-loop', name: 'Infinite loop (deliberately game-breaking)', size: 16, category: 'landmark', rate: () => 'strong',
+  notes: 'User probe tile: two sealed 12 m corridors between three tall walls, a window in each end wall (4 windows). Survivors fast-vault (0.5 s) vs the hunter (1.7 s) and gain more per vault than the hunter gains per corridor run. Tests whether survivors learn to exploit it.',
+  rows: [
+    '................',
+    '.###W#####W###..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.#.....#.....#..',
+    '.###W#####W###..',
+    '................',
+  ],
+});
 tile({ id: 'gate', name: 'Exit gate area', size: 8, category: 'gate', rate: deadRate, rows: filled(8) });
 
 export const TILES = Object.fromEntries(T.map(t => [t.id, t]));
