@@ -40,7 +40,36 @@ export const hunterSpace = {
   beliefPatrol:    [0, 1, 0.7],    // >0.5: patrol toward the hottest part of the belief map instead of gen-by-gen
   beliefSpread:    [0.2, 1, 0.6],  // how fast a survivor's possible area grows (fraction of running speed)
   beliefGenPull:   [0, 2, 0.5],    // how strongly unseen survivors are assumed to drift back to unfinished gens
+  // ---- endgame (gates powered): the hunter only learns lever progress by seeing the lever (cone/LOS, or within 2 m) ----
+  gatePatrolW:     [0, 1, 0.1],    // 0 = no gate logic (old: patrol blocked gens / belief). >0: rush a lever seen being
+                                   // opened (when not in a chase), and go check a lever once
+                                   // gatePatrolW * (unseen s / gateCheckS) * (1 + 3 * last seen progress) >= 0.5 (open gate:
+                                   // its exit, x2). Default low: n=256 paired runs (gens.needed 2) had lever patrol at 0.6
+                                   // give +16 escapes / 186 endgames vs off, rush alone was neutral (+1)
+  gateCheckS:      [5, 120, 30],   // seconds a lever may go unchecked before it is "due" (scaled by gatePatrolW)
+  gateAbandonProg: [0, 1, 0.5],    // leave a chase for a lever seen being opened (and reachable before it opens) once its
+                                   // progress >= this (1 = never leave a chase for a gate)
+  // ---- pallet respect: don't run into the stun zone of a standing pallet the chased survivor can drop ----
+  // Default OFF: with 1.5 m / 1.5 s stuns fell (champion survivors 4.0 -> 1.6 per match) but kills did too (repairS 45,
+  // n=256: -0.035); a survivor that just waits at the pallet outlasts any hold — going around it is loop play.
+  palletRespectM:  [0, 4, 0],      // hold this far outside the stun zone (footprint +- 1 m along its axis); also no swing
+                                   // across it unless the survivor is on my side; 0 = run through (old behaviour)
+  palletRespectS:  [0, 8, 1.5],    // ...for at most this long per pallet, then run through (baits an early drop)
+  // ---- hook choice ----
+  // Default OFF: 0.3 cost kills in A/B (repairS 45, n=256: -0.035 alone; with pallet respect on as well -0.16 at n=512).
+  hookAwayW:       [0, 1, 0],      // prefer hooks away from where the other free survivors are believed to be
+                                   // (+ hookAwayW * 40 m per expected survivor within 24 m of the hook); 0 = off
+  hookMaxCarryS:   [6, 16, 12],    // ...but only hooks reachable within this many carry seconds in total (own carry clock
+                                   // for this survivor since its last hook + travel at carry speed + 1.5 s hook); wiggle-free
+                                   // at 16 s. The nearest hook is always allowed.
+  // ---- post-hook plan (window = campS): picked once per hook, P(plan) proportional to its weight ----
+  // proxy the hook at campRadius (weight 1) | guard the unfinished gen nearest the hook (endgame: the nearest lever)
+  // (postHookGenW) | leave at once to roam the belief hot spot (postHookRoamW). Both 0 = old behaviour (proxy).
+  postHookGenW:    [0, 3, 1],
+  postHookRoamW:   [0, 3, 0.5],
 };
+
+const SPACE_DEFAULTS = Object.fromEntries(Object.entries(hunterSpace).map(([k, v]) => [k, v[2]]));
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 
@@ -61,7 +90,8 @@ function sweep(api, me, to, t, sweepDeg, periodS, glanceS = 0.4) {
 }
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
 
-export function makeHunter(P) {
+export function makeHunter(P0) {
+  const P = { ...SPACE_DEFAULTS, ...P0 };   // older champions lack the newer knobs
   return (ctx) => {
     const M = ctx.map;
     const gens = M.generators;
@@ -159,11 +189,107 @@ export function makeHunter(P) {
       return bi;
     }
 
+    // ---------------- endgame: lever memory. Only what the hunter perceives: obs.gates[i].progress is present while it
+    // sees the lever (cone + LOS, or within 2 m); `open` / `powered` are public. A lever seen twice within 2.5 s with
+    // growing progress is "being opened".
+    const HC = ctx.config.hunter || {};
+    const leverS = (ctx.config.gates && ctx.config.gates.leverS) || 20;
+    const carrySpeed = HC.carrySpeed || 3.68, hookActS = HC.hookS || 1.5;
+    const GATES = M.exitGates || [];
+    const lever = GATES.map(() => ({ seenT: -1e9, prog: 0, risingT: -1e9, visitT: -1e9 }));
+    let poweredSeen = false;
+    function updateLevers(obs, me) {
+      if (!obs.gatesPowered || !obs.gates) return;
+      if (!poweredSeen) {                         // just powered: every lever starts one full check period overdue
+        poweredSeen = true;
+        for (const L of lever) { L.seenT = obs.t - P.gateCheckS; L.visitT = obs.t - P.gateCheckS; }
+      }
+      for (const g of obs.gates) {
+        const i = GATES.findIndex((x) => x.id === g.id);
+        if (i < 0) continue;
+        const L = lever[i], gl = GATES[i].lever;
+        if (d2(me, gl) < 6 || d2(me, GATES[i].exit) < 6) L.visitT = obs.t;
+        if (g.open) { L.prog = 1; continue; }
+        if (g.progress === undefined || g.progress === null) continue;
+        if (g.progress > L.prog + 1e-6 && obs.t - L.seenT <= 2.5) L.risingT = obs.t;
+        L.prog = g.progress; L.seenT = obs.t;
+      }
+    }
+    // a lever being opened that I can still reach before it opens (+ the opener's walk to the exit): go there
+    function gateRush(obs, me, nav) {
+      if (!obs.gatesPowered || !(P.gatePatrolW > 0)) return null;
+      let best = null;
+      for (let i = 0; i < GATES.length; i++) {
+        const L = lever[i], g = obs.gates.find((x) => x.id === GATES[i].id);
+        if (!g || g.open || obs.t - L.risingT > 3) continue;
+        const remain = (1 - L.prog) * leverS - (obs.t - L.seenT);
+        const pt = GATES[i].lever, dist = nav.dist(me, pt);
+        const travel = dist / Math.max(1, me.speed || 4.6);
+        if (!Number.isFinite(dist) || travel > remain + 5) continue;
+        if (!best || travel < best.travel) best = { i, pt, prog: L.prog, travel };
+      }
+      return best;
+    }
+    // idle in the endgame: swing by a lever that is due (unchecked for long, weighted by its last seen progress), or the
+    // exit of an open gate (survivors leave there) if I haven't been near it for a while
+    function gatePatrol(obs, me) {
+      if (!obs.gatesPowered || !(P.gatePatrolW > 0)) return null;
+      let bt = null, bs = 0.5;
+      for (let i = 0; i < GATES.length; i++) {
+        const L = lever[i], g = obs.gates.find((x) => x.id === GATES[i].id);
+        if (!g) continue;
+        const s = g.open ? P.gatePatrolW * 2 * (obs.t - L.visitT) / P.gateCheckS
+          : P.gatePatrolW * (obs.t - L.seenT) / P.gateCheckS * (1 + 3 * L.prog);
+        if (s >= bs) { bs = s; bt = g.open ? GATES[i].exit : GATES[i].lever; }
+      }
+      return bt;
+    }
+
+    // ---------------- pallet respect: the chased survivor is at a standing pallet -> hold outside its stun zone
+    const stunAlong = HC.palletStunAlongM ?? 1.0;
+    const respect = new Map();                    // pallet index -> { t0, last }
+    const rectDist = (o, x0, z0, x1, z1) => hyp(Math.max(x0 - o.x, 0, o.x - x1), Math.max(z0 - o.z, 0, o.z - z1));
+    function palletRespect(obs, me, s) {
+      if (!(P.palletRespectM > 0) || !(P.palletRespectS > 0)) return null;
+      for (let i = 0; i < M.pallets.length; i++) {
+        if (obs.pallets[i] !== 'up') continue;
+        const p = M.pallets[i];
+        if (rectDist(s, p.x0, p.z0, p.x1, p.z1) > 2.0) continue;          // survivor can't drop it (soon)
+        const ax = p.axis === 'x';
+        const md = ax ? rectDist(me, p.x0 - stunAlong, p.z0, p.x1 + stunAlong, p.z1) : rectDist(me, p.x0, p.z0 - stunAlong, p.x1, p.z1 + stunAlong);
+        if (md <= 0.05 || md > P.palletRespectM) continue;              // already committed / not there yet
+        const along = (o) => ax ? o.x - p.cx : o.z - p.cz;
+        if (along(me) * along(s) > 0 && d2(me, s) <= P.lungeDist) continue; // on my side and in reach: swing, don't wait
+        let r = respect.get(i);
+        if (!r || obs.t - r.last > 3) { r = { t0: obs.t, last: obs.t }; respect.set(i, r); }
+        r.last = obs.t;
+        if (obs.t - r.t0 > P.palletRespectS) continue;                    // waited long enough: run through
+        return { moveDir: { x: 0, z: 0 }, face: { x: s.x, z: s.z } };
+      }
+      return null;
+    }
+
+    // ---------------- carry clock per survivor (wiggle is 16 s, persists across drops; reset by a hook / standing up)
+    const carryClock = [0, 0, 0, 0];
+    let lastDecideT = 0;
+    // expected number of OTHER free survivors (belief) within r of a point
+    function othersNear(pt, r) {
+      let m = 0;
+      for (let k = 0; k < 4; k++) if (belief.state[k] === 'alive') m += belief.massNear(k, pt.x, pt.z, r);
+      return m;
+    }
+
     return {
       belief,   // exposed for the viewer's heat-map overlay (read-only)
       decide(obs, api) {
         const me = obs.self, nav = api.nav;
         belief.update(obs, api);
+        updateLevers(obs, me);
+        // carry clock: own carry time per survivor since its last hook / since it was last seen standing
+        const dtD = Math.max(0, obs.t - lastDecideT); lastDecideT = obs.t;
+        if (me.carrying !== null && me.carrying !== undefined) carryClock[me.carrying] += dtD;
+        for (const h of obs.hooked) carryClock[h.id] = 0;
+        for (const s of obs.survivors) if (s.state === 'healthy' || s.state === 'injured') carryClock[s.id] = 0;
         // stall guard: barely moved over the last 2 s while free to move (not acting / cooling down / vaulting / stunned /
         // carrying) -> the current goal is unreachable or sits behind an obstacle (e.g. a lead on a dropped pallet): drop it
         const free = !me.act && !me.vaulting && !(me.stunS > 0) && !(me.cooldownS > 0) && !(me.windupS > 0) && me.carrying === null;
@@ -188,11 +314,20 @@ export function makeHunter(P) {
             const taken = new Set(obs.hooked.map((x) => x.hookId));
             const tg = topGen(obs);
             let bs = Infinity; hookTarget = null;
+            const cand = [];
+            let nd = Infinity;
             for (const k of M.hooks) {
               if (taken.has(k.id)) continue;
               const d = nav.dist(me, k);
               if (d > 60) continue;
-              const s = d + (tg >= 0 ? P.hookGenBias * d2(k, gens[tg]) : 0) + (clusterOn ? P.hookClusterBias * d2(k, anchor) : 0);
+              cand.push([k, d]); if (d < nd) nd = d;
+            }
+            // carry budget: a non-nearest hook only if the whole carry (clock so far + travel + hooking) fits hookMaxCarryS
+            const clock = carryClock[me.carrying] || 0;
+            for (const [k, d] of cand) {
+              if (d > nd && clock + d / carrySpeed + hookActS > P.hookMaxCarryS) continue;
+              const s = d + (tg >= 0 ? P.hookGenBias * d2(k, gens[tg]) : 0) + (clusterOn ? P.hookClusterBias * d2(k, anchor) : 0)
+                + (P.hookAwayW > 0 ? P.hookAwayW * 40 * othersNear(k, 24) : 0);
               if (s < bs) { bs = s; hookTarget = k; }
             }
           }
@@ -204,7 +339,32 @@ export function makeHunter(P) {
         if (nHooked > prevHooks && P.campS > 0.5) {
           const fresh = obs.hooked[obs.hooked.length - 1];
           const hk = M.hooks.find((k) => k.id === fresh.hookId);
-          if (hk) camp = { x: hk.x, z: hk.z, until: obs.t + P.campS };
+          if (hk) {
+            // post-hook plan, drawn once per hook: proxy (weight 1) / guard the gen nearest the hook / roam the belief
+            camp = { x: hk.x, z: hk.z, until: obs.t + P.campS, mode: 'proxy' };
+            const wG = P.postHookGenW, wR = P.postHookRoamW;
+            if (wG + wR > 0) {
+              const r = ctx.rng.next() * (1 + wG + wR);
+              if (r >= 1 + wG) { camp = null; beliefTgt = null; }
+              else if (r >= 1) {
+                let gp = null, gd = Infinity;      // endgame: the nearest unopened lever; else the nearest unfinished gen (<= 40 m)
+                if (obs.gatesPowered) {
+                  for (let i = 0; i < GATES.length; i++) {
+                    const g = obs.gates.find((x) => x.id === GATES[i].id), dd = d2(GATES[i].lever, hk);
+                    if (g && !g.open && dd < gd) { gd = dd; gp = { x: GATES[i].lever.x, z: GATES[i].lever.z, gi: -1 }; }
+                  }
+                } else {
+                  gd = 40;
+                  for (let i = 0; i < gens.length; i++) {
+                    if (obs.gens[i].done || obs.gens[i].blocked) continue;
+                    const dd = d2(gens[i], hk);
+                    if (dd < gd) { gd = dd; gp = { x: gens[i].x, z: gens[i].z, gi: i }; }
+                  }
+                }
+                if (gp) { camp.mode = 'gen'; camp.g = gp; goto = null; }
+              }
+            }
+          }
         }
         prevHooks = nHooked;
 
@@ -228,6 +388,13 @@ export function makeHunter(P) {
           if (d2(downed, me) <= 1.4) return { act: 'pickup', target: downed.id };
           return { moveTo: { x: downed.x, z: downed.z } };
         }
+        // endgame: a lever seen being opened. Go unless I'm chasing someone near it (likely the opener) or the lever is
+        // not far enough along to leave my chase for (gateAbandonProg)
+        const rush = gateRush(obs, me, nav);
+        if (rush && !(best && bs < 500 && (d2(best, rush.pt) <= 10 || rush.prog < P.gateAbandonProg))) {
+          if (best && bs < 500) { target = null; lastPos = null; }
+          return { moveTo: rush.pt, face: rush.pt };
+        }
         if (best && bs < 500) {
           if (best.id !== target) { target = best.id; chaseStart = obs.t; }
           // leash: the chase is dragging us too far from the cluster and the target is heading away from it
@@ -240,6 +407,10 @@ export function makeHunter(P) {
             // a dropped pallet between us: break it if walking around costs more than breakDetourM
             const brkA = d > 2 ? breakToward(obs, me, nav, best) : null;
             if (brkA) return brkA;
+            // a standing pallet the survivor can drop: hold outside its stun zone (also no swing across it, which walks
+            // into the zone during the windup)
+            const hold = palletRespect(obs, me, best);
+            if (hold) { posHist.length = 0; return hold; }
             // only swing if we can physically reach: straight line clear, or a short walking path
             // (a survivor mid-vault is hittable until fully landed, even though the window blocks walking)
             if (d <= P.lungeDist && (best.vaulting || api.walkClear(me, best) || nav.dist(me, best) <= P.lungeDist + 1)) {
@@ -293,13 +464,22 @@ export function makeHunter(P) {
 
         // ---- camp a fresh hook ----
         if (camp && obs.t < camp.until && obs.hooked.length) {
-          const r = P.campRadius;
+          // proxy: random points around the hook at campRadius; gen guard: around the guarded gen / lever at ~4 m
+          const c = camp.mode === 'gen' ? camp.g : camp;
+          if (camp.mode === 'gen' && c.gi >= 0) {
+            const g = obs.gens[c.gi], gx = Math.floor(c.x), gz = Math.floor(c.z);
+            const near = Math.max(Math.abs(me.x - (gx + 0.5)), Math.abs(me.z - (gz + 0.5))) <= 1.5;
+            if (near && !g.done && !g.blocked && !g.regressing && g.progress > 0 && g.progress >= P.kickMinProgress && !obs.gatesPowered && (g.kicksLeft ?? 1) > 0) {
+              return { act: 'kickGen', target: gens[c.gi].id };
+            }
+          }
+          const r = camp.mode === 'gen' ? 4 / 0.7 : P.campRadius;
           if (!goto || d2(goto, me) < 1.5) {
             const a = ctx.rng.next() * Math.PI * 2;
-            goto = { x: camp.x + Math.cos(a) * r * 0.7, z: camp.z + Math.sin(a) * r * 0.7 };
-            if (nav.dist(me, goto) === Infinity) goto = { x: camp.x, z: camp.z };
+            goto = { x: c.x + Math.cos(a) * r * 0.7, z: c.z + Math.sin(a) * r * 0.7 };
+            if (nav.dist(me, goto) === Infinity) goto = { x: c.x, z: c.z };
           }
-          return { moveTo: goto, face: camp };
+          return { moveTo: goto, face: { x: c.x, z: c.z } };
         }
 
         // ---- repair noise: someone is on a gen within 10 m ----
@@ -315,6 +495,10 @@ export function makeHunter(P) {
         if (goto && d2(goto, me) > 2.5 && !camp) return { moveTo: goto };
         goto = null;
         camp = null;
+
+        // ---- endgame: swing by a lever that is due / the exit of an open gate ----
+        const gpt = gatePatrol(obs, me);
+        if (gpt) return sweep(api, me, gpt, obs.t, P.lookSweepDeg, P.lookPeriodS, P.glanceS);
 
         // ---- patrol gens ----
         // ---- patrol housekeeping: break a nearby dropped pallet that's expensive to walk around ----
