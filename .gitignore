@@ -1,2 +1,8 @@
 node_modules/
 runs/
+
+# large research trace dumps (regenerate with scripts/diag-infloop.js)
+docs/research/*.jsonl
+docs/research/*.jsonl.gz
+docs/research/*.summary.json
+docs/research/*.sources.json
