@@ -182,6 +182,29 @@ test('solo queue: teammate positions only by sight (HUD states only); gens progr
   ok(hObs.gens[gi].visible ? hObs.gens[gi].progress > 0.05 && Array.isArray(hObs.gens[gi].workers) : hObs.gens[gi].progress === 0 && hObs.gens[gi].workers === null, 'hunter: progress + workers only for a perceived gen (else its own stale memory)');
 });
 
+test('solo queue: survivors only know generators they have found (id / position / slots null until perceived; genDone reveals)', () => {
+  const { m, ctl } = mk({ config: { gens: { repairS: 5, fumbleChancePerS: 0 } } });
+  const obs = [null, null, null, null];
+  for (let i = 0; i < 4; i++) ctl.S[i] = (o) => (obs[i] = o, {});
+  let hObs; ctl.H = o => (hObs = o, {});
+  place(m.survivors[0], 15.5, 10.5);                         // inside the house: sees no gen
+  const freeNear = (g, skip = 0) => { const offs = [[1, 0], [-1, 0], [0, 1], [0, -1]]; let n = 0; for (const [dx, dz] of offs) { const x = g.x + dx, z = g.z + dz; if (circleFree(m.coll, m.W, m.Hh, x, z, 0.4) && n++ >= skip) return { x, z }; } throw new Error('no free spot'); };
+  const g = gen(m); place(m.survivors[1], freeNear(g, 1).x, freeNear(g, 1).z);
+  run(m, 3);
+  const unk = obs[0].gens.filter(x => !x.known);
+  ok(unk.length > 0 && unk.every(x => x.id === null && x.x === null && x.z === null && x.slots === null), 'unfound gens: id / x / z / slots are null for the survivor');
+  ok(obs[0].gens.every(x => 'known' in x && 'slots' in x), 'every survivor gen entry has known + slots keys');
+  const k1 = obs[1].gens[0];
+  ok(k1.known && k1.id === g.id && k1.x === g.x && k1.z === g.z && Array.isArray(k1.slots), 'adjacent survivor knows the gen');
+  ok(hObs.gens.every(x => x.id !== null && x.x !== null), 'hunter obs: all gen positions (unchanged)');
+  place(m.survivors[1], 15.5, 12.5); run(m, 3);
+  ok(obs[1].gens[0].known && obs[1].gens[0].x === g.x, 'once found, a gen stays known after walking away');
+  ok(!obs[0].gens[0].known, 'survivor 0 still does not know it');
+  ctl.S[2] = (o) => (obs[2] = o, { act: 'repair', target: g.id }); place(m.survivors[2], g.slots[0].x, g.slots[0].z);
+  run(m, 60);
+  ok(g.done && obs[0].gens[0].known && obs[0].gens[0].done && obs[0].gens[0].x === g.x, 'genDone announcement makes the (done) gen known to everyone');
+});
+
 test('solo queue: gen completion is announced to everyone; scream radius is a knob (default off)', () => {
   const { m, ctl } = mk({ config: { gens: { repairS: 5, fumbleChancePerS: 0 } } });
   const obs = [null, null, null, null];
@@ -1242,14 +1265,16 @@ test('generators: 4 side slots (walkable neighbours only), one repairer per slot
   const map = structuredClone(smallMap);
   map.obstacles.push({ x: g0.i + 1, z: g0.j, w: 1, d: 1, height: 1 });           // east side: solid
   map.windows.push({ id: 'win-test', x: g0.i, z: g0.j + 1, axis: 'z' });          // south side: window (not usable)
-  const ctxs = [];
+  const ctxs = []; let hctx = null;
   const ctl = { S: [() => ({}), () => ({}), () => ({}), () => ({})] };
-  const m = createMatch({ map, seed: 1, hunter: () => ({ decide: () => ({}) }), survivors: [0, 1, 2, 3].map(i => ctx => { ctxs[i] = ctx; return { decide: (o, a) => ctl.S[i](o, a) }; }) });
+  const m = createMatch({ map, seed: 1, hunter: (c) => (hctx = c, { decide: () => ({}) }), survivors: [0, 1, 2, 3].map(i => ctx => { ctxs[i] = ctx; return { decide: (o, a) => ctl.S[i](o, a) }; }) });
   const S = m.survivors; place(S[0], 3.5, 33.5); place(S[1], 44.5, 3.5); place(S[2], 3.5, 3.5); place(S[3], 44.5, 33.5); place(m.hunter, 24.5, 18.5);
   const g = m.gens[0]; ok(g.id === g0.id, 'same gen chosen');
   ok(g.slots.map(s => s.side).join() === 'N,W', 'blocked (solid) and window sides are not slots: ' + g.slots.map(s => s.side).join());
-  ok(JSON.stringify(ctxs[0].map.generators[0].slots) === JSON.stringify([{ side: 'N', x: g.i + 0.5, z: g.j - 0.5 }, { side: 'W', x: g.i - 0.5, z: g.j + 0.5 }]), 'ctx.map.generators[i].slots = usable side points (cell centres)');
-  ok(Object.isFrozen(ctxs[0].map.generators[0].slots[0]), 'static slots are frozen');
+  const slotsJson = JSON.stringify([{ side: 'N', x: g.i + 0.5, z: g.j - 0.5 }, { side: 'W', x: g.i - 0.5, z: g.j + 0.5 }]);
+  ok(JSON.stringify(hctx.map.generators[0].slots) === slotsJson, 'hunter ctx.map.generators[i].slots = usable side points (cell centres)');
+  ok(Object.isFrozen(hctx.map.generators[0].slots[0]), 'static slots are frozen');
+  ok(ctxs[0].map.generators.length === m.gens.length && ctxs[0].map.generators.every(x => x === null), 'survivor ctx.map.generators: same length, every entry null (no gen auras)');
   const obs = [];
   for (let i = 0; i < 4; i++) ctl.S[i] = o => (obs[i] = o, i < 3 ? { act: 'repair', target: g.id } : {});
   // s0 on N; s1 also within reach of N (overlap placement); s2 at the diagonal cell (within the old 1.1 m rect reach, not a slot)
@@ -1261,6 +1286,7 @@ test('generators: 4 side slots (walkable neighbours only), one repairer per slot
   ok(S[0].curAct === 'repair' && S[1].curAct !== 'repair' && S[2].curAct !== 'repair', 'first come keeps it; off-slot survivor does not repair');
   ok(JSON.stringify(obs[1].gens[0].slotsTaken) === '["N"]' && obs[1].gens[0].visible, 'adjacent survivor sees slotsTaken ["N"]');
   ok(obs[3].gens[0].visible === false && obs[3].gens[0].slotsTaken === null, 'survivor who does not perceive the gen gets slotsTaken null');
+  ok(JSON.stringify(obs[0].gens[0].slots) === slotsJson && obs[0].gens[0].known && obs[0].gens[0].id === g.id, 'a survivor who found the gen gets its id + slots in obs.gens');
   // all usable sides busy: max workers = number of usable sides (2)
   place(S[2], g.i - 0.5, g.j + 0.5); const p1 = g.p; run(m, 50);
   near(g.p - p1, 50 * 0.1 * 2 * 0.85, 0.05, 'two usable sides => at most 2 workers (2 x 0.85)');
@@ -1423,8 +1449,9 @@ test('entity blocker: 3 vaults of one window in the SAME chase block it for that
 });
 
 test('full matches with the baseline brains: terminate, consistent, every mechanic fires', () => {
-  // eased batch (faster gens, longer hook stages) so the trivial baseline brains reliably reach the gates
-  const maps = [['test-small', smallMap, 30], ['test-small eased', smallMap, 10, { gens: { repairS: 8 }, hooks: { stageS: 120 }, hunter: { pickupS: 4, hookS: 3 } }]];
+  // eased batch (faster gens, longer hook stages) so the trivial baseline brains reliably reach the gates (40 seeds: a downed
+  // crawl-out through an open gate is rare, ~1-2 per 40, and the baseline survivors now have to find the gens first)
+  const maps = [['test-small', smallMap, 30], ['test-small eased', smallMap, 40, { gens: { repairS: 8 }, hooks: { stageS: 120 }, hunter: { pickupS: 4, hookS: 3 } }]];
   if (bigMap) maps.push([bigMap.id, bigMap, 8]);
   const seen = {};
   for (const [name, map, n, config] of maps) {

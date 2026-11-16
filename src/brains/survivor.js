@@ -8,8 +8,7 @@ export const survivorSpace = {
   walkWhenTR:    [0, 1, 0.5],    // >0.5: walk (no scratch marks) when sneaking away from terror
   palletDropDist:[1.5, 6, 3],    // drop an up pallet when the hunter is this close to it
   vaultDist:     [1.5, 8, 4],    // cross a window/dropped pallet when hunter on our side within this
-  loopRace:      [0.4, 1.2, 0.8],// take a loop anchor only if our path < loopRace * hunter's distance to it
-  loopRange:     [8, 40, 25],    // max path distance to a loop anchor
+  loopRace:      [0.4, 1.2, 0.8],// take a loop only if my path to its entry < loopRace * the hunter's distance to it
   altruism:      [0, 1, 0.6],    // willingness to rescue / heal
   rescueDelayS:  [0, 40, 8],     // wait after spotting a hooked teammate (anti-camp)
   campAvoidDist: [0, 20, 8],     // don't approach a hook while the hunter is seen within this of it
@@ -21,7 +20,7 @@ export const survivorSpace = {
   sneakMaxS:     [3, 60, 15],    // give up sneaking (go back to work despite terror) after this long
   protectHoldS:  [0, 10, 0],     // after unhook: hold off conspicuous actions (repair/heal/rescue/gate) for this many of the 10 protected seconds
   mendRiskDist:  [0, 40, 16],    // only mend Deep Wound if the hunter isn't seen within this
-  holdMaxS:      [0, 20, 4],     // max time to hold at a loop anchor while the hunter isn't pressing us (seen + approaching)
+  holdMaxS:      [0, 20, 4],     // max time to hold at a loop entry while the hunter isn't pressing us (seen + approaching)
   // ---- HUD-driven teamwork (solo queue: no comms, but the HUD shows states / gens / chases / hooks / downed auras) ----
   rescueSlack:   [0, 40, 10],    // go for a rescue if my distance <= the closest teammate's estimated distance + this
   unknownDist:   [10, 80, 40],   // assumed distance to a hook for a teammate whose whereabouts the HUD doesn't reveal
@@ -38,9 +37,10 @@ export const survivorSpace = {
   hideSearchR:   [4, 20, 10],    // how far to look for a hiding spot (m)
   hideWalk:      [0, 1, 0.6],    // >0.5: walk (no scratch marks) while slipping out of view
   hideHoldS:     [0, 8, 2],      // once out of view, stay put this long while the hunter is still around
-  // ---- chase: loop quality ----
-  loopQualityW:  [0, 2, 0.2],    // anchor score = path distance - this * (hunter's walk-around detour, m): prefer strong loops
-  avoidHeading:  [0, 1, 0.6],    // >0.5: skip anchors the hunter is heading toward (it would cut us off)
+  // ---- chase: loops scored by "equivalent distance held" (loops.js) ----
+  loopTravelMaxM:[5, 50, 25],    // max path distance I'll run to reach a loop's entry
+  holdW:         [0, 3, 1],      // loop score = holdW * expected distance held per chase (m) - path distance to its entry (m)
+  avoidHeading:  [0, 1, 0.6],    // >0.5: skip loop entries the hunter is heading toward (it would cut us off)
   chaseToMatesW: [-1, 1, 0],     // in a chase: >0 run toward teammates known to be repairing, <0 lead the hunter away from them
   edgeAvoidW:    [-1, 1, 0],     // in a chase: >0 avoid loops / flee points within 16 m of the map's outer wall, <0 prefer them
   followFleeW:   [-1, 1, 0],     // fleeing (chase flee point / loop anchor / hide spot): >0 run the same way as a visible teammate who's fleeing the hunter, <0 diverge
@@ -64,10 +64,15 @@ export const survivorSpace = {
   hideNerveM:    [0, 30, 8],       // hiding and the hunter shows up without seeing me: stay frozen unless it comes closer than this
   genCoverW:     [-1, 2, 0],       // generator choice: prefer gens with well-covered repair slots
   genThreatW:    [0, 3, 0.5],      // generator choice: avoid gens where my belief puts the hunter (P within 24 m)
+  // ---- exploration (survivors only know the generators / loop anchors they have found) ----
+  exploresMap:   [0, 1, 0.5],      // propensity to explore unexplored areas instead of working a known gen (0 = only when no gen is known)
+  exploreRadM:   [10, 80, 35],     // preferred distance of exploration targets (score = unexplored share - distance / this)
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
 import { HunterBelief } from './hunterbelief.js';
+import { LoopModel } from './loops.js';
+import { MapKnowledge } from './mapknow.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
@@ -80,54 +85,22 @@ function rectDist(x, z, x0, z0, x1, z1) {
 export function makeSurvivor(P) {
   return (ctx) => {
     const M = ctx.map;
-    const gens = M.generators;
-    // loop anchors: windows and pallets with their two approach points
-    const anchors = [];
-    for (const w of M.windows) {
-      const c = { x: w.x + 0.5, z: w.z + 0.5 };
-      const ax = w.axis === 'x' ? { x: 1, z: 0 } : { x: 0, z: 1 };
-      anchors.push({ kind: 'w', id: w.id, c, s: [{ x: c.x - ax.x * 1.6, z: c.z - ax.z * 1.6 }, { x: c.x + ax.x * 1.6, z: c.z + ax.z * 1.6 }] });
-    }
-    M.pallets.forEach((p, i) => {
-      const c = { x: p.cx, z: p.cz };
-      const ax = p.axis === 'x' ? { x: 1, z: 0 } : { x: 0, z: 1 };
-      anchors.push({ kind: 'p', i, p, c, s: [{ x: c.x - ax.x * 1.6, z: c.z - ax.z * 1.6 }, { x: c.x + ax.x * 1.6, z: c.z + ax.z * 1.6 }] });
-    });
-
-    // hunter walk-around detour per anchor: grid BFS from one side to the other with the anchor cell blocked (windows
-    // and pallets elsewhere count as open for the hunter only if they're windows; pallets are assumed down = blocked).
-    {
-      const W = M.w, H = M.h, solid = new Uint8Array(W * H);
-      const inPoly = (x, z) => { let c = false; const o = M.outline; for (let i = 0, j = o.length - 1; i < o.length; j = i++) { const [xi, zi] = o[i], [xj, zj] = o[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
-      for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (!inPoly(i + 0.5, j + 0.5)) solid[j * W + i] = 1;
-      for (const o of M.obstacles) for (let j = o.z; j < o.z + o.d; j++) for (let i = o.x; i < o.x + o.w; i++) if (i >= 0 && j >= 0 && i < W && j < H) solid[j * W + i] = 1;
-      for (const g of [...(M.generatorCandidates || []), ...gens]) solid[Math.floor(g.z) * W + Math.floor(g.x)] = 1;
-      for (const w of M.windows) solid[w.z * W + w.x] = 1;                  // walking around: windows don't count as a path
-      for (const q of M.pallets) for (let j = q.z0 ?? q.z; j < (q.z1 ?? q.z + 1); j++) for (let i = q.x0 ?? q.x; i < (q.x1 ?? q.x + 1); i++) solid[j * W + i] = 1;
-      const bfs = (a, b) => {
-        const si = Math.floor(a.x), sj = Math.floor(a.z), ti = Math.floor(b.x), tj = Math.floor(b.z);
-        if (si < 0 || sj < 0 || si >= W || sj >= H || solid[sj * W + si]) return 60;
-        const dist = new Map([[sj * W + si, 0]]), q = [sj * W + si];
-        for (let h = 0; h < q.length; h++) {
-          const c = q[h], d = dist.get(c); if (d > 60) break;
-          if (c === tj * W + ti) return d;
-          const ci = c % W, cj = (c / W) | 0;
-          for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = ci + di, nj = cj + dj; if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue; const n = nj * W + ni; if (solid[n] || dist.has(n)) continue; dist.set(n, d + 1); q.push(n); }
-        }
-        return 60;
-      };
-      for (const a of anchors) a.detour = Math.max(0, bfs(a.s[0], a.s[1]) - 3.2);
-    }
-
-    const jitter = gens.map(() => ctx.rng.next());   // this survivor's own taste per gen (own seeded stream)
+    // survivors don't know where the generators are: obs.gens[i] gets id / position / slots once found (engine).
+    const loops = new LoopModel(ctx);            // anchors + distance-held circuits (static parts lazily, once per match)
+    const anchors = loops.anchors;
+    const know = new MapKnowledge(ctx, anchors);  // explored area + anchors seen
+    const exploreJit = Float32Array.from({ length: know.seen.length }, () => 0.15 * ctx.rng.next());   // own taste per area
+    const detourOf = (a) => Math.max(0, loops.detour(a.k) - 3.2);
+    const jitter = M.generators.map(() => ctx.rng.next());   // this survivor's own taste per gen (own seeded stream)
     let mode = 'work';          // work | chase | sneak
     let lastThreatT = -99;
-    let anchor = null;
-    let genTarget = -1;
+    let circ = null;            // running loop: { seq, i, phase: 'toP' | 'cross', lockT, holdT }
+    let genTarget = -1;         // >= 0 gen index, -2 = exploring
+    let exploreTo = null, exploreT = -99;
+    const vaultCount = new Map(); let wasVaulting = false, lastChasedT = -99;   // window vaults in the current chase (entity blocker)
     const slots = makeSlotPicker(ctx.config.reach.repairSlot);   // generator side slots (one repairer per side)
     let fleePoint = null, fleeT = -99;
     let sneakStart = -1;
-    let idleHoldT = 0;            // time spent holding at an anchor without being pressed
     const hookedAt = {};          // teammate id -> { hookId, x, z, t } from the HUD hook notifications
     let notesRead = 0;
     let unhookIntentT = -99;      // last time a teammate said "going for unhook"
@@ -135,8 +108,8 @@ export function makeSurvivor(P) {
     let helpSentT = -99, chaseSentT = -99;
 
     const anchorUsable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] !== 'broken');
-    const crossable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] === 'dropped');
-    const side = (a, pt) => (d2(a.s[0], pt) <= d2(a.s[1], pt) ? 0 : 1);
+    const vaultsLeft = (obs) => (k) => { const a = anchors[k]; return obs.blockedWindows.includes(a.id) ? 0 : Math.max(0, 3 - (vaultCount.get(k) || 0)); };
+    const palletState = (obs) => (k) => obs.pallets[anchors[k].i];
 
     // stealth: a spot near me the hunter can't see (cone + line of sight), cached ~1 s
     let hideSpot = null, hideT = -99, hiddenUntil = -99;
@@ -171,9 +144,9 @@ export function makeSurvivor(P) {
     let hideCooldownUntil = -99;
     const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0 };   // diagnostics (read by scripts via brain.stats)
     let wasChased = false, lastHideTickT = -99;
-    let genCover = null;          // per gen: mean cover of its repair slots (lazy)
-    const genCoverOf = (i) => {
-      if (!genCover) genCover = gens.map((g) => { const sl = g.slots && g.slots.length ? g.slots : [g]; return sl.reduce((a, s) => a + belief.coverAt(s.x, s.z), 0) / sl.length; });
+    const genCover = M.generators.map(() => null);   // per known gen: mean cover of its repair slots (lazy)
+    const genCoverOf = (g, i) => {
+      if (genCover[i] === null) { const sl = g.slots && g.slots.length ? g.slots : [g]; genCover[i] = sl.reduce((a, s) => a + belief.coverAt(s.x, s.z), 0) / sl.length; }
       return genCover[i];
     };
     let thrCache = { v: -1, x: 0, z: 0, val: 0 };
@@ -211,12 +184,12 @@ export function makeSurvivor(P) {
       }
       return out;
     }
-    // tightest group of up to 3 unfinished generators this survivor has actually perceived (seenT >= 0); never uses
+    // tightest group of up to 3 unfinished generators this survivor has actually found (obs.gens[i].known); never uses
     // positions of gens it hasn't seen. < 2 known: the nearest known one. Recomputed when the known/done set changes.
     let clusterKey = '', clusterC = null;
     function genCluster(obs, me) {
       const known = [];
-      for (let i = 0; i < obs.gens.length; i++) { const g = obs.gens[i]; if (g.seenT >= 0 && !g.done) known.push(g); }
+      for (let i = 0; i < obs.gens.length; i++) { const g = obs.gens[i]; if (g.known && !g.done) known.push(g); }
       if (known.length < 2) return known.length ? known[0] : null;
       const key = known.map((g) => g.id).join(',');
       if (key === clusterKey) return clusterC;
@@ -263,7 +236,7 @@ export function makeSurvivor(P) {
       cands.sort((a, b) => b.s - a.s);
       const top = beliefOn && P.exposeW > 0 ? belief.topCells(12) : null;
       // the hunter will come to check the generator I was working on: count it as a likely viewpoint too
-      if (top && hide && hide.gen >= 0) { const g = gens[hide.gen], m = top.reduce((a, c) => a + c.p, 0); top.push({ x: g.x, z: g.z, p: m * P.hideGenFear }); }
+      if (top && hide && hide.gen >= 0 && obs.gens[hide.gen].known) { const g = obs.gens[hide.gen], m = top.reduce((a, c) => a + c.p, 0); top.push({ x: g.x, z: g.z, p: m * P.hideGenFear }); }
       let best = here, bs = -Infinity;
       let tried = 0;
       for (const c of cands) {
@@ -306,61 +279,113 @@ export function makeSurvivor(P) {
     const edgeness = (pt) => Math.max(0, 16 - edgeDist(pt)) / 16;
     const mateCloseness = (mates, c) => mates.reduce((a, m) => a + Math.max(0, 30 - d2(c, m)) / 30, 0);
 
-    function chase(obs, api, me, h) {
+    // ---- chase: run loops (circuits of windows / pallets) chosen by expected distance held (loops.js) ----
+    const crossOK = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] !== 'broken');
+    function chooseCircuit(obs, api, me, hp, h, extra) {
+      const vl = vaultsLeft(obs), ps = palletState(obs), R = P.loopTravelMaxM;
+      const cands = [];
+      for (const a of anchors) {
+        if (!know.anchorKnown[a.k] || !crossOK(a, obs) || d2(me, a.c) > R + 2) continue;
+        for (let d = 0; d < 2; d++) {
+          const c = 2 * a.k + d, Pt = loops.sidePt[c];
+          const dmE = d2(me, Pt), dhP = d2(hp, Pt);
+          if (dmE > R || !(dmE < P.loopRace * dhP)) continue;
+          // the hunter is heading for it: it would cut us off there
+          if (h && P.avoidHeading > 0.5) { const tx = Pt.x - h.x, tz = Pt.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dhP < dmE + 4) continue; }
+          let best = null, be = 0;
+          for (const o of loops.circuitsFrom(c)) {
+            if (!o.seq.every((x) => know.anchorKnown[x >> 1] && crossOK(anchors[x >> 1], obs))) continue;
+            const ex = loops.expected(o, vl, ps);
+            if (ex > be) { be = ex; best = o; }
+          }
+          if (best) cands.push({ o: best, ex: be, Pt, dhP, s: P.holdW * be - dmE + extra(Pt) });
+        }
+      }
+      cands.sort((x, y) => y.s - x.s);
+      let pick = null, bs = -Infinity;
+      for (const c of cands.slice(0, 4)) {               // path distances only for the best few
+        const dm = api.nav.dist(me, c.Pt);
+        if (!(dm <= R * 1.2) || !(dm < P.loopRace * c.dhP + 1)) continue;
+        const s = c.s + d2(me, c.Pt) - dm;
+        if (s > bs) { bs = s; pick = c; }
+      }
+      return pick ? { seq: pick.o.seq.slice(), i: 0, phase: 'toP', lockT: obs.t + 1, holdT: 0, chosenT: obs.t, ex: pick.ex } : null;
+    }
+    function reverseCirc(obs) {
+      const k = circ.seq.length, prevIdx = (circ.i - 1 + k) % k;
+      const rev = circ.seq.slice().reverse().map((c) => c ^ 1);
+      // the crossing I just did, backwards, comes next (or, mid-crossing, the current one backwards)
+      circ.i = circ.phase === 'cross' ? k - 1 - circ.i : k - 1 - prevIdx;
+      circ.seq = rev; circ.phase = 'toP'; circ.lockT = obs.t + 1.5;
+    }
+
+    function chase(obs, api, me, h, depth = 0) {
+      if (depth > 3) return null;
       const mates = P.chaseToMatesW !== 0 ? matesOnGens(obs) : [];
       const fl = fleeingMates(obs, me);
       const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
-      const nav = api.nav;
       const hp = h ?? obs.lastHunter;
       if (!hp) return null;
-      // drop / loop at current anchor
-      if (anchor && !anchorUsable(anchor, obs)) anchor = null;
-      if (anchor && d2(me, anchor.c) > 8) anchor = null;
-      if (!anchor) {
-        let best = null, bd = Infinity;
-        for (const a of anchors) {
-          if (!anchorUsable(a, obs)) continue;
-          const dh = d2(hp, a.c);
-          if (d2(me, a.c) > P.loopRange) continue;
-          const dm = nav.dist(me, a.c);
-          if (!(dm < P.loopRange && dm < P.loopRace * dh)) continue;
-          // the hunter is heading for it: it would cut us off there
-          if (h && P.avoidHeading > 0.5) { const tx = a.c.x - h.x, tz = a.c.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dh < d2(me, a.c) + 4) continue; }
-          const sc = dm - P.loopQualityW * Math.min(30, a.detour) - P.chaseToMatesW * 10 * mateCloseness(mates, a.c) + P.edgeAvoidW * 10 * edgeness(a.c) - P.followFleeW * 10 * alignTo(fl, me, a.c) - P.genClusterW * 10 * clusterAt(cc, a.c);
-          if (sc < bd) { bd = sc; best = a; }
+      const extra = (pt) => P.chaseToMatesW * 10 * mateCloseness(mates, pt) - P.edgeAvoidW * 10 * edgeness(pt) + P.followFleeW * 10 * alignTo(fl, me, pt) + P.genClusterW * 10 * clusterAt(cc, pt);
+      const dhm = d2(hp, me);
+      if (circ && !circ.seq.every((x) => crossOK(anchors[x >> 1], obs))) circ = null;
+      if (circ && circ.phase === 'toP' && d2(me, loops.sidePt[circ.seq[circ.i]]) > P.loopTravelMaxM + 8) circ = null;
+      if (!circ || (obs.t - circ.chosenT > 4 && circ.phase === 'toP' && d2(me, loops.sidePt[circ.seq[circ.i]]) > 6)) circ = chooseCircuit(obs, api, me, hp, h, extra) ?? (circ && circ.phase === 'toP' ? null : circ);
+      if (circ) {
+        const c = circ.seq[circ.i], a = anchors[c >> 1], Pt = loops.sidePt[c], Qt = loops.sidePt[c ^ 1];
+        // hunter mid-vault through this anchor: it's blocked for it; use the head start and run
+        if (h && h.vaulting && d2(h, a.c) < 2.5) { circ = null; return { moveDir: { x: me.x - h.x, z: me.z - h.z } }; }
+        // the hunter is nearer my next entry than I am (it cut ahead / is on the far side): run the loop the other way
+        const hP = api.nav.dist(hp, Pt), hQ = api.nav.dist(hp, Qt);   // path distances (fields to fixed points get cached)
+        if (circ.phase === 'toP' && obs.t >= circ.lockT && hP + 0.5 < api.nav.dist(me, Pt) && hQ > hP && circ.seq.length > 1) { reverseCirc(obs); return chase(obs, api, me, h, depth + 1); }
+        if (circ.phase === 'toP') {
+          // running crossing (a real leg leads into it): keep the momentum for a fast vault while the hunter is on us;
+          // hold crossing (zero leg: mind-game at one anchor): wait at the entry until the hunter is close
+          const kk = circ.seq.length, legIn = loops.L(circ.seq[(circ.i - 1 + kk) % kk] ^ 1, c);
+          const running = legIn >= 2 && dhm < 20;
+          if (d2(me, Pt) > (running ? 1.6 : 0.8)) return { moveTo: Pt };
+          // at the entry: cross when the hunter is close behind; otherwise hold here (mind-game) for a while
+          const pressing = h && dhm < 16 && ((h.vx * (me.x - h.x) + h.vz * (me.z - h.z)) / Math.max(0.1, dhm)) > 1.0;
+          const onMySide = hP <= hQ;
+          // hunter on the far side: run the loop the other way if that leads elsewhere, else hold here
+          if (!onMySide && obs.t >= circ.lockT && circ.seq.length > 1) {
+            const k = circ.seq.length;
+            const revNext = circ.seq[(circ.i - 1 + k) % k] ^ 1;
+            if (loops.sidePt[revNext] !== Pt) { reverseCirc(obs); return chase(obs, api, me, h, depth + 1); }
+          }
+          const goNow = onMySide && (running || (a.kind === 'p' && obs.pallets[a.i] === 'up') || dhm < P.vaultDist);
+          if (goNow) { circ.phase = 'cross'; circ.holdT = 0; }
+          else {
+            circ.holdT = pressing ? 0 : circ.holdT + api.dt * (ctx.config.decisionEvery || 1);
+            if (circ.holdT > P.holdMaxS) { circ = null; return null; }
+            return { moveTo: Pt, face: hp };
+          }
         }
-        anchor = best;
-      }
-      if (anchor) {
-        const ms = side(anchor, me), hs = side(anchor, hp);
-        const dhm = d2(hp, me);
-        // hold an anchor only while the hunter is actually pressing us (seen, close, closing in); otherwise give up the loop
-        const pressing = h && dhm < 16 && ((h.vx * (me.x - h.x) + h.vz * (me.z - h.z)) / Math.max(0.1, dhm)) > 1.0;
-        idleHoldT = pressing ? 0 : idleHoldT + api.dt * (ctx.config.decisionEvery || 1);
-        if (idleHoldT > P.holdMaxS) { anchor = null; idleHoldT = 0; return null; }
-        if (anchor.kind === 'p' && obs.pallets[anchor.i] === 'up') {
-          const p = anchor.p;
+        // crossing
+        if (a.kind === 'p' && obs.pallets[a.i] === 'up') {
+          const p = a.p;
           const near = rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= 1.1;
-          const dropAt = anchor.detour < P.weakPalletM ? Math.max(P.palletDropDist, P.weakDropDist) : P.palletDropDist;   // weak pallet: drop early
-          if (near && hs !== ms && d2(hp, anchor.c) < dropAt) return { act: 'dropPallet', target: p.id };
+          const ms = d2(Pt, me) <= d2(Qt, me) ? 'P' : 'Q', hs = hP <= hQ ? 'P' : 'Q';
+          const dropAt = detourOf(a) < P.weakPalletM ? Math.max(P.palletDropDist, P.weakDropDist) : P.palletDropDist;   // weak pallet: drop early
+          if (near && ms === 'Q' && hs === 'P' && d2(hp, a.c) < dropAt) return { act: 'dropPallet', target: p.id };
           if (near && dhm < P.palletDropDist * 0.6) return { act: 'dropPallet', target: p.id };
-          // get to the far side of the standing pallet
-          return { moveTo: anchor.s[1 - hs] };
+          if (d2(me, Qt) > 0.8) return { moveTo: Qt };
+          // through, pallet still up: wait on the far side for the hunter to come close, then drop
+          circ.holdT += api.dt * (ctx.config.decisionEvery || 1);
+          if (circ.holdT > P.holdMaxS + 2) { circ = null; return null; }
+          return { moveTo: Qt, face: hp };
         }
-        if (crossable(anchor, obs)) {
-          // hunter is mid-vault through our anchor: it's blocked for us; use the head start and run
-          if (h && h.vaulting && d2(h, anchor.c) < 2.5) { anchor = null; return { moveDir: { x: me.x - h.x, z: me.z - h.z } }; }
-          if (hs === ms && dhm < P.vaultDist) return { moveTo: anchor.s[1 - ms] };
-          return { moveTo: anchor.s[ms], face: hp };
-        }
+        if (d2(me, Qt) > 0.8) return { moveTo: Qt };
+        circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0;
+        return chase(obs, api, me, h, depth + 1);
       }
       // open flee: pick a far, reachable point; refresh every 1 s
       if (!fleePoint || obs.t - fleeT > 1 || d2(me, fleePoint) < 2) {
         fleeT = obs.t;
         let bs = -Infinity;
-        const cands = [...gens, ...M.hooks, ...anchors.filter((a) => anchorUsable(a, obs)).map((a) => ({ x: a.c.x, z: a.c.z, q: a.detour }))];
+        const cands = [...obs.gens.filter((g) => g.known), ...M.hooks, ...anchors.filter((a) => know.anchorKnown[a.k] && anchorUsable(a, obs) && d2(a.c, me) < 30).map((a) => ({ x: a.c.x, z: a.c.z, q: detourOf(a) }))];
         for (const c of cands) {
-          const s = d2(c, hp) - 0.6 * d2(c, me) + P.loopQualityW * Math.min(30, c.q ?? 0) + P.chaseToMatesW * 10 * mateCloseness(mates, c) - P.edgeAvoidW * 10 * edgeness(c) + P.followFleeW * 10 * alignTo(fl, me, c) + P.genClusterW * 10 * clusterAt(cc, c);
+          const s = d2(c, hp) - 0.6 * d2(c, me) + P.holdW * 0.3 * Math.min(30, c.q ?? 0) + extra(c);
           if (d2(c, hp) < d2(me, hp)) continue;
           if (s > bs) { bs = s; fleePoint = { x: c.x, z: c.z }; }
         }
@@ -371,6 +396,8 @@ export function makeSurvivor(P) {
 
     return {
       stats,
+      know,
+      loops,
       belief,
       decide(obs, api) {
         const me = obs.self, h = obs.hunter, nav = api.nav;
@@ -381,6 +408,16 @@ export function makeSurvivor(P) {
         stats.decides++;
         if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; }   // chase on me began within 5 s of hiding
         wasChased = !!me.chased;
+        know.update(obs, api, 1.0);
+        // window vaults in the current chase (entity blocker: 3 vaults of one window per chase per survivor)
+        if (me.chased) lastChasedT = obs.t;
+        else if (obs.t - lastChasedT > 3 && vaultCount.size) vaultCount.clear();
+        if (me.vaulting && !wasVaulting && me.chased) {
+          let bk = -1, bd = 2.5;
+          for (const a of anchors) if (a.kind === 'w') { const d = d2(a.c, me); if (d < bd) { bd = d; bk = a.k; } }
+          if (bk >= 0) vaultCount.set(bk, (vaultCount.get(bk) || 0) + 1);
+        }
+        wasVaulting = !!me.vaulting;
         if (me.state === 'downed') {
           // crawl out through an open gate if one is close
           if (obs.gates) for (const g of obs.gates) {
@@ -421,8 +458,8 @@ export function makeSurvivor(P) {
           if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
           lastThreatT = obs.t;
         }
-        else if (mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS) { mode = 'work'; anchor = null; }
-        else if (obs.t - lastThreatT > P.calmS) { mode = 'work'; anchor = null; }
+        else if (mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS) { mode = 'work'; circ = null; }
+        else if (obs.t - lastThreatT > P.calmS) { mode = 'work'; circ = null; }
 
         // ---- stealth: the hunter is around but not on me -> get out of its view (and back to work once it's gone) ----
         if (mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
@@ -443,7 +480,7 @@ export function makeSurvivor(P) {
           hide = null;
         } else {
           const trig = hideTrigger(obs, me, !!hide);
-          if (trig && !hide && obs.t >= hideCooldownUntil) { hide = { start: obs.t, lastTrig: obs.t, spot: null, spotT: -99, gen: me.act === 'repair' || (genTarget >= 0 && d2(me, gens[genTarget]) < 4) ? genTarget : -1 }; stats.hides++; }
+          if (trig && !hide && obs.t >= hideCooldownUntil) { hide = { start: obs.t, lastTrig: obs.t, spot: null, spotT: -99, gen: me.act === 'repair' || (genTarget >= 0 && obs.gens[genTarget].known && d2(me, obs.gens[genTarget]) < 4) ? genTarget : -1 }; stats.hides++; }
           if (hide) {
             if (trig) hide.lastTrig = obs.t;
             if (obs.t - hide.lastTrig > P.hideStayS) hide = null;
@@ -483,13 +520,14 @@ export function makeSurvivor(P) {
         if (mode === 'sneak') {
           // move away from the last sighting toward the farthest unfinished gen
           const ref = obs.lastHunter ?? me;
-          let far = null, fd = -1;
-          for (let i = 0; i < gens.length; i++) {
-            if (obs.gens[i].done || obs.gens[i].blocked) continue;
-            const d = d2(gens[i], ref) - 0.3 * d2(gens[i], me);
-            if (d > fd) { fd = d; far = gens[i]; }
+          let far = null, fd = -Infinity;
+          for (let i = 0; i < obs.gens.length; i++) {
+            const g = obs.gens[i];
+            if (!g.known || g.done || g.blocked) continue;
+            const d = d2(g, ref) - 0.3 * d2(g, me);
+            if (d > fd) { fd = d; far = i; }
           }
-          if (far) return slots.act(obs, gens.indexOf(far), far, { walk, hold: holdProtection });
+          if (far !== null) return slots.act(obs, far, obs.gens[far], { walk, hold: holdProtection });
         }
 
         // ---- altruism: rescue (the HUD announces every hook with its location) ----
@@ -542,30 +580,45 @@ export function makeSurvivor(P) {
           }
         }
 
-        // ---- generators ----
-        if (genTarget >= 0 && (obs.gens[genTarget].done || obs.gens[genTarget].blocked)) genTarget = -1;
-        if (genTarget < 0 || obs.tick % 50 === 0) {
-          let bs = Infinity, bi = genTarget;
+        // ---- generators (only the ones I've found) vs exploring for more ----
+        const gens = obs.gens;
+        if (genTarget >= 0 && (gens[genTarget].done || gens[genTarget].blocked || !gens[genTarget].known)) genTarget = -1;
+        const unknownGens = gens.reduce((n, g) => n + (g.known ? 0 : 1), 0);
+        const exploreLeft = unknownGens > 0 && know.fraction() < 0.98;
+        if (exploreTo && (d2(me, exploreTo) < 3 || obs.t - exploreT > 25 || know.explored(exploreTo.x, exploreTo.z))) exploreTo = null;
+        if (genTarget === -2 && !exploreTo) genTarget = -1;
+        if (genTarget === -1 || obs.tick % 50 === 0) {
+          let bs = Infinity, bi = -1;
           for (let i = 0; i < gens.length; i++) {
-            const g = obs.gens[i];
-            if (g.done || g.blocked) continue;
-            let s = P.genDistW * nav.dist(me, gens[i]) / 20 - P.genProgW * g.progress * 3;
+            const g = gens[i];
+            if (!g.known || g.done || g.blocked) continue;
+            let s = P.genDistW * nav.dist(me, g) / 20 - P.genProgW * g.progress * 3;
             const others = g.workers ? g.workers.filter((w) => w !== me.id).length : 0;   // only for gens currently seen
             s += P.spreadW * others;
             const hpos = h ?? (obs.lastHunter && obs.t - obs.lastHunter.t < 90 ? obs.lastHunter : null);
-            if (hpos) s -= P.farFromHunterW * Math.min(60, d2(gens[i], hpos)) / 20;
+            if (hpos) s -= P.farFromHunterW * Math.min(60, d2(g, hpos)) / 20;
             s += P.genJitter * jitter[i];
-            if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(gens[i], obs.lastHunter)) / 10;
-            if (P.genCoverW !== 0) s -= P.genCoverW * 3 * genCoverOf(i);
-            if (P.genThreatW > 0 && beliefOn) s += P.genThreatW * 3 * belief.pHunterWithin(gens[i], 24);
+            if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(g, obs.lastHunter)) / 10;
+            if (P.genCoverW !== 0) s -= P.genCoverW * 3 * genCoverOf(g, i);
+            if (P.genThreatW > 0 && beliefOn) s += P.genThreatW * 3 * belief.pHunterWithin(g, 24);
             if (i === genTarget) s -= 0.5; // hysteresis
             if (s < bs) { bs = s; bi = i; }
           }
+          // explore option: always when no gen is known; otherwise a propensity that grows with the gens still unfound
+          if (exploreLeft && (bi < 0 || P.exploresMap > 0)) {
+            if (!exploreTo) { exploreTo = know.pickTarget(me, P.exploreRadM, (c) => exploreJit[c]); exploreT = obs.t; }
+            if (exploreTo) {
+              let se = P.genDistW * d2(me, exploreTo) / 20 + 1.5 - P.exploresMap * (1 + 3 * unknownGens / gens.length);
+              if (genTarget === -2) se -= 0.5;
+              if (me.act === 'repair' && bi >= 0) se += 1;      // don't walk off a gen I'm repairing on a whim
+              if (bi < 0 || se < bs) { bs = se; bi = -2; }
+            }
+          }
+          if (bi !== -2) exploreTo = genTarget === -2 && bi >= 0 ? null : exploreTo;
           genTarget = bi;
         }
-        if (genTarget >= 0) {
-          return slots.act(obs, genTarget, gens[genTarget], { walk, hold: holdProtection });
-        }
+        if (genTarget >= 0) return slots.act(obs, genTarget, gens[genTarget], { walk, hold: holdProtection });
+        if (genTarget === -2 && exploreTo) return { moveTo: exploreTo, walk };
         return {};
       },
     };

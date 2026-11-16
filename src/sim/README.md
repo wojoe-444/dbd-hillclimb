@@ -40,14 +40,14 @@ What a survivor can learn (everything else is hidden):
 | **dying survivor's auras** (`obs.mateAuras`) | only while you are downed: `[{id, x, z, state}]` live positions of every teammate still in the match (reciprocal of downed auras; report §3). `null` otherwise. Does not update `lastSeen`. |
 | **chase** | `hud[j].chased` and `self.chased` (chase music) from the engine chase state (below). |
 | teammate positions | otherwise only if seen by the same sight model used for the hunter (360°, range 75 m, semi-transparency): `teammates` = position + visible state. `obs.lastSeen[j]` is the survivor's own memory of the last sighting (HUD/aura info does not update it). |
-| generators | progress, *who is working*, `regressing` and `slotsTaken` (busy sides) only for gens currently seen (or within `sight.adjacentReach` = 2 m); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `slotsTaken:null`, `seenT`). Slot positions are static (`ctx.map.generators[i].slots`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. (A teammate's HUD `activityProgress` shows *how far* their gen is, not *which* gen.) |
+| generators | **no gen auras: a survivor only knows the generators it has found.** `obs.gens[i]` has `known:false` and `id`, `x`, `z`, `slots` = `null` until this survivor has perceived the gen once (seen per the per-cell gen visibility, or within `sight.adjacentReach` = 2 m) or a `genDone` announcement gave its position; after that they stay known (`slots` = usable repair side points). Survivor `ctx.map.generators` has the same length/order but **every entry is `null`** (the id would otherwise reveal the spot via `generatorCandidates`, which stays public as static geometry: the candidate wrecks are visible map features). Progress, *who is working*, `regressing` and `slotsTaken` (busy sides) only for gens currently seen (or adjacent); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `slotsTaken:null`, `seenT`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. (A teammate's HUD `activityProgress` shows *how far* their gen is, not *which* gen.) |
 | exit gates | `powered`/`open` are public; lever `progress` only while you perceive the lever (same sight rule, or within 2 m); open gates report `progress: 1`. |
 | pallets | state (`up/dropped/broken`) only for pallets currently seen/adjacent, else last-seen (initially `up`). |
 | hunter | position/facing/state only if seen; `lastHunter` = last sighting; `terror` = `{layer, approx}` — which third of the 32 m radius you *hear* (no direction, no exact distance); entering/leaving noticed after 0.5 s, layer changes only after persisting 2.5 s. |
 | global announcements | generator completed (notification with gen id + position; `gensDone`), gates powered, gate opened (`gateOpen` notification), endgame countdown (`endgame.remainingS`, `endgame.slowed`). |
 | screams | a teammate being downed/hooked within `senses.screamRadius` (default **0 = off**) arrives as a `scream` notification `{kind:'down'\|'hook', x, z, t}`. |
 
-Not on the HUD: teammates' positions (except the auras above), which generator anyone works on, unhook protection timers.
+Not on the HUD: teammates' positions (except the auras above), which generator anyone works on, where unfound generators are, unhook protection timers.
 
 ### Intent messages (`config.intent`, 10.2.0 "Survivor Intent System")
 
@@ -130,7 +130,7 @@ meaningful actions are `act: 'selfUnhook'` (when offered) and `intent`. An excep
 * `id`: survivors `0..3`; hunter `'hunter'`. `rng`: per-agent seeded stream (`next() int(n) range(a,b) chance(p) pick shuffle normal`).
 * `map`: frozen static info — `size,w,h,eyeHeight,outline,obstacles,windows[{id,x,z,axis}],pallets[{id,x,z,axis,length,x0,z0,x1,z1,cx,cz}]`,
   `generators` (**only the 7 chosen** for this match, order = `obs.gens` order; each `{id, x, z, slots: [{side:'N'|'E'|'S'|'W', x, z}]}` = usable
-  repair sides, see "Generators"), `gensNeeded`, `hooks`, `exitGates[{id,lever,exit}]`, `spawns`.
+  repair sides, see "Generators"; **hunter only** — survivors get an array of 7 `null`s and learn gens through `obs.gens`), `gensNeeded`, `hooks`, `exitGates[{id,lever,exit}]`, `spawns`.
   `obs.pallets[i]` is aligned with `map.pallets[i]`.
 * `api` (same object as `ctx.api`): `nav`, `visibility(a,b)` (0..1, points `{x,z}`), `los(a,b)` (visibility ≥ threshold), `walkClear(a,b)`, `cellOf(x,z)`, `dt`.
 
@@ -206,7 +206,7 @@ Survivor `obs`:
   hud: [{ id, state, hookCount, hookStage, hookStages, beingHealed, activity, activityProgress, chased, resolve, deepWound } ×4],  // game HUD, no positions, no object ids
   downedAuras: [{ id,x,z }],                                                        // live positions of downed (not carried) teammates
   mateAuras: [{ id,x,z,state }] | null,                                             // only while YOU are downed: all teammates still in the match
-  gens: [{ id,x,z,progress(0..1),done,blocked,regressing|null,visible,workers:[ids]|null,slotsTaken:['N'|'E'|'S'|'W'…]|null,seenT }],   // order = ctx.map.generators
+  gens: [{ id|null,x|null,z|null,slots|null,known,progress(0..1),done,blocked,regressing|null,visible,workers:[ids]|null,slotsTaken:['N'|'E'|'S'|'W'…]|null,seenT }],   // order = ctx.map.generators; id/x/z/slots null until found
   gensDone, gensNeeded, pallets: ['up'|'dropped'|'broken'…],
   gates: [{ id, powered, open, progress? }],   // progress 0..1 only if the lever is perceived (always 1 when open)
   gatesPowered, endgame: { remainingS, slowed } | null,  // null until the first gate is OPENED; slowed = half speed (someone downed/carried/hooked)

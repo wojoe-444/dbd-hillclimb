@@ -115,7 +115,7 @@ export class Match {
         intNext: 0, intCd: cfg.intent.minCooldownS, intLast: -1e9,
         vault: null, curAct: null, curTgt: null, prog: 0, hitT: -1e9, bodyT: 0, ghostT: 0, gruntT: 0, scratchT: 0, outcome: null, cause: null, tOut: -1, repairS: 0, repairC: 0, leverS: 0,
         seesHunter: false, trLayer: 0, trPend: 0, trPendT: 0, seesMate: [false, false, false, false], gSeen: new Uint8Array(G), pSeen: new Uint8Array(P),
-        mem: { lastHunter: null, lastSeen: [null, null, null, null], gens: this.gens.map(() => ({ progress: 0, done: false, workers: null, seenT: -1 })), pal: new Uint8Array(P) },
+        mem: { lastHunter: null, lastSeen: [null, null, null, null], gens: this.gens.map(() => ({ progress: 0, done: false, workers: null, seenT: -1, known: false })), pal: new Uint8Array(P) },
         inbox: [], inboxRead: 0, lastAction: IDLE, nav: null, brain: null, api: null, ctx: null, spawn: spawns[i],
       });
     }
@@ -126,15 +126,16 @@ export class Match {
     this._hudTick = -1; this._hudB = null; this._downB = null;   // per-tick HUD cache shared by all survivor obs
 
     // ---- brains ----
-    const mapInfoBase = {
-      ...md.info,
-      generators: deepFreeze(this.gens.map(g => ({ id: g.id, x: g.x, z: g.z, slots: g.slots.map(s => ({ side: s.side, x: s.x, z: s.z })) }))),
-      gensNeeded: this.gensNeeded,
-    };
+    // the chosen generators (positions + repair slots): the hunter knows them (gen auras); survivors do NOT — their
+    // ctx.map.generators has the same length/order but every entry is null, and each survivor learns a gen's id,
+    // position and slots in obs.gens once it has perceived it (or a genDone announcement gave its position).
+    this._genStatic = deepFreeze(this.gens.map(g => ({ id: g.id, x: g.x, z: g.z, slots: g.slots.map(s => ({ side: s.side, x: s.x, z: s.z })) })));
+    const mapInfoBase = { ...md.info, generators: this._genStatic, gensNeeded: this.gensNeeded };
+    const mapInfoSurv = { ...md.info, generators: Object.freeze(this.gens.map(() => null)), gensNeeded: this.gensNeeded };
     const sf = opts.survivors;
     const factories = Array.isArray(sf) ? sf : [sf, sf, sf, sf];
     this._mkAgent(this.hunter, 'hunter', mapInfoBase, opts.hunter);
-    for (let i = 0; i < 4; i++) this._mkAgent(this.survivors[i], 'survivor', mapInfoBase, factories[i]);
+    for (let i = 0; i < 4; i++) this._mkAgent(this.survivors[i], 'survivor', mapInfoSurv, factories[i]);
 
     this.ev('start', { seed: this.seed, gens: this.gens.map(g => g.id) });
     if (this.recordOn) this._record();
@@ -492,9 +493,12 @@ export class Match {
     const gens = [];
     for (let g = 0; g < this.gens.length; g++) {
       const ge = this.gens[g], me = m.gens[g];
-      const vis = !ge.done && (s.gSeen[g] === 1 || rectDist2(s.x, s.z, ge.x0, ge.z0, ge.x1, ge.z1) <= adj2);
+      const perceived = s.gSeen[g] === 1 || rectDist2(s.x, s.z, ge.x0, ge.z0, ge.x1, ge.z1) <= adj2;
+      const vis = !ge.done && perceived;
+      if (perceived) me.known = true;                 // found it (done or not): its position stays known
       if (vis) { me.progress = ge.p / this.need; me.seenT = this.t; me.workers = ge.wIds.slice(0, ge.lastN); }
-      gens.push({ id: ge.id, x: ge.x, z: ge.z, progress: me.done ? 1 : me.progress, done: me.done, blocked: this.gatesPowered && !ge.done, regressing: vis ? ge.regress : null, visible: vis, workers: vis ? me.workers : null, slotsTaken: vis ? this._slotsTaken(ge) : null, seenT: me.seenT });
+      const st = me.known ? this._genStatic[g] : null;
+      gens.push({ id: st ? st.id : null, x: st ? st.x : null, z: st ? st.z : null, slots: st ? st.slots : null, known: me.known, progress: me.done ? 1 : me.progress, done: me.done, blocked: this.gatesPowered && !ge.done, regressing: vis ? ge.regress : null, visible: vis, workers: vis ? me.workers : null, slotsTaken: vis ? this._slotsTaken(ge) : null, seenT: me.seenT });
     }
     const pals = [];
     const pd = this.md.pallets;
@@ -1291,7 +1295,7 @@ export class Match {
         this.ev('genDone', { gen: g.id, done: this.gensDone });
         const n2 = { type: 'genDone', gen: g.id, x: g.x, z: g.z, t: this.t, gensDone: this.gensDone };
         this._notify(this.hunter, { ...n2 });
-        for (const s of this.survivors) if (s.st < S_DEAD) { s.inbox.push({ ...n2 }); const me = s.mem.gens[g.idx]; me.done = true; me.progress = 1; me.workers = null; }
+        for (const s of this.survivors) if (s.st < S_DEAD) { s.inbox.push({ ...n2 }); const me = s.mem.gens[g.idx]; me.done = true; me.progress = 1; me.workers = null; me.known = true; }
         if (this.gensDone >= this.gensNeeded) this._powerGates('gens');
       }
     }

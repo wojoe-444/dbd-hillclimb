@@ -2,7 +2,8 @@
 // returned per brain instance (solo-queue rule: no module-level mutable state, nothing shared between instances).
 //
 //   const slots = makeSlotPicker();            // once per brain instance (inside the brain factory)
-//   return slots.act(obs, gi, ctx.map.generators[gi], { walk, hold });   // -> action ({moveTo} / {act:'repair'} / {})
+//   return slots.act(obs, gi, obs.gens[gi], { walk, hold });   // -> action ({moveTo} / {act:'repair'} / {})
+//   (survivors: pass obs.gens[gi] of a found gen — it carries id + slots; ctx.map.generators is hunter-only)
 //
 // Engine rule (README): repair needs the survivor within reach.repairSlot (0.6 m) of a slot point that no other survivor
 // is repairing from. Slot choice: keep the current slot; else the nearest one not in obs.gens[gi].slotsTaken (when the

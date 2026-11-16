@@ -62,7 +62,7 @@ export class HunterBelief {
       }
     };
     for (const o of M.obstacles) put(o.x, o.z, o.x + o.w, o.z + o.d, o.height >= M.eyeHeight);
-    for (const g of [...(M.generatorCandidates || []), ...M.generators]) { const i = Math.floor(g.x), j = Math.floor(g.z); put(i, j, i + 1, j + 1, false); }
+    for (const g of [...(M.generatorCandidates || []), ...(M.generators || []).filter(Boolean)]) { const i = Math.floor(g.x), j = Math.floor(g.z); put(i, j, i + 1, j + 1, false); }
     for (const w of M.windows) { const id = oid++; if (opq[w.z * W + w.x] === -1) opq[w.z * W + w.x] = id; }
     for (const q of M.pallets) { const id = oid++; for (let j = q.z0 ?? q.z; j < (q.z1 ?? q.z + 1); j++) for (let i = q.x0 ?? q.x; i < (q.x1 ?? q.x + 1); i++) if (i >= 0 && j >= 0 && i < W && j < H && opq[j * W + i] === -1) opq[j * W + i] = id; }
     this.fine = fine; this.opq = opq;

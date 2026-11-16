@@ -13,8 +13,14 @@ function rectDist(x, z, x0, z0, x1, z1) {
 }
 
 export function survivorBrain(ctx) {
-  const { generators: gens, pallets, exitGates, hooks } = ctx.map;
+  // survivors don't know where the generators are (ctx.map.generators entries are null): obs.gens[i] carries id,
+  // position and slots once this survivor has found the gen. With no known unfinished gen: explore.
+  const { pallets, exitGates, hooks } = ctx.map;
   let genTarget = -1;
+  // exploration: coarse 8 m grid of visited cells; walk to a random unvisited, reachable cell
+  const EC = 8, EW = Math.ceil(ctx.map.w / EC), EH = Math.ceil(ctx.map.h / EC);
+  const visited = new Uint8Array(EW * EH);
+  let exploreTo = null, exploreT = -99;
   const slots = makeSlotPicker(ctx.config.reach.repairSlot);
   let holdUntil = -1;          // stand still (accept a heal) until this time
 
@@ -60,7 +66,7 @@ export function survivorBrain(ctx) {
         if (best) return { moveTo: best, intent };
         // else just flee (prefer the farthest generator from the hunter, else straight away)
         let far = null, fd = -1;
-        for (const g of gens) { const d = hyp(g.x - h.x, g.z - h.z); if (d > fd && nav.dist(me, g) < 1e8) { fd = d; far = g; } }
+        for (const g of obs.gens) { if (!g.known) continue; const d = hyp(g.x - h.x, g.z - h.z); if (d > fd && nav.dist(me, g) < 1e8) { fd = d; far = g; } }
         if (far && fd > dh) return { moveTo: far };
         return { moveDir: { x: me.x - h.x, z: me.z - h.z } };
       }
@@ -101,12 +107,13 @@ export function survivorBrain(ctx) {
         }
       }
 
-      // ---- generators ----
-      if (genTarget >= 0 && obs.gens[genTarget].done) genTarget = -1;
+      // ---- generators (known ones only) ----
+      const gens = obs.gens;
+      if (genTarget >= 0 && gens[genTarget].done) genTarget = -1;
       if (genTarget < 0) {
         let bd = Infinity;
         for (let i = 0; i < gens.length; i++) {
-          if (obs.gens[i].done) continue;
+          if (gens[i].done || !gens[i].known) continue;
           const d = nav.dist(me, gens[i]);
           if (d < bd) { bd = d; genTarget = i; }
         }
@@ -115,6 +122,20 @@ export function survivorBrain(ctx) {
         const a = slots.act(obs, genTarget, gens[genTarget]);   // walk to a free side slot, repair there
         return a.act === 'repair' && me.act !== 'repair' ? { ...a, intent: 'goingForGen' } : a;
       }
+      // ---- explore ----
+      const ci = Math.min(EW - 1, Math.floor(me.x / EC)) + Math.min(EH - 1, Math.floor(me.z / EC)) * EW;
+      visited[ci] = 1;
+      if (!exploreTo || hyp(exploreTo.x - me.x, exploreTo.z - me.z) < 3 || obs.t - exploreT > 30) {
+        exploreTo = null; exploreT = obs.t;
+        for (let tries = 0; tries < 40 && !exploreTo; tries++) {
+          const c = ctx.rng.int(EW * EH);
+          if (visited[c] && tries < 30) continue;
+          const pt = { x: (c % EW) * EC + EC / 2, z: Math.floor(c / EW) * EC + EC / 2 };
+          if (nav.dist(me, pt) < 1e8) exploreTo = pt;
+          else visited[c] = 1;
+        }
+      }
+      if (exploreTo) return { moveTo: exploreTo };
       return {};
     },
   };
