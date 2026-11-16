@@ -27,7 +27,7 @@ export const survivorSpace = {
   unknownDist:   [10, 80, 40],   // assumed distance to a hook for a teammate whose whereabouts the HUD doesn't reveal
   rescueWhenChased: [0, 1, 0.6], // >0.5: skip the rescue delay while another survivor is being chased (hunter busy)
   trustChase:    [0, 1, 0.6],    // >0.5: don't abandon my gen on terror while another survivor is being chased
-  healSeek:      [0, 1, 0.4],    // >0.5: go heal an injured teammate on a known gen (HUD) within healDist
+  healSeek:      [0, 1, 0.4],    // INERT: used to locate injured teammates via hud.repairing gen ids (the HUD no longer names gens)
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -130,6 +130,8 @@ export function makeSurvivor(P) {
     return {
       decide(obs, api) {
         const me = obs.self, h = obs.hunter, nav = api.nav;
+        // hooked brains are called now (minimal obs): take the Resolve self-unhook when offered (was automatic before)
+        if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
         if (me.state === 'carried') return { act: 'wiggle' };
         if (me.state === 'downed') {
           const hp = h ?? obs.lastHunter;
@@ -146,7 +148,6 @@ export function makeSurvivor(P) {
         }
         if (hud) for (const k of Object.keys(hookedAt)) if (hud[k] && hud[k].state !== 'hooked') delete hookedAt[k];
         const otherChased = !!hud && hud.some((x) => x.id !== me.id && x.chased);
-        const genPos = (id) => gens.find((g) => g.id === id);
 
         // ---- threat state ----
         const dh = h ? d2(h, me) : Infinity;
@@ -208,14 +209,14 @@ export function makeSurvivor(P) {
             const busy = otherChased && P.rescueWhenChased > 0.5;
             if (waited < P.rescueDelayS * (1.2 - P.altruism) && !busy) continue;
             if (h && d2(h, hk) < P.campAvoidDist) continue;
-            // am I (roughly) the closest? teammates on a gen are "at" that gen; others unknown
+            // am I (roughly) the closest? teammates seen recently are near their last sighting; others unknown
+            // (the HUD shows activity type only, not which generator)
             const myD = nav.dist(me, hk);
             let best = Infinity;
             if (hud) for (const x of hud) {
               if (x.id === me.id || x.id === j || x.state === 'dead' || x.state === 'escaped' || x.state === 'hooked' || x.state === 'carried' || x.state === 'downed') continue;
-              const g = x.repairing ? genPos(x.repairing) : null;
               const ls = obs.lastSeen[x.id];
-              const est = g ? d2(g, hk) : (ls && obs.t - ls.t < 15 ? d2(ls, hk) : P.unknownDist);
+              const est = ls && obs.t - ls.t < 15 ? d2(ls, hk) : P.unknownDist;
               if (est < best) best = est;
             }
             if (myD > best + P.rescueSlack) continue;
@@ -228,10 +229,7 @@ export function makeSurvivor(P) {
         if (me.state === 'healthy' && P.altruism > 0.15) {
           const cands = [...obs.teammates];
           for (const a of obs.downedAuras || []) if (!cands.some((t) => t.id === a.id)) cands.push({ id: a.id, x: a.x, z: a.z, state: 'downed' });
-          if (hud && P.healSeek > 0.5) for (const x of hud) {
-            if (x.id === me.id || x.state !== 'injured' || !x.repairing || cands.some((t) => t.id === x.id)) continue;
-            const g = genPos(x.repairing); if (g) cands.push({ id: x.id, x: g.x, z: g.z, state: 'injured' });
-          }
+          // (healSeek used to locate injured teammates via hud.repairing gen ids; the HUD no longer names generators)
           for (const tm of cands) {
             if (hud && hud[tm.id] && hud[tm.id].beingHealed && !(me.act === 'heal')) continue;   // someone's on it
             if ((tm.state === 'injured' || tm.state === 'downed') && d2(tm, me) < P.healDist) {
@@ -249,7 +247,7 @@ export function makeSurvivor(P) {
             const g = obs.gens[i];
             if (g.done || g.blocked) continue;
             let s = P.genDistW * nav.dist(me, gens[i]) / 20 - P.genProgW * g.progress * 3;
-            const others = hud ? hud.filter((x) => x.id !== me.id && x.repairing === g.id).length : (g.workers ? g.workers.filter((w) => w !== me.id).length : 0);
+            const others = g.workers ? g.workers.filter((w) => w !== me.id).length : 0;   // only for gens currently seen
             s += P.spreadW * others;
             if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(gens[i], obs.lastHunter)) / 10;
             if (i === genTarget) s -= 0.5; // hysteresis
