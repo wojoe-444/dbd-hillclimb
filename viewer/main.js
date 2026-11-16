@@ -164,10 +164,40 @@ function buildDynamic(m) {
   terror.rotation.x = -Math.PI / 2; terror.position.y = 0.05;
   dyn.add(h, coneWrap, terror);
   v.hunter = h; v.cone = coneWrap; v.terror = terror;
+  // hunter belief heat map overlay (what the hunter thinks: where survivors could be)
+  const b = m.hunter.brain && m.hunter.brain.belief;
+  if (b) {
+    const data = new Uint8Array(b.W * b.H * 4);
+    const tex = new THREE.DataTexture(data, b.W, b.H, THREE.RGBAFormat);
+    tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(b.W * b.cs, b.H * b.cs),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    plane.rotation.x = -Math.PI / 2;                // plane's +y (texture rows) -> world -z; flip below
+    plane.scale.y = -1;
+    plane.position.set((b.W * b.cs) / 2, 0.08, (b.H * b.cs) / 2);
+    dyn.add(plane);
+    v.heat = { b, data, tex, plane };
+  }
   view3d = v;
 }
 
+function syncHeat() {
+  const hv = view3d.heat;
+  if (!hv) return;
+  hv.plane.visible = $('heat').checked;
+  if (!hv.plane.visible) return;
+  const h = hv.b.heat();
+  let max = 1e-6; for (let i = 0; i < h.length; i++) if (h[i] > max) max = h[i];
+  for (let i = 0; i < h.length; i++) {
+    const v = Math.min(1, Math.sqrt(h[i] / max));
+    hv.data[i * 4] = 255; hv.data[i * 4 + 1] = Math.round(200 * (1 - v)); hv.data[i * 4 + 2] = 40;
+    hv.data[i * 4 + 3] = Math.round(170 * v);
+  }
+  hv.tex.needsUpdate = true;
+}
+
 function sync() {
+  syncHeat();
   const m = match, v = view3d;
   m.gens.forEach((g, i) => {
     const p = Math.min(1, g.done ? 1 : g.p / m.need);

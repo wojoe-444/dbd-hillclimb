@@ -1,4 +1,5 @@
 // Parametric hunter. Knobs are hill-climbed; `space` = { name: [min, max, default] }.
+import { SurvivorBelief } from './belief.js';
 
 export const hunterSpace = {
   lungeDist:     [1.2, 4.5, 2.5],  // start the attack when target is this close (and reachable)
@@ -27,9 +28,30 @@ export const hunterSpace = {
   kickMinProgress: [0, 1, 1],      // kick a patrolled gen if its progress >= this (1 = never kick)
   noiseFollow:     [0, 1, 0.7],    // >0.5: investigate gens heard being repaired (10 m)
   loudReactRange:  [0, 120, 50],   // react to loud noises (fast vaults) within this distance
+  // ---- searching without line of sight ----
+  lookSweepDeg:    [0, 90, 40],    // sweep the vision cone +-this around the walking direction while patrolling/searching
+  lookPeriodS:     [1, 8, 3],      // one full left-right sweep takes this long
+  staleGenW:       [0, 3, 0],      // patrol preference for gens not looked at for a while (we only know progress we've seen)
+  // ---- belief map: per-survivor probability of where they are (see belief.js) ----
+  beliefPatrol:    [0, 1, 0.7],    // >0.5: patrol toward the hottest part of the belief map instead of gen-by-gen
+  beliefSpread:    [0.2, 1, 0.6],  // how fast a survivor's possible area grows (fraction of running speed)
+  beliefGenPull:   [0, 2, 0.5],    // how strongly unseen survivors are assumed to drift back to unfinished gens
 };
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
+
+// Walk toward `to` while sweeping the gaze +-sweepDeg around the walking direction (sinusoid with period periodS).
+function sweep(api, me, to, t, sweepDeg, periodS) {
+  const action = { moveTo: to };
+  if (sweepDeg < 1) return action;
+  const wp = api.nav.nextWaypoint(me, to);
+  if (!wp) return action;
+  const dx = wp.x - me.x, dz = wp.z - me.z, len = Math.hypot(dx, dz);
+  if (len < 0.3) return action;
+  const a = Math.atan2(dz, dx) + (sweepDeg * Math.PI / 180) * Math.sin((2 * Math.PI * t) / periodS);
+  action.face = { x: me.x + Math.cos(a) * 6, z: me.z + Math.sin(a) * 6 };
+  return action;
+}
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
 
 export function makeHunter(P) {
@@ -46,6 +68,8 @@ export function makeHunter(P) {
     let patrolGen = -1, patrolT = -99;
     let ratioT = -99, ratio = 1;
     let prevHooks = 0;
+    const belief = new SurvivorBelief(ctx, { spread: P.beliefSpread, genPull: P.beliefGenPull });
+    let beliefTgt = null, beliefT = -99;
     const downedChecked = [-1, -1, -1, -1]; // lastSeen.t of downed sightings we already went back to
     // cluster state: recomputed whenever a generator completes
     let cluster = null;           // { members: Set<gen index>, anchor: gen index, spread: m }
@@ -85,8 +109,10 @@ export function makeHunter(P) {
     }
 
     return {
+      belief,   // exposed for the viewer's heat-map overlay (read-only)
       decide(obs, api) {
         const me = obs.self, nav = api.nav;
+        belief.update(obs, api);
         updateCluster(obs);
         const gensLeft = obs.gensNeeded - obs.gensDone;
         const clusterOn = cluster && gensLeft <= P.clusterActivate;
@@ -195,7 +221,7 @@ export function makeHunter(P) {
             const s = obs.scratches[obs.scratches.length - 1];
             lastPos = { x: s.x + s.dx * 3, z: s.z + s.dz * 3 }; lastPosT = obs.t;
           }
-          if (d2(lastPos, me) > 1.5) return { moveTo: lastPos };
+          if (d2(lastPos, me) > 1.5) return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS);
         }
         target = null;
         if (P.followScratch > 0.5) {
@@ -205,7 +231,7 @@ export function makeHunter(P) {
           if (sc && !outsideLeash(sc)) {
             const s = sc;
             lastPos = { x: s.x + s.dx * 3, z: s.z + s.dz * 3 }; lastPosT = obs.t;
-            return { moveTo: lastPos };
+            return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS);
           }
         }
 
@@ -236,6 +262,15 @@ export function makeHunter(P) {
         camp = null;
 
         // ---- patrol gens ----
+        // ---- belief patrol: go where survivors most likely are ----
+        if (P.beliefPatrol > 0.5) {
+          if (!beliefTgt || obs.t - beliefT > 2 || d2(beliefTgt, me) < 3) {
+            beliefTgt = belief.bestTarget(me, nav, 9, P.distW);
+            beliefT = obs.t;
+          }
+          if (beliefTgt) return sweep(api, me, beliefTgt, obs.t, P.lookSweepDeg, P.lookPeriodS);
+        }
+
         if (patrolGen >= 0) {
           const g = obs.gens[patrolGen];
           const gx = Math.floor(gens[patrolGen].x), gz = Math.floor(gens[patrolGen].z);
@@ -249,13 +284,14 @@ export function makeHunter(P) {
           for (let i = 0; i < gens.length; i++) {
             if (obs.gens[i].done || i === patrolGen) continue;
             const inCluster = clusterOn && cluster.members.has(i) ? 1 : 0;
-            const s = P.progressW * obs.gens[i].progress * 3 - P.distW * nav.dist(me, gens[i]) / 30 + P.clusterPatrolW * inCluster + ctx.rng.next() * 0.3;
+            const stale = obs.gens[i].visible ? 0 : Math.min(1, (obs.t - (obs.gens[i].seenT ?? 0)) / 90);   // unseen for 90 s = fully stale
+            const s = P.progressW * obs.gens[i].progress * 3 - P.distW * nav.dist(me, gens[i]) / 30 + P.clusterPatrolW * inCluster + P.staleGenW * stale + ctx.rng.next() * 0.3;
             if (s > bsc) { bsc = s; bi = i; }
           }
           if (bi < 0) bi = patrolGen;
           patrolGen = bi; patrolT = obs.t;
         }
-        if (patrolGen >= 0) return { moveTo: gens[patrolGen] };
+        if (patrolGen >= 0) return sweep(api, me, gens[patrolGen], obs.t, P.lookSweepDeg, P.lookPeriodS);
         return {};
       },
     };
