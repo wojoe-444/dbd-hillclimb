@@ -16,6 +16,11 @@ import { RouteEval } from '../src/brains/routes.js';
 import { RouteLookahead } from '../src/brains/lookahead.js';
 import { generateOutline, checkOutlineCells, outlineToCells, OUTLINE_FAMILIES, generateFromLayout, gasHeavenLayout, makeRng, outlineInset, TILES } from '../src/mapgen/index.js';
 import { analyzeMap } from './validate-map.js';
+import os from 'node:os';
+import { rng as climbRng } from '../src/hillclimb/params.js';
+import { makePlayer } from '../src/hillclimb/play.js';
+import chaseMetric from '../src/hillclimb/metrics/chase.js';
+import { roundJobs, reevalJobs, benchJobs, groupBench, heldOutSeeds, HELDOUT_BASE, summarize, edgeReport, resolveParamSet } from '../src/hillclimb/evalplan.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = p => JSON.parse(fs.readFileSync(path.resolve(root, p), 'utf8'));
@@ -1917,6 +1922,66 @@ test('shipped variant pool: odd variants shaped (all families, 9216-9792 m2, asp
     ok(Math.max(g.cw, g.ch) / Math.min(g.cw, g.ch) <= 1.6 && minWidth4(g) && connected4(g), f + ': aspect / min width / connected');
   }
   ok(fams.size === OUTLINE_FAMILIES.length, 'all outline families in the pool: ' + [...fams].join(' '));
+});
+
+test('evolution eval: paired seeds share one seed per round; unpaired reproduces the historical job plan', () => {
+  const pop = (n, side) => Array.from({ length: n }, (_, i) => ({ params: { side, i } }));
+  const H = pop(5, 'h'), S = pop(5, 's');
+  const jobs = roundJobs({ hunters: H, survivors: S, rounds: 4, R: climbRng(7), paired: true });
+  ok(jobs.length === 20, 'rounds x hunters jobs');
+  const byRound = {};
+  for (const j of jobs) (byRound[j.tag.round] ??= []).push(j);
+  ok(Object.values(byRound).every(js => new Set(js.map(j => j.seed)).size === 1), 'paired: one seed per round');
+  ok(new Set(jobs.map(j => j.seed)).size === 4, 'paired: rounds use different seeds');
+  const cnt = (k) => { const c = {}; for (const j of jobs) c[j.tag[k]] = (c[j.tag[k]] ?? 0) + 1; return Object.values(c); };
+  ok(cnt('h').every(c => c === 4) && cnt('s').every(c => c === 4), 'paired: every individual plays exactly rounds matches');
+  ok(jobs.every(j => j.seed < HELDOUT_BASE) && heldOutSeeds(3).every(x => x >= HELDOUT_BASE), 'training seeds < 2^31 <= held-out seeds');
+  // the pre-flag evolve.js loop, verbatim, must give the same plan as paired = false
+  const R = climbRng(9), legacy = [];
+  for (let r = 0; r < 3; r++) {
+    const perm = S.map((_, i) => i);
+    for (let i = perm.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [perm[i], perm[j]] = [perm[j], perm[i]]; }
+    for (let h = 0; h < H.length; h++) { const s = perm[h % perm.length]; legacy.push({ seed: Math.floor(R() * 2 ** 31), h, s }); }
+  }
+  const now = roundJobs({ hunters: H, survivors: S, rounds: 3, R: climbRng(9) }).map(j => ({ seed: j.seed, h: j.tag.h, s: j.tag.s }));
+  ok(JSON.stringify(now) === JSON.stringify(legacy), 'unpaired = historical seeds and pairings (same RNG consumption)');
+  const re = reevalJobs({ hunters: H, survivors: S, topH: [0, 1], topS: [2], rounds: 3, R: climbRng(3) });
+  ok(re.length === 9 && re.filter(j => j.tag.only === 'hunter').length === 6, 're-evaluation: rounds x (topH + topS) matches, counted for one side');
+  ok([0, 1, 2].every(r => new Set(re.filter(j => j.tag.reeval === r).map(j => j.seed)).size === 1), 're-evaluation: one shared seed per extra round');
+});
+
+test('evolution eval: fixed-opponent benchmark is deterministic; metric hook attaches and averages', () => {
+  const B = getBrains();
+  const def = { name: 'default', hunter: defaults(B.hunter.space), survivor: defaults(B.survivor.space) };
+  const champ = { hunter: { ...def.hunter }, survivor: { ...def.survivor } };
+  const jobs = benchJobs({ champ, opponents: [def], seeds: heldOutSeeds(2) });
+  ok(jobs.length === 4 && jobs.filter(j => j.tag.side === 'hunter').length === 2, 'bench: champ hunter + champ survivors per seed');
+  const play = (map) => { const p = makePlayer({ maps: [map], brains: B, metrics: [chaseMetric] }); return jobs.map(j => ({ ...j.tag, ...p(j) })); };
+  const a = play(smallMap), b = play(structuredClone(smallMap));
+  const ga = groupBench(a), gb = groupBench(b);
+  ok(JSON.stringify(ga) === JSON.stringify(gb), 'bench summaries identical on a replay (cold caches)');
+  ok(ga.default.hunter.n === 2 && ga.default.survivor.n === 2, 'bench grouped by opponent and side');
+  ok(a.every(r => Number.isFinite(r.metrics['chase.s']) && r.metrics['chase.share'] >= 0 && r.metrics['chase.share'] <= 1), 'metric hook: chase.s / chase.share on every result');
+  const sm = summarize(a);
+  near(sm.metrics['chase.s'], a.reduce((x, r) => x + r.metrics['chase.s'], 0) / a.length, 1e-3, 'summarize averages metrics');
+  ok(!('metrics' in makePlayer({ maps: [smallMap], brains: B })(jobs[0])), 'no metrics configured => result shape unchanged');
+});
+
+test('evolution eval: range-edge report and param-set resolution', () => {
+  const space = { a: [0, 1, 0.5], b: [0, 10, 5], c: [-1, 1, 0] };
+  const pop = [{ a: 0, b: 10, c: 0 }, { a: 0.02, b: 9.8, c: 0.1 }, { a: 0.5, b: 5, c: 0 }, { a: 1, b: 0, c: 0 }];
+  const e = edgeReport(space, pop);
+  ok(e.a && e.a.lo === 0.5 && e.a.hi === 0.25 && e.b.hi === 0.5 && e.b.lo === 0.25 && !e.c, 'edge shares within 5 % of each bound');
+  const B = getBrains(), spaces = { hunter: B.hunter.space, survivor: B.survivor.space };
+  const d = resolveParamSet('default', spaces);
+  ok(JSON.stringify(d.hunter) === JSON.stringify(defaults(spaces.hunter)) && d.name === 'default', 'default set');
+  const tmp = path.join(os.tmpdir(), 'dbd-paramset-' + process.pid + '.json');
+  const k0 = Object.keys(spaces.hunter)[0];
+  fs.writeFileSync(tmp, JSON.stringify({ champ: { hunter: { [k0]: 1e9, retired: 3 } } }));
+  const x = resolveParamSet('arch=' + tmp, spaces);
+  fs.unlinkSync(tmp);
+  ok(x.name === 'arch' && x.hunter[k0] === spaces.hunter[k0][1] && !x.survivor, "archived params clamped into today's space, renamed");
+  ok(x.stale.hunter.dropped.includes('retired') && x.stale.hunter.missing.length === Object.keys(spaces.hunter).length - 1, 'stale knobs reported');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
