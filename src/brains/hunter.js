@@ -104,6 +104,18 @@ export function makeHunter(P) {
       });
       return bi;
     }
+    // a dropped pallet between me and point q (the target, or where I'm searching for it): break it if walking around
+    // costs more than breakDetourM and it is within breakNearM; "at the pallet" = the engine's reach (centre to footprint)
+    const breakReach = (ctx.config.reach && ctx.config.reach.breakPallet) || 1.5;
+    function breakToward(obs, me, nav, q) {
+      const pi = palletBetween(obs, me, q);
+      if (pi < 0) return null;
+      const bp = M.pallets[pi], pd = hyp(bp.cx - me.x, bp.cz - me.z);
+      if (!(pd <= P.breakNearM && detour(obs, nav, pi) > P.breakDetourM)) return null;
+      const rx = Math.max(bp.x0 - me.x, 0, me.x - bp.x1), rz = Math.max(bp.z0 - me.z, 0, me.z - bp.z1);
+      if (hyp(rx, rz) <= breakReach - 0.05) return { act: 'breakPallet', target: bp.id };
+      return { moveTo: { x: bp.cx, z: bp.cz } };
+    }
     let prevHooks = 0;
     const posHist = [];                            // stall guard: recent positions (one per decision)
     let leadsOffUntil = -99;                       // after a stall: ignore sound/scratch leads for a bit
@@ -226,14 +238,8 @@ export function makeHunter(P) {
             lastPos = { x: best.x + best.vx * 0.8, z: best.z + best.vz * 0.8 }; lastPosT = obs.t;
             const d = d2(best, me);
             // a dropped pallet between us: break it if walking around costs more than breakDetourM
-            const pi = d > 2 ? palletBetween(obs, me, best) : -1;
-            if (pi >= 0) {
-              const bp = M.pallets[pi], pd = hyp(bp.cx - me.x, bp.cz - me.z);
-              if (pd <= P.breakNearM && detour(obs, nav, pi) > P.breakDetourM) {
-                if (pd <= 2.0) return { act: 'breakPallet', target: bp.id };
-                return { moveTo: { x: bp.cx, z: bp.cz } };
-              }
-            }
+            const brkA = d > 2 ? breakToward(obs, me, nav, best) : null;
+            if (brkA) return brkA;
             // only swing if we can physically reach: straight line clear, or a short walking path
             // (a survivor mid-vault is hittable until fully landed, even though the window blocks walking)
             if (d <= P.lungeDist && (best.vaulting || api.walkClear(me, best) || nav.dist(me, best) <= P.lungeDist + 1)) {
@@ -267,6 +273,9 @@ export function makeHunter(P) {
             const s = obs.scratches[obs.scratches.length - 1];
             lastPos = { x: s.x + s.dx * 3, z: s.z + s.dz * 3 }; lastPosT = obs.t;
           }
+          // the survivor slipped over a dropped pallet: same break rule as in sight (it used to walk around every time)
+          const brkS = breakToward(obs, me, nav, lastPos);
+          if (brkS) return brkS;
           if (d2(lastPos, me) > 1.5) return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS, P.glanceS);
           lastPos = null;   // arrived and nobody here: forget it (otherwise we dither between this and the next behaviour)
         }
