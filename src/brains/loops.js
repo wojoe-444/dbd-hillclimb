@@ -166,9 +166,19 @@ export class LoopModel {
     const a = this.anchors[c >> 1];
     return a.kind === 'w' ? this.hVault : this.hBreak + 3.2 / this.vH;
   }
-  tsOf(c, legIn) {
+  // fast vault needs a straight run-up (>= fastVaultRunupM within 25 deg of the vault direction): the incoming leg must
+  // be long enough and arrive roughly along the axis (a 90-degree turn from an exterior connector gives a medium vault)
+  tsOf(c, legIn, from = null) {
     const a = this.anchors[c >> 1];
-    if (a.kind === 'w') return legIn >= this.runup ? this.sFast : this.sMed;
+    if (a.kind === 'w') {
+      if (legIn < this.runup) return this.sMed;
+      if (from) {
+        const P0 = this.sidePt[c], Q0 = this.sidePt[c ^ 1], ax = (Q0.x - P0.x) / 3.2, az = (Q0.z - P0.z) / 3.2;
+        const vx = P0.x - from.x, vz = P0.z - from.z, L = Math.hypot(vx, vz) || 1;
+        if ((vx * ax + vz * az) / L < Math.cos(25 * Math.PI / 180)) return this.sMed;
+      }
+      return this.sFast;
+    }
     return Math.min(3.2 / this.vS + this.sDrop, this.sPalVault);
   }
 
@@ -186,7 +196,7 @@ export class LoopModel {
       const So = 3.2 / vS + leg / vS, Ho = Math.min(3.2 / vH + leg / vH, cut), open = (Ho - So) * vH;
       if (this.anchors[c >> 1].kind === 'p' && palSeen.has(c >> 1)) { lap += open; palOpen += open; palGain += open; continue; }
       const legIn = this.L(this.qSide(prev), this.pSide(c));
-      const S = this.tsOf(c, legIn) + leg / vS;
+      const S = this.tsOf(c, legIn, this.sidePt[this.qSide(prev)]) + leg / vS;
       const H = Math.min(this.thOf(c) + leg / vH, cut);
       const g = (H - S) * vH;
       lap += g;
@@ -244,7 +254,12 @@ export class LoopModel {
     }
     let laps = uses.size ? Infinity : 1;
     for (const [a, u] of uses) laps = Math.min(laps, Math.floor((vaultsLeft ? vaultsLeft(a) : 3) / u));
-    if (laps < 1) return -Infinity;
+    if (laps < 1) {
+      // not a full lap left: the prefix of crossings the budget still allows (a useful partial plan)
+      const left = new Map(); let k = 0;
+      for (const c of o.seq) { const a = c >> 1; if (this.anchors[a].kind !== 'w') { k++; continue; } const l = left.has(a) ? left.get(a) : (vaultsLeft ? vaultsLeft(a) : 3); if (l <= 0) break; left.set(a, l - 1); k++; }
+      return k ? 0.7 * o.lap * (k / o.seq.length) : -Infinity;
+    }
     laps = Math.min(laps, 3);
     return o.lap + (laps - 1) * (hasPal ? o.lapNP : o.lap);
   }

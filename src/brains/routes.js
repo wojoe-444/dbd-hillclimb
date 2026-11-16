@@ -23,7 +23,9 @@ export class RouteEval {
     this.vS = (cfg.survivor && cfg.survivor.runSpeed) || 4;
     this.vH0 = (cfg.hunter && cfg.hunter.speed) || 4.6;
     this.bl = (cfg.hunter && cfg.hunter.bloodlust) || [];
-    this.reach = 2.0;
+    // reach of a swing on a fleeing survivor: attack range + what the lunge closes during the (whole-tick) windup
+    const hc = cfg.hunter || {}, wt = Math.ceil((hc.windupS ?? 0.35) * 10 - 1e-9) / 10;
+    this.reach = (hc.attackRange ?? 2.2) + wt * Math.max(0, (hc.lungeSpeedMult ?? 1.5) * this.vH0 - this.vS);
     const N = this.W * this.H;
     this.fS = new Int32Array(N).fill(-1);
     this.fH = new Int32Array(N).fill(-1);
