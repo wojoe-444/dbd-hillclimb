@@ -59,9 +59,23 @@ const ground = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat(0x2c3326, { si
 ground.rotation.x = Math.PI / 2; // shape's y -> world z
 ground.receiveShadow = true;
 stat.add(ground);
-const grid = new THREE.GridHelper(Math.max(map.size.w, map.size.h), Math.max(map.size.w, map.size.h) / 8, 0x445044, 0x384038);
-grid.position.set(Math.max(map.size.w, map.size.h) / 2, 0.02, Math.max(map.size.w, map.size.h) / 2);
-stat.add(grid);
+// recentre camera target + sun on this map (shaped variants differ in size), keeping the current view offset
+{
+  const mx = map.size.w / 2, mz = map.size.h / 2, off = camera.position.clone().sub(controls.target);
+  controls.target.set(mx, 0, mz); camera.position.copy(controls.target).add(off); controls.update();
+  sun.position.set(mx - 40, 90, mz - 30); sun.target.position.set(mx, 0, mz);
+}
+// 8 m tile grid, only where a tile is inside the outline (maps need not be rectangular)
+{
+  const C = 8, gw = Math.ceil(map.size.w / C), gh = Math.ceil(map.size.h / C), ol = map.outline;
+  const inPoly = (px, pz) => { let r = false; for (let i = 0, j = ol.length - 1; i < ol.length; j = i++) { const [xi, zi] = ol[i], [xj, zj] = ol[j]; if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) r = !r; } return r; };
+  const tin = (i, j) => i >= 0 && j >= 0 && i < gw && j < gh && inPoly(i * C + C / 2, j * C + C / 2);
+  const pts = [];
+  for (let j = 0; j < gh; j++) for (let i = 0; i <= gw; i++) if (tin(i, j) && tin(i - 1, j)) pts.push(i * C, 0.02, j * C, i * C, 0.02, j * C + C);
+  for (let j = 0; j <= gh; j++) for (let i = 0; i < gw; i++) if (tin(i, j) && tin(i, j - 1)) pts.push(i * C, 0.02, j * C, i * C + C, 0.02, j * C);
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  stat.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x445044 })));
+}
 // outline wall
 for (let i = 0; i < map.outline.length; i++) {
   const [x0, z0] = map.outline[i], [x1, z1] = map.outline[(i + 1) % map.outline.length];

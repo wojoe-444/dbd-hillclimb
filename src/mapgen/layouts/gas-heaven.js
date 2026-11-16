@@ -9,30 +9,29 @@ export const gasHeavenLayout = {
   size: { w: 112, h: 96 },
   cell: 8,
   outline: [[16, 0], [112, 0], [112, 64], [96, 64], [96, 96], [0, 96], [0, 16], [16, 16]],
+  refCells: 156,   // playable 8 m cells of this outline; shaped variants scale pallet/hook budgets by their area / refCells
+  // shaped variants (scripts/gen-maps.js gives every odd variant a seeded stepped outline, src/mapgen/outline.js):
+  // 144-153 tiles (9216-9792 m²), aspect <= 1.6, min width 4 tiles; fixed pieces are refit by fitLayoutToOutline
+  shapes: { minCells: 144, maxCells: 153, maxAspect: 1.6, minWidth: 4 },
   eyeHeight: 1.6,
 
+  // landmarks: placed at a random free inner (non-ring) slot per seed (user 2026-11-16: the earlier owner-fixed
+  // shack / T+L / jungle gym spots and the walled MID enclosure were scaffolding, retired with the tile generator).
+  // One shack per map (any rotation, never mirrored, like DBD); one deliberately broken infinite-loop probe per map
+  // (kept as the "do survivors find the obvious loop" canary); maze / car-pile pools keep the reference map's density.
   landmarks: [
-    { tile: 'tl-wall', x: 48, z: 16 },        // user: T + L in place of the old main building (centred in its 32 m slot; the rest is rolled)
-    { tile: 'shack', x: 8, z: 72, mirror: false },   // S: user-fixed spot (bottom-left between 8 and 7); any of 4 rotations, never mirrored
-    { pool: 'maze', x: 88, z: 8 },            // mazetile NE (between 1 and 2)
-    { pool: 'maze', x: 8, z: 24 },            // mazetile W (10)
-    { pool: 'maze', x: 72, z: 72 },           // mazetile S (5)
-    { tile: 'infinite-loop', x: 24, z: 40 },  // user probe: deliberately game-breaking infinite loop (was car pile BITIC)
-    { pool: 'jg', x: 56, z: 56 },             // user: one jungle gym v1 + one v2 on every variant (was car pile MID)
-    { pool: 'jg', x: 88, z: 40 },             // ...second jungle gym (was car pile 3/4)
-    { pool: 'carpile', x: 8, z: 56 },         // car pile (8/9)
+    { tile: 'shack', random: true, mirror: false, label: 'S' },
+    { tile: 'infinite-loop', random: true, label: 'BITIC' },
+    { pool: 'maze', random: true },
+    { pool: 'maze', random: true },
+    { pool: 'maze', random: true },
+    { pool: 'carpile', random: true },
   ],
-
-  // user-drawn walled enclosure around MID (doorways: NW corner, SW corner, east side z 45-48)
-  overlays: [
-    { x: 44, z: 35, w: 1, d: 32 }, { x: 49, z: 35, w: 33, d: 1 }, { x: 81, z: 36, w: 1, d: 9 }, { x: 81, z: 49, w: 1, d: 8 },
-    { x: 75, z: 57, w: 7, d: 1 }, { x: 75, z: 58, w: 1, d: 9 }, { x: 48, z: 67, w: 28, d: 1 },
-  ],
+  overlays: [],
 
   pools: {
     maze: { decay: 0.35, tiles: { 'pallet-gym': 1, 'four-lane-open': 1, 'four-lane-closed': 1 } },
     carpile: { decay: 0.6, tiles: { 'carpile-long': 1, 'carpile-short': 1 } },
-    jg: { decay: 0, tiles: { jgv1: 1, jgv2: 1 } },   // decay 0: the second slot always gets the other variation
     inner16: {
       decay: 0.6,
       tiles: { jgv1: 3, jgv2: 1.5, 'tl-wall': 3, 'filler-wallcar': 2, 'filler-rock': 2, 'variant-gym': 1.5, 'filler-junk': 1.5 },
@@ -58,10 +57,5 @@ export const gasHeavenLayout = {
   spawns: { survivorAnchors: 10, hunter: 10, inset: [4, 8], anchorOpenRadius: 15, anchorOpenFraction: 0.75 },
   deadZoneDistance: 12,
 
-  labels: [
-    { text: '1', x: 91, z: 8 }, { text: '2', x: 106, z: 20 }, { text: '3', x: 107, z: 42 }, { text: '4', x: 91, z: 62 },
-    { text: '5', x: 78, z: 92 }, { text: '6', x: 50, z: 92 }, { text: '7', x: 22, z: 92 }, { text: '8', x: 5, z: 74 },
-    { text: '9', x: 5, z: 52 }, { text: '10', x: 6, z: 21 }, { text: '11', x: 36, z: 10 }, { text: '12', x: 62, z: 7 },
-    { text: 'M', x: 56, z: 22 }, { text: 'S', x: 16, z: 81 }, { text: 'MID', x: 56, z: 54 }, { text: 'BITIC', x: 19, z: 41 },
-  ],
+  labels: [],
 };

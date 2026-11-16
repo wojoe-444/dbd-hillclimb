@@ -6,9 +6,10 @@
 // Deterministic for (layout, seed). `ok:false` means a layout rule could not be met for this seed
 // (caller retries with another seed); the map still passes through the external validator separately.
 
-import { makeRng } from './rng.js';
+import { makeRng, hashSeed } from './rng.js';
 import { TILES, resolveTile, isSolidChar } from './tiles.js';
 import { composeFeatures, OUTSIDE } from './compose.js';
+import { generateOutline, outlineToCells } from './outline.js';
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -21,7 +22,16 @@ function pointInPoly(px, pz, poly) {
   return inside;
 }
 
-export function generateFromLayout(layout, seed) {
+// opts.shaped: replace the layout's fixed outline with a seeded stepped outline (src/mapgen/outline.js, rolled
+// from its own RNG stream so the tile rolls stay comparable) and refit the fixed pieces to it (fitLayoutToOutline).
+// opts.family: force an outline family (see OUTLINE_FAMILIES). opts.outline: use this metre outline instead (same refit). Without either the layout is used as written.
+export function generateFromLayout(baseLayout, seed, opts = {}) {
+  let layout = baseLayout, shape = null;
+  if (opts.shaped || opts.outline) {
+    shape = opts.outline ? { family: 'custom', outline: opts.outline } : generateOutline(makeRng(hashSeed('outline', seed)), { ...(baseLayout.shapes ?? {}), ...(opts.family ? { family: opts.family } : {}) });
+    layout = fitLayoutToOutline(baseLayout, shape.outline);
+    if (!layout) return { ok: false, error: 'fixed pieces do not fit the outline' };
+  }
   const rng = makeRng(seed);
   const { w, h } = layout.size;
   const C = layout.cell;
@@ -75,9 +85,22 @@ export function generateFromLayout(layout, seed) {
   };
 
   // ---- 1. landmarks ---------------------------------------------------------------------------------
+  const lmLabels = [];
   for (const lm of layout.landmarks) {
     const tileId = lm.tile ?? pickFromPool(lm.pool);
-    place(tileId, lm.x, lm.z, lm.role ?? TILES[tileId].category, { rot: lm.rot, mirror: lm.mirror });
+    let x0 = lm.x, z0 = lm.z;
+    if (lm.random) {   // a random free inner slot (all cells inside the outline, free, not on the ring)
+      const n = TILES[tileId].size / C, slots = [];
+      for (let j = 0; j + n <= chh; j++) for (let i = 0; i + n <= cw; i++) {
+        let ok = true;
+        for (let b = j; b < j + n && ok; b++) for (let a = i; a < i + n && ok; a++) if (!cellInside(a, b) || cellRing(a, b) || cellOwner[b * cw + a] >= 0) ok = false;
+        if (ok) slots.push([i * C, j * C]);
+      }
+      if (!slots.length) return { ok: false, error: `no free slot for ${tileId}` };
+      [x0, z0] = rng.pick(slots);
+    }
+    place(tileId, x0, z0, lm.role ?? TILES[tileId].category, { rot: lm.rot, mirror: lm.mirror });
+    if (lm.label) lmLabels.push({ text: lm.label, x: x0 + TILES[tileId].size / 2, z: z0 + TILES[tileId].size / 2 });
   }
 
   // ---- 2. exit gates (on ring cells along straight outline edges) ------------------------------------
@@ -309,7 +332,9 @@ export function generateFromLayout(layout, seed) {
   // (hooks.min is kept as the documented lower bound.)
   let hooks = null;
   // In practice covers need ~20 hooks at radius 20 (4-neighbour metric), so start at max.
-  for (let k = layout.hooks.max; k <= layout.hooks.max && !hooks; k++) {
+  // shaped outlines: start at the area-scaled target, allow up to max + 2 for awkward shapes
+  const kStart = layout.hooks.target ?? layout.hooks.max, kEnd = layout.hooks.target ? layout.hooks.max + 2 : layout.hooks.max;
+  for (let k = kStart; k <= kEnd && !hooks; k++) {
     for (let attempt = 0; attempt < 3 && !hooks; attempt++) {
       const count = new Int32Array(N);
       let uncovered = walkCells.length;
@@ -358,7 +383,7 @@ export function generateFromLayout(layout, seed) {
       if (uncovered === 0) hooks = [...chosen].map(t => cands[t]);
     }
   }
-  if (!hooks) return { ok: false, error: `hooks: no ${layout.hooks.max}-hook cover found` };
+  if (!hooks) return { ok: false, error: `hooks: no ${kStart}-${kEnd}-hook cover found` };
 
   // ---- 8. compose map ---------------------------------------------------------------------------------
   const instName = idx => (idx >= 0 ? `t${String(idx).padStart(2, '0')}` : 'x');
@@ -412,11 +437,99 @@ export function generateFromLayout(layout, seed) {
     size: { w, h }, outline: layout.outline, eyeHeight: layout.eyeHeight,
     obstacles, windows, pallets, generators, hooks: hookList, exitGates,
     spawns: { hunter: hunterSpawns, survivors: survivorSpawns },
-    labels: layout.labels,
+    labels: [...(layout.labels ?? []).map(({ text, x, z }) => ({ text, x, z })), ...lmLabels],
     spawnRules: { inset: layout.spawns.inset, survivorAnchors: true },
-    mapgen: { generator: layout.generator, seed, tiles, stats },
+    mapgen: {
+      generator: layout.generator, seed,
+      ...(shape ? { shape: { family: shape.family, tiles: layout.areaCells, areaM2: layout.areaCells * C * C, moved: layout.moved } } : {}),
+      tiles, stats,
+    },
   };
   return { ok: true, map, stats };
+}
+
+// Refit a layout to another outline: new size/outline; every fixed piece (the overlay group + the landmarks
+// and labels that follow it, then each landmark slot) keeps its exact position if it fits inside the outline,
+// else moves to the nearest free cell-aligned slot that does (rotation/mirror rules unchanged). Labels without
+// a `follow` (edge numbers of the reference outline) are dropped. Pallet and hook budgets scale with playable
+// area (layout.refCells = the layout's own outline area in cells). Returns null if some piece fits nowhere.
+export function fitLayoutToOutline(layout, outline) {
+  const C = layout.cell;
+  const { cw, ch, cells } = outlineToCells(outline, C);
+  const inside = (i, j) => i >= 0 && j >= 0 && i < cw && j < ch && cells[j * cw + i] === 1;
+  const occ = new Uint8Array(cw * ch);
+  const moved = [];
+  const sizeOf = lm => (lm.tile ? TILES[lm.tile].size : Math.max(...Object.keys(layout.pools[lm.pool].tiles).map(t => TILES[t].size)));
+  const fits = (i0, j0, n, blocked) => {
+    for (let j = j0; j < j0 + n; j++) for (let i = i0; i < i0 + n; i++) if (!inside(i, j) || blocked(i, j)) return false;
+    return true;
+  };
+  // nearest cell offset [di, dj] with ok(di, dj); [0, 0] first, ties broken by z then x (deterministic)
+  const R = Math.max(cw, ch) + 4;
+  const offsets = [];
+  for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) offsets.push([di, dj]);
+  offsets.sort((a, b) => (a[0] ** 2 + a[1] ** 2) - (b[0] ** 2 + b[1] ** 2) || a[1] - b[1] || a[0] - b[0]);
+  const nearest = ok => offsets.find(([di, dj]) => ok(di, dj)) ?? null;
+  const shift = {};   // follow key (tile id or overlay group) -> [dx, dz] metres
+  const centre = {};  // follow key -> piece centre after the move (fallback spot for its label)
+  // 1. overlay group (the walled MID enclosure) as one piece: its whole cell span inside, with a 1-cell margin if possible
+  let overlays = layout.overlays ?? [];
+  let span = null;
+  if (overlays.length) {
+    const s0 = {
+      i0: Math.floor(Math.min(...overlays.map(o => o.x)) / C), j0: Math.floor(Math.min(...overlays.map(o => o.z)) / C),
+      i1: Math.ceil(Math.max(...overlays.map(o => o.x + o.w)) / C), j1: Math.ceil(Math.max(...overlays.map(o => o.z + o.d)) / C),
+    };
+    const okSpan = m => (di, dj) => {
+      for (let j = s0.j0 + dj - m; j < s0.j1 + dj + m; j++) for (let i = s0.i0 + di - m; i < s0.i1 + di + m; i++) if (!inside(i, j)) return false;
+      return true;
+    };
+    // exact position whenever it fits; if it has to move, prefer a slot with a free tile ring around it
+    const d = okSpan(0)(0, 0) ? [0, 0] : nearest(okSpan(1)) ?? nearest(okSpan(0));
+    if (!d) return null;
+    const dx = d[0] * C, dz = d[1] * C;
+    shift[layout.overlayGroup ?? 'mid'] = [dx, dz];
+    centre[layout.overlayGroup ?? 'mid'] = [(s0.i0 + s0.i1) * C / 2 + dx, (s0.j0 + s0.j1) * C / 2 + dz];
+    if (dx || dz) moved.push({ piece: 'overlays', dx, dz });
+    overlays = overlays.map(o => ({ ...o, x: o.x + dx, z: o.z + dz }));
+    span = { i0: s0.i0 + d[0], j0: s0.j0 + d[1], i1: s0.i1 + d[0], j1: s0.j1 + d[1] };
+  }
+  const inSpan = (i, j) => span && i >= span.i0 && i < span.i1 && j >= span.j0 && j < span.j1;
+  // 2. landmarks: overlay-group followers first, then fixed tiles, then pool slots (list order within each)
+  const rank = lm => (lm.group ? 0 : lm.tile ? 1 : 2);
+  const order = layout.landmarks.map((lm, k) => k).sort((a, b) => rank(layout.landmarks[a]) - rank(layout.landmarks[b]) || a - b);
+  const landmarks = layout.landmarks.slice();
+  const taken = (i, j) => occ[j * cw + i] === 1;
+  for (const k of order) {
+    if (layout.landmarks[k].random) continue;   // placed per seed inside the outline (generateFromLayout)
+    const lm = layout.landmarks[k], n = sizeOf(lm) / C, i0 = lm.x / C, j0 = lm.z / C;
+    let d = null;
+    if (lm.group && shift[lm.group]) {
+      const g = [shift[lm.group][0] / C, shift[lm.group][1] / C];
+      d = fits(i0 + g[0], j0 + g[1], n, taken) ? g : nearest((di, dj) => fits(i0 + di, j0 + dj, n, taken));
+    } else d = nearest((di, dj) => fits(i0 + di, j0 + dj, n, (i, j) => taken(i, j) || inSpan(i, j)));
+    if (!d) return null;
+    for (let j = j0 + d[1]; j < j0 + d[1] + n; j++) for (let i = i0 + d[0]; i < i0 + d[0] + n; i++) occ[j * cw + i] = 1;
+    const dx = d[0] * C, dz = d[1] * C;
+    landmarks[k] = { ...lm, x: lm.x + dx, z: lm.z + dz };
+    if (lm.tile) { shift[lm.tile] = [dx, dz]; centre[lm.tile] = [lm.x + dx + n * C / 2, lm.z + dz + n * C / 2]; }
+    if (dx || dz) moved.push({ piece: lm.tile ?? lm.pool, from: [lm.x, lm.z], to: [lm.x + dx, lm.z + dz] });
+  }
+  const labels = (layout.labels ?? []).filter(l => l.follow && shift[l.follow])
+    .map(l => {
+      const x = l.x + shift[l.follow][0], z = l.z + shift[l.follow][1];
+      if (inside(Math.floor(x / C), Math.floor(z / C))) return { ...l, x, z };
+      return { ...l, x: centre[l.follow][0], z: centre[l.follow][1] };   // label would sit beyond the outer wall
+    });
+  let areaCells = 0;
+  for (const c of cells) areaCells += c;
+  const r = areaCells / (layout.refCells ?? areaCells);
+  return {
+    ...layout,
+    size: { w: cw * C, h: ch * C }, outline, landmarks, overlays, labels, areaCells, moved,
+    pallets: { min: Math.round(layout.pallets.min * r), max: Math.round(layout.pallets.max * r) },
+    hooks: { ...layout.hooks, target: Math.max(layout.hooks.min, Math.round(layout.hooks.max * r)) },
+  };
 }
 
 // Euclidean distance from a point to the nearest outline edge (the outline is axis-aligned).

@@ -9,7 +9,9 @@ renders matches in 3D.
 - `src/brains/` — parametric hunter and survivor bots (`hunter.js`, `survivor.js`), registry in `index.js`.
 - `src/hillclimb/` — alternating hill-climb over a worker pool (`climb.js`).
 - `src/mapgen/` + `maps/` — tile-based seeded map generator; pilot map *Gas Heaven* (`maps/gas-heaven/v000–v031`),
-  hand-made v1 `maps/gas-heaven.json`. Format: [`docs/MAP_FORMAT.md`](docs/MAP_FORMAT.md).
+  hand-made v1 `maps/gas-heaven.json`. Format: [`docs/MAP_FORMAT.md`](docs/MAP_FORMAT.md). Even variants use the
+  layout's fixed outline; odd ones get a seeded stepped outline (`src/mapgen/outline.js`: 144–153 8 m tiles, aspect
+  ≤ 1.6, min width 4 tiles; families notched / circlish / blob / chunky) with the fixed pieces refit to it.
 - `viewer/` — 3D viewer that runs the real engine in the browser.
 
 ```sh
