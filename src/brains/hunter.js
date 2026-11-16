@@ -105,7 +105,8 @@ export function makeHunter(P) {
       return bi;
     }
     let prevHooks = 0;
-    let stillT = 0, lastX = null, lastZ = null;   // stall guard
+    const posHist = [];                            // stall guard: recent positions (one per decision)
+    let leadsOffUntil = -99;                       // after a stall: ignore sound/scratch leads for a bit
     const belief = new SurvivorBelief(ctx, { spread: P.beliefSpread, genPull: P.beliefGenPull });
     let beliefTgt = null, beliefT = -99;
     const downedChecked = [-1, -1, -1, -1]; // lastSeen.t of downed sightings we already went back to
@@ -151,10 +152,15 @@ export function makeHunter(P) {
       decide(obs, api) {
         const me = obs.self, nav = api.nav;
         belief.update(obs, api);
-        // stall guard: standing still without acting for 3 s (unreachable moveTo) -> drop the current goals
-        if (lastX !== null && Math.hypot(me.x - lastX, me.z - lastZ) < 0.05 && !me.act && !me.vaulting && !(me.stunS > 0) && !(me.cooldownS > 0)) stillT += api.dt; else stillT = 0;
-        lastX = me.x; lastZ = me.z;
-        if (stillT > 3) { stillT = 0; goto = null; lastPos = null; beliefTgt = null; patrolGen = -1; camp = null; }
+        // stall guard: barely moved over the last 2 s while free to move (not acting / cooling down / vaulting / stunned /
+        // carrying) -> the current goal is unreachable or sits behind an obstacle (e.g. a lead on a dropped pallet): drop it
+        const free = !me.act && !me.vaulting && !(me.stunS > 0) && !(me.cooldownS > 0) && !(me.windupS > 0) && me.carrying === null;
+        if (free) posHist.push([me.x, me.z]); else posHist.length = 0;
+        if (posHist.length > 20) posHist.shift();
+        if (posHist.length === 20 && Math.hypot(me.x - posHist[0][0], me.z - posHist[0][1]) < 1.0) {
+          posHist.length = 0; goto = null; lastPos = null; beliefTgt = null; patrolGen = -1; camp = null; leadsOffUntil = obs.t + 4;
+        }
+        const leadsOn = obs.t >= leadsOffUntil;
         updateCluster(obs);
         const gensLeft = obs.gensNeeded - obs.gensDone;
         const clusterOn = cluster && gensLeft <= P.clusterActivate;
@@ -264,7 +270,7 @@ export function makeHunter(P) {
           lastPos = null;   // arrived and nobody here: forget it (otherwise we dither between this and the next behaviour)
         }
         target = null;
-        if (P.followScratch > 0.5) {
+        if (P.followScratch > 0.5 && leadsOn) {
           const g = obs.grunts[obs.grunts.length - 1];
           if (g && !outsideLeash(g)) return { moveTo: { x: g.x, z: g.z } };
           const sc = obs.scratches[obs.scratches.length - 1];
@@ -287,7 +293,7 @@ export function makeHunter(P) {
         }
 
         // ---- repair noise: someone is on a gen within 10 m ----
-        if (P.noiseFollow > 0.5 && obs.noisyGens && obs.noisyGens.length) {
+        if (P.noiseFollow > 0.5 && leadsOn && obs.noisyGens && obs.noisyGens.length) {
           const g = obs.noisyGens[0];
           if (!outsideLeash(g)) return { moveTo: { x: g.x, z: g.z } };
         }

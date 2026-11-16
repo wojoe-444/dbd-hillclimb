@@ -236,7 +236,8 @@ function sync() {
   });
   const H = m.hunter;
   place(v.hunter, H.x, H.z, H.face);
-  v.hunter.userData.body.material.emissive.setHex(H.stunT > 0 ? 0x666600 : H.windT > 0 ? 0x660000 : 0x000000);
+  // stunned = yellow glow, lunging = red glow, attack cooldown (post-hit/miss slowdown) = blue-grey glow
+  v.hunter.userData.body.material.emissive.setHex(H.stunT > 0 ? 0x666600 : H.windT > 0 ? 0x660000 : H.cdT > 0 ? 0x2a3a66 : 0x000000);
   v.cone.position.set(H.x, 0, H.z); v.cone.rotation.y = -H.face;
   v.terror.position.set(H.x, 0.05, H.z);
   for (const hk of m.hooks) hookMeshes.get(hk.id).material.color.setHex(hk.occ >= 0 ? 0xff3344 : 0x99232f);
