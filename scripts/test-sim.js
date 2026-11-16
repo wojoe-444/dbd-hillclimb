@@ -1685,5 +1685,123 @@ test('full matches with the baseline brains: terminate, consistent, every mechan
   ok(!seen.fumble, 'no fumbles (off by default)');
 });
 
+// ---------------------------------------------------------------- param hunter: endgame / pallet respect / hook choice
+// The param hunter brain in a scripted match on test-small. `blind`: survivors / grunts / scratches are stripped from its
+// obs (so the gate logic is tested without a chase taking over). Returns the match, the survivor controls and a log of
+// { t, r } hunter actions.
+function mkParamHunter(hpOver = {}, opts = {}) {
+  const B = getBrains();
+  const hf = B.hunter.make({ ...defaults(B.hunter.space), ...hpOver });
+  const ctl = { S: [() => ({}), () => ({}), () => ({}), () => ({})] }, log = [];
+  const m = createMatch({
+    map: opts.map || smallMap, seed: opts.seed ?? 1, config: opts.config,
+    hunter: (ctx) => { const br = hf(ctx); return { decide(o, a) {
+      if (opts.blind) { o.survivors = []; o.grunts = []; o.scratches = []; }
+      const r = br.decide(o, a); log.push({ t: o.t, r }); return r;
+    } }; },
+    survivors: [0, 1, 2, 3].map(i => () => ({ decide: (o, a) => ctl.S[i](o, a) })),
+  });
+  place(m.hunter, 24.5, 18.5);
+  place(m.survivors[0], 3.5, 33.5); place(m.survivors[1], 44.5, 3.5); place(m.survivors[2], 3.5, 3.5); place(m.survivors[3], 44.5, 33.5);
+  return { m, ctl, log };
+}
+const isPt = (p, q) => p && q && Math.abs(p.x - q.x) < 1e-9 && Math.abs(p.z - q.z) < 1e-9;
+
+test('param hunter, endgame: rushes a lever it sees being opened; patrols due levers; gatePatrolW 0 = no gate logic', () => {
+  // gates powered; survivors 1-3 escaped (the last one plays on with the gates powered); survivor 0 opens gate-n
+  const setup = (hp) => {
+    const t = mkParamHunter(hp, { blind: true });
+    t.m._powerGates('test');
+    for (const i of [1, 2, 3]) t.m.survivors[i].st = ESCAPED;
+    const g = t.m.gates[0];
+    place(t.m.survivors[0], g.lx, g.lz + 1);
+    t.ctl.S[0] = () => ({ act: 'openGate', target: g.id });
+    place(t.m.hunter, 24.5, 18.5); t.m.hunter.face = -Math.PI / 2;    // looking north at the gate-n lever (17 m)
+    return { ...t, g };
+  };
+  const on = setup({ gatePatrolW: 0.6, gateAbandonProg: 0.3 });
+  run(on.m, 30);
+  const L = { x: on.g.lx, z: on.g.lz };
+  ok(on.log.some(e => isPt(e.r.moveTo, L) && isPt(e.r.face, L)), 'rush: moves to (and faces) the lever being opened');
+  run(on.m, 40);
+  ok(Math.hypot(on.m.hunter.x - on.g.lx, on.m.hunter.z - on.g.lz) < 3.5, 'rush: arrives at the lever before it opens');
+  ok(!on.g.open, 'gate not open yet when the hunter arrives');
+  const off = setup({ gatePatrolW: 0 });
+  run(off.m, 70);
+  ok(!off.log.some(e => isPt(e.r.moveTo, L) || isPt(e.r.moveTo, { x: off.m.gates[1].lx, z: off.m.gates[1].lz })), 'gatePatrolW 0: never targets a lever');
+  // patrol: nobody at a lever, nothing seen -> right after powering every lever is due; it heads to one
+  const p = mkParamHunter({ gatePatrolW: 1, gateCheckS: 30 }, { blind: true });
+  p.m._powerGates('test');
+  p.m.hunter.face = Math.PI;                                           // looking west: neither lever in the cone
+  run(p.m, 5);
+  const levers = p.m.gates.map(g => ({ x: g.lx, z: g.lz }));
+  ok(p.log.length && levers.some(l => isPt(p.log[p.log.length - 1].r.moveTo, l)), 'patrol: heads to a due lever after powering');
+});
+
+test('param hunter, pallet respect: holds outside the stun zone of a standing pallet the survivor is at, then runs through', () => {
+  // p-wide: footprint x 34..35, z 14..16 (axis x) in the gap of the wall x = 34; stun zone x 33..36. Survivor east of it
+  // (35.9, 15; drop reach 1.2 m), hunter west (26.5, 15) looking east. The survivor starts the 0.3 s drop once the hunter is past x 32.1.
+  const duel = (hp) => {
+    const t = mkParamHunter({ lungeDist: 2.5, ...hp });
+    const s = t.m.survivors[0];
+    for (const i of [1, 2, 3]) { place(t.m.survivors[i], 44.5, 33.5 - i); }
+    place(s, 35.9, 15); place(t.m.hunter, 26.5, 15); t.m.hunter.face = 0;
+    t.ctl.S[0] = () => (t.m.hunter.x > 32.1 && t.m.ps[1] === 0 ? { act: 'dropPallet', target: 'p-wide' } : {});   // scripted: true position
+    return t;
+  };
+  const r = duel({ palletRespectM: 2.5, palletRespectS: 3 });
+  run(r.m, 30);                                                        // 3 s: walked up and holding
+  ok(r.m.hunter.x >= 30.4 && r.m.hunter.x <= 31.2, `respect: holds 2.5 m short of the stun zone (x ${r.m.hunter.x.toFixed(2)})`);
+  ok(r.m.ps[1] === 0 && !r.m.events.some(e => e.type === 'palletDrop'), 'respect: pallet still up while holding');
+  ok(r.log.some(e => e.r.moveDir && e.r.moveDir.x === 0 && e.r.moveDir.z === 0), 'respect: hold action (stand, face the survivor)');
+  run(r.m, 40);
+  ok(r.m.hunter.x > 32.1 || r.m.events.some(e => e.type === 'palletDrop'), 'respect: after palletRespectS it runs through');
+  const n = duel({ palletRespectM: 0 });
+  run(n.m, 30);
+  const drop = n.m.events.find(e => e.type === 'palletDrop');
+  ok(drop && drop.stun === true, 'palletRespectM 0 (old behaviour): runs into the drop and is stunned');
+});
+
+test('param hunter, hook choice: hookAwayW avoids the hook the other survivors are seen at, within the carry budget', () => {
+  const pick = (hp) => {
+    const t = mkParamHunter({ hookGenBias: 0, hookClusterBias: 0, ...hp });
+    const H = t.m.hunter, s0 = t.m.survivors[0];
+    // carrying survivor 0 next to h1 (24.5, 14.5); survivors 1-3 stand around h1, in view (north of the hunter)
+    place(H, 24.5, 17.5); H.face = -Math.PI / 2;
+    s0.st = CARRIED; H.carrying = 0;
+    place(t.m.survivors[1], 22.5, 12.5); place(t.m.survivors[2], 26.5, 12.5); place(t.m.survivors[3], 24.5, 11.0);
+    const start = { x: H.x, z: H.z };
+    run(t.m, 3);
+    const a = t.log[t.log.length - 1].r;
+    const carryS = a.moveTo ? H.api.nav.dist(start, a.moveTo) / 3.68 + 1.5 : 0;   // carry clock ~0.3 s on top
+    return { a, carryS };
+  };
+  const h1 = { x: 24.5, z: 14.5 };
+  const near = pick({ hookAwayW: 0 });
+  ok(isPt(near.a.moveTo, h1) || near.a.act === 'hook', 'hookAwayW 0: the nearest hook (h1)');
+  const away = pick({ hookAwayW: 1, hookMaxCarryS: 16 });
+  ok(away.a.moveTo && !isPt(away.a.moveTo, h1), 'hookAwayW 1: another hook, away from the survivors');
+  ok(away.carryS <= 16, `the chosen hook fits the carry budget (${away.carryS.toFixed(1)} s <= 16 s)`);
+  const tight = pick({ hookAwayW: 1, hookMaxCarryS: 6 });
+  ok(isPt(tight.a.moveTo, h1) || tight.carryS <= 6, `hookMaxCarryS 6: only hooks within 6 s of carrying, or the nearest (${tight.carryS.toFixed(1)} s)`);
+});
+
+test('determinism with the new hunter knobs (endgame / pallet respect / hook choice / post-hook): same seed, same result', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  const hp = { ...defaults(B.hunter.space), gatePatrolW: 1, gateCheckS: 10, gateAbandonProg: 0, palletRespectM: 3, palletRespectS: 4,
+    hookAwayW: 1, hookMaxCarryS: 14, postHookGenW: 2, postHookRoamW: 1, campS: 20 };
+  const go = (seed) => {
+    const r = runMatch({ map: gh, seed, config: { gens: { repairS: 40 } }, hunter: B.hunter.make(hp), survivors: B.survivor.make(defaults(B.survivor.space)) });
+    return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), powered: r.events.some(e => e.type === 'gatesPowered') };
+  };
+  const seeds = [3001, 3002, 3003, 3004];
+  const fwd = seeds.map(go);
+  const rev = [...seeds].reverse().map(go).reverse();
+  for (let i = 0; i < seeds.length; i++) ok(fwd[i].key === rev[i].key, 'seed ' + seeds[i] + ' identical forward vs reverse order');
+  ok(go(seeds[0]).key === fwd[0].key, 'same seed run again: identical');
+  ok(fwd.some(x => x.powered), 'at least one of these matches reaches the endgame (gates powered)');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('\nFailures:\n' + failures.map(f => ' * ' + f).join('\n')); process.exit(1); }
