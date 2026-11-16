@@ -73,6 +73,8 @@ export const survivorSpace = {
   exploreRadM:   [10, 80, 35],     // preferred distance of exploration targets (score = unexplored share - distance / this)
   // ---- route lookahead: open flee destinations scored by the next resource reachable from there (lookahead.js) ----
   ...lookaheadSpace,
+  // ---- kicked / threatened gen: hide nearby and return when the hunter leaves vs leave for another gen (kickplan.js) ----
+  ...kickSpace,
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -82,6 +84,7 @@ import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
 import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } from './lookahead.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
+import { kickSpace, makeKickPlanner } from './kickplan.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -235,6 +238,7 @@ export function makeSurvivor(P) {
     let hideCooldownUntil = -99;
     const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0 };   // diagnostics (read by scripts via brain.stats)
     let wasChased = false, lastHideTickT = -99, lastPeekT = -99, wasChasedV = false;
+    const kick = makeKickPlanner(ctx, P, { belief, peekValue, hunterCouldSee, slots, stats, beliefOn });   // kicked-gen plan (kickplan.js)
     const genCover = M.generators.map(() => null);   // per known gen: mean cover of its repair slots (lazy)
     const genCoverOf = (g, i) => {
       if (genCover[i] === null) { const sl = g.slots && g.slots.length ? g.slots : [g]; genCover[i] = sl.reduce((a, s) => a + belief.coverAt(s.x, s.z), 0) / sl.length; }
@@ -841,6 +845,15 @@ export function makeSurvivor(P) {
         }
         else if (mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS) { mode = 'work'; circ = null; }
         else if (obs.t - lastThreatT > P.calmS) { mode = 'work'; circ = null; }
+
+        // ---- kicked / threatened gen (kickplan.js): hide near it and return once the hunter leaves, or leave ----
+        kick.note(obs, genTarget);
+        {
+          const threat = mode === 'sneak' || mode === 'chase' || (!!h && dh < P.hideDist && hunterCouldSee(api, h, me));
+          const ka = kick.decide(obs, api, threat);
+          if (kick.active) genTarget = kick.gen;
+          if (ka) return ka;
+        }
 
         // ---- stealth: the hunter is around but not on me -> get out of its view (and back to work once it's gone) ----
         if (mode !== 'chase' && h && dh < P.hideDist && !me.chased) {

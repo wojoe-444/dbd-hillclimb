@@ -1919,5 +1919,69 @@ test('shipped variant pool: odd variants shaped (all families, 9216-9792 m2, asp
   ok(fams.size === OUTLINE_FAMILIES.length, 'all outline families in the pool: ' + [...fams].join(' '));
 });
 
+test('kicked gen (brains/kickplan.js): kickHideW extremes = hide near + return vs leave; deterministic', () => {
+  if (!bigMap) { ok(true, 'skipped (no gas-heaven map)'); return; }
+  const B = getBrains();
+  const base = defaults(B.survivor.space);
+  // param survivor 0 repairs gen gi at 80 %; a scripted hunter walks to it from a gen 18-45 m away, kicks it, lingers 4 s
+  // looking around, walks back. The other survivors stand idle on far gens.
+  function scenario(sp, seed, gi) {
+    let brain = null;
+    const mkS = B.survivor.make(sp), idle = () => ({ decide: () => ({}) });
+    const hs = { phase: 0, t: 0 };
+    let hctl = () => ({});
+    const m = createMatch({ map: bigMap, seed, hunter: () => ({ decide: (o) => hctl(o) }), survivors: [(ctx) => (brain = mkS(ctx)), idle, idle, idle] });
+    const g = m.gens[gi], s0 = m.survivors[0];
+    g.p = 0.8 * m.need;
+    place(s0, g.slots[0].x, g.slots[0].z);
+    let start = null; const others = [];
+    for (const o of m.gens) { if (o === g) continue; const d = m.hunter.nav.dist(o.slots[0], g.slots[0]); if (!start && d > 18 && d < 45) start = o.slots[0]; else others.push(o.slots[0]); }
+    place(m.hunter, start.x, start.z);
+    for (let k = 1; k < 4; k++) { const p = others[(k - 1) % others.length]; place(m.survivors[k], p.x + 0.01 * k, p.z); }
+    const kslot = g.slots[g.slots.length - 1];
+    let kickT = -1;
+    hctl = (o) => {
+      if (o.t < 4) return {};
+      if (hs.phase === 0) { if (o.self.act === 'kickGen' || Math.hypot(o.self.x - kslot.x, o.self.z - kslot.z) < 0.5) hs.phase = 1; else return { moveTo: kslot }; }
+      if (hs.phase === 1) { if (kickT >= 0) { hs.phase = 2; hs.t = o.t; } else return { act: 'kickGen', target: g.id }; }
+      if (hs.phase === 2) { if (o.t - hs.t > 4) { hs.phase = 3; hs.leaveT = o.t; } else return { face: { x: o.self.x + Math.cos(o.t), z: o.self.z + Math.sin(o.t) } }; }
+      return { moveTo: start };
+    };
+    const out = { kick: false, stopT: -1, stopReason: null, distLinger: null, chased: false };
+    let ev = 0;
+    for (let i = 0; i < 900 && !m.over; i++) {
+      m.step();
+      for (; ev < m.events.length; ev++) {
+        const e = m.events[ev];
+        if (e.type === 'genKick') { kickT = m.t; out.kick = true; }
+        if (e.type === 'genRegressStop' && out.stopT < 0) { out.stopT = m.t; out.stopReason = e.reason; }
+        if (e.type === 'chaseStart') out.chased = true;
+      }
+      if (hs.phase === 2 && out.distLinger === null && m.t - hs.t > 2) out.distLinger = Math.hypot(s0.x - g.x, s0.z - g.z);
+      if (out.stopT >= 0 && m.t - out.stopT > 2) break;
+    }
+    out.delay = out.stopT >= 0 && hs.leaveT ? out.stopT - hs.leaveT : Infinity;
+    out.st = brain.stats;
+    out.hash = JSON.stringify([m.events.map((e) => [e.type, e.t]), s0.x, s0.z, g.p]);
+    return out;
+  }
+  const hideP = { ...base, kickHideW: 3 }, leaveP = { ...base, kickHideW: -3, kickHideProgW: 0 };
+  for (const [seed, gi] of [[5, 0], [7, 5]]) {
+    const H = scenario(hideP, seed, gi), L = scenario(leaveP, seed, gi);
+    ok(H.kick && L.kick, `seed ${seed} gen ${gi}: the scripted hunter kicked the gen`);
+    ok(H.st.kickHides === 1 && H.st.kickLeaves === 0, `kickHideW 3: hid near the gen (hides ${H.st.kickHides}, leaves ${H.st.kickLeaves})`);
+    ok(H.distLinger !== null && H.distLinger <= hideP.kickHideMaxM + 1.5 && !H.chased, `kickHideW 3: within kickHideMaxM of the gen while the hunter lingers, unseen (${H.distLinger && H.distLinger.toFixed(1)} m, chased ${H.chased})`);
+    ok(H.st.kickReturns === 1 && H.stopReason === 'repair' && H.delay < 16, `kickHideW 3: returned and stopped the regression ${H.delay.toFixed(1)} s after the hunter left`);
+    ok(L.st.kickLeaves === 1 && L.st.kickHides === 0, `kickHideW -3: left (hides ${L.st.kickHides}, leaves ${L.st.kickLeaves})`);
+    ok(L.distLinger !== null && L.distLinger > hideP.kickHideMaxM + 1.5, `kickHideW -3: away from the gen while the hunter lingers (${L.distLinger && L.distLinger.toFixed(1)} m)`);
+    ok(H.delay <= L.delay + 2, `hiding near stops the regression about as soon as leaving or sooner (${H.delay.toFixed(1)} vs ${L.delay.toFixed(1)} s)`);
+    ok(scenario(hideP, seed, gi).hash === H.hash && scenario(leaveP, seed, gi).hash === L.hash, `seed ${seed}: both extremes deterministic`);
+  }
+  // knob extremes in full matches stay deterministic
+  const gh = bigMap;
+  const go = (sp) => JSON.stringify(runMatch({ map: gh, seed: 2024, hunter: B.hunter.make({ ...defaults(B.hunter.space), kickMinProgress: 0.2, beliefPatrol: 0.3 }), survivors: B.survivor.make(sp) }).events);
+  ok(go(hideP) === go(hideP) && go(leaveP) === go(leaveP), 'full matches with kickHideW +-3 (kicking hunter) are deterministic');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('\nFailures:\n' + failures.map(f => ' * ' + f).join('\n')); process.exit(1); }
