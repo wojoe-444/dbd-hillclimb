@@ -103,6 +103,8 @@ export function makeSurvivor(P) {
           return { moveTo: anchor.s[1 - hs] };
         }
         if (crossable(anchor, obs)) {
+          // hunter is mid-vault through our anchor: it's blocked for us; use the head start and run
+          if (h && h.vaulting && d2(h, anchor.c) < 2.5) { anchor = null; return { moveDir: { x: me.x - h.x, z: me.z - h.z } }; }
           if (hs === ms && dhm < P.vaultDist) return { moveTo: anchor.s[1 - ms] };
           return { moveTo: anchor.s[ms], face: hp };
         }

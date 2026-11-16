@@ -906,6 +906,21 @@ test('anti-camp Resolve: face-camp fills in 30-40 s, kick-and-leave barely moves
   ok(!('resolve' in so.self) && so.teammates.every(t => !('resolve' in t)), 'survivor obs: no resolve info');
 });
 
+test('vault collision: nobody can start a vault through a window someone is vaulting through', () => {
+  const { m, ctl } = mk();
+  // window (13,8) axis z: north cell (13,7), south cell (13,9)
+  place(m.hunter, 13.5, 6.4); ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+  place(m.survivors[0], 13.5, 10.6); ctl.S[0] = () => ({ moveDir: { x: 0, z: -1 } });
+  let both = false, hv = false;
+  for (let i = 0; i < 30; i++) {
+    m.step();
+    if (m.hunter.vault) hv = true;
+    if (m.hunter.vault && m.survivors[0].vault) both = true;
+  }
+  ok(hv, 'hunter vaulted');
+  ok(!both, 'survivor never starts a vault while the hunter is vaulting the same window');
+});
+
 test('pickup locks the downed survivor in place (no crawling out of reach mid-pickup)', () => {
   const { m, ctl } = mk();
   const v = m.survivors[0];

@@ -584,11 +584,12 @@ export class Match {
         dur = this.cfg.survivor.palletVaultS;
       } else continue;
       if (this.coll[fj * W + fi] !== 0) continue;
+      if (this._vaultCellBusy(wc, a)) continue;   // someone is already vaulting through it: bodies collide
       const lat = nx !== 0 ? Math.abs(a.z - (cj + 0.5)) : Math.abs(a.x - (ci + 0.5));
       if (lat > this.cfg.reach.vaultLane) continue;
       const along = nx > 0 ? wi - a.x : nx < 0 ? a.x - (wi + 1) : nz > 0 ? wj - a.z : a.z - (wj + 1);
       if (along > this.R + 0.3) continue;
-      a.vault = { t: 0, dur, x0: a.x, z0: a.z, x1: fi + 0.5, z1: fj + 0.5 };
+      a.vault = { t: 0, dur, x0: a.x, z0: a.z, x1: fi + 0.5, z1: fj + 0.5, cell: wc };
       if (!isHunter) {
         if (dur === this.cfg.survivor.vaultFastS && (k === K_WIN_X || k === K_WIN_Z)) this._loudNoise('vault', a.x, a.z);
         a.runD = 0;
@@ -635,6 +636,15 @@ export class Match {
     const out = [];
     for (let i = 0; i < this.md.windows.length; i++) if (this.winBlockT[i * 4 + sid] > this.t) out.push(this.md.windows[i].id);
     return out;
+  }
+
+  // A window / dropped pallet can't be vaulted while another character is vaulting through it (genre collision:
+  // a survivor can't re-vault a window the hunter is vaulting behind them, and vice versa).
+  _vaultCellBusy(wc, self) {
+    const H = this.hunter;
+    if (H !== self && H.vault && H.vault.cell === wc) return true;
+    for (const o of this.survivors) if (o !== self && o.vault && o.vault.cell === wc) return true;
+    return false;
   }
 
   _advanceVault(a) {
