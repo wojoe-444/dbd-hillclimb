@@ -143,7 +143,7 @@ export function makeSurvivor(P) {
     let circ = null;            // running loop: { seq, i, phase: 'toP' | 'cross', lockT, holdT }
     let cutSeenT = -1, cutLastT = -99;   // loopReverseDist: since when / last time the hunter was seen coming round the loop the other way
     let genTarget = -1;         // >= 0 gen index, -2 = exploring
-    let exploreTo = null, exploreT = -99, genCommitT = -99;
+    let exploreTo = null, exploreT = -99, genCommitT = -99, sneakGen = -1;
     const vaultCount = new Map(); let wasVaulting = false, lastChasedT = -99;   // window vaults in the current chase (entity blocker)
     let myVault = null;           // my vault in progress: { c (crossing), t }
     const occupiedUntil = new Map();   // anchor k -> time: the hunter is in / just cleared it (visible vault)
@@ -982,9 +982,10 @@ export function makeSurvivor(P) {
           for (let i = 0; i < obs.gens.length; i++) {
             const g = obs.gens[i];
             if (!g.known || g.done || g.blocked) continue;
-            const d = d2(g, ref) - 0.3 * d2(g, me);
+            const d = d2(g, ref) - 0.3 * d2(g, me) + (i === sneakGen ? 3 : 0);   // hysteresis: two near-equal gens flipped every tick
             if (d > fd) { fd = d; far = i; }
           }
+          sneakGen = far ?? -1;
           if (far !== null) return slots.act(obs, far, obs.gens[far], { walk, hold: holdProtection });
         }
 

@@ -1855,7 +1855,7 @@ test('otherChaseTrustDist: the seen hunter chasing a teammate (HUD) and not comi
   const B = getBrains();
   const go = (trust) => {
     let m = null, br = null;
-    const f = B.survivor.make({ ...defaults(B.survivor.space), otherChaseTrustDist: trust, hunterAvoidW: 0, farFromHunterW: 0, genThreatW: 0 });   // (no gen switch away from the hunter: isolate the chase-mode decision)
+    const f = B.survivor.make({ ...defaults(B.survivor.space), ...RP_KNOBS, otherChaseTrustDist: trust, hunterAvoidW: 0, farFromHunterW: 0, genThreatW: 0 });   // (no gen switch away from the hunter: isolate the chase-mode decision)
     m = createMatch({ map: smallMap, seed: 5, config: { survivor: { camera: { enabled: false } } },
       hunter: () => ({ decide: () => ({ moveTo: { x: m.survivors[1].x, z: m.survivors[1].z } }) }),
       // survivor 0's brain starts once the engine chase on survivor 1 is on (so its first look sees the HUD chase)

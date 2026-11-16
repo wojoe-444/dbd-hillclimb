@@ -53,7 +53,7 @@ export class MapKnowledge {
     this.candRes = new Int8Array(this.cands.length);     // 0 unresolved, 1 = a gen (found), -1 = a wreck
     this.candHits = new Uint8Array(this.cands.length);
     this.candSeeR = opts.candSeeR ?? 22;
-    this.candConfirm = opts.candConfirm ?? 2;
+    this.candConfirm = opts.candConfirm ?? 3;
     this.nUnres = this.cands.length;
     this.unfound = 0;
   }
