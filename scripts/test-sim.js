@@ -151,9 +151,9 @@ test('solo queue: teammate positions only by sight (HUD states only); gens progr
   ok(!obs[1].teammates.some(t => t.id === 0), 'and the survivor inside is invisible to the others');
   ok(obs[0].lastSeen.every(v => v === null), 'no lastSeen for never-seen teammates');
   const keys = Object.keys(obs[0]).sort().join();
-  const allowed = 'blockedWindows,downedAuras,endgame,gates,gatesPowered,gens,gensDone,gensNeeded,hud,hunter,lastHunter,lastSeen,newNotifications,notifications,pallets,self,t,teammates,terror,tick';
+  const allowed = 'blockedWindows,downedAuras,endgame,gates,gatesPowered,gens,gensDone,gensNeeded,hud,hunter,lastHunter,lastSeen,mateAuras,newNotifications,notifications,pallets,self,t,teammates,terror,tick';
   ok(keys === allowed, 'survivor obs has exactly the perceived-info + HUD keys: ' + keys);
-  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,chased,deepWoundS,facing,healProgress,hookCount,hookStage,hookTimerS,id,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
+  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,chased,deepWoundS,elusiveS,facing,healProgress,hookCount,hookStage,hookStages,hookTimerS,id,intentCooldownS,mendProgress,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
   ok(!('hookCount' in (obs[0].gens[0])) && !obs[0].gens.some(g => 'hooked' in g), 'no hidden state in gens');
   // survivor 1 is downed far away: survivor 0 gets it only through the HUD + downed aura, not through sight memory
   m.survivors[1].st = DOWNED; m.survivors[1].bleedT = 100; run(m, 3);
@@ -204,8 +204,8 @@ test('solo queue: gen completion is announced to everyone; scream radius is a kn
   ok(u.m.survivors[1].inbox.some(n => n.type === 'scream' && n.kind === 'down') && u.m.survivors[2].inbox.length === 0, 'screamRadius 20: near survivor hears the down scream, far one does not');
 });
 
-test('HUD: per-teammate state/hooks/healing/repairing for everyone, no positions', () => {
-  const { m, ctl } = mk({ config: { gens: { fumbleChancePerS: 0 } } });
+test('HUD: per-teammate state/hooks/activity+progress (no object identity)/resolve/deep wound, no positions', () => {
+  const { m, ctl } = mk();
   const obs = [null, null, null, null];
   const freeNear = (x0, z0) => { for (let r = 1; r < 4; r += 0.5) for (let a = 0; a < 16; a++) { const x = x0 + r * Math.cos(a * Math.PI / 8), z = z0 + r * Math.sin(a * Math.PI / 8); if (circleFree(m.coll, m.W, m.Hh, x, z, 0.4)) return { x, z }; } throw new Error('no free spot'); };
   const g = gen(m), gp = freeNear(g.x, g.z);
@@ -217,50 +217,62 @@ test('HUD: per-teammate state/hooks/healing/repairing for everyone, no positions
   ok(m.survivors[1].curAct === 'repair' && m.survivors[2].curAct === 'heal', 'setup: survivor 1 repairs, survivor 2 heals survivor 3');
   const h = obs[0].hud;
   ok(Array.isArray(h) && h.length === 4 && h.every((e, j) => e.id === j), 'hud: 4 entries indexed by survivor id (own entry included)');
-  ok(h.every(e => Object.keys(e).sort().join() === 'beingHealed,chased,healing,hookCount,hookStage,id,repairing,state'), 'hud entries have exactly the HUD keys (no x/z/position)');
-  ok(h[1].repairing === g.id && h[0].repairing === null && h[2].repairing === null, 'repairing = id of the gen being worked on');
-  ok(h[2].healing && !h[2].beingHealed && h[3].beingHealed && !h[3].healing && h[3].state === 'injured', 'healing / beingHealed / injured');
-  ok(h[0].state === 'healthy' && h[0].hookCount === 0 && h[0].hookStage === 0 && !h[0].chased, 'own entry: healthy, no hooks');
-  ok(obs[3].hud[3].beingHealed && obs[1].hud[1].repairing === g.id, 'every survivor gets the same HUD');
+  ok(h.every(e => Object.keys(e).sort().join() === 'activity,activityProgress,beingHealed,chased,deepWound,hookCount,hookStage,hookStages,id,resolve,state'), 'hud entries have exactly the HUD keys (no x/z/position, no generator id)');
+  ok(h[1].activity === 'repair' && Math.abs(h[1].activityProgress - g.p / m.need) < 0.01 && h[0].activity === null, 'activity = repair + progress circle of that generator');
+  ok(!JSON.stringify(h).includes('"' + g.id + '"'), 'the HUD never names the generator');
+  ok(h[2].activity === 'heal' && h[2].activityProgress > 0 && !h[2].beingHealed && h[3].beingHealed && h[3].activity === null && h[3].state === 'injured', 'heal activity / beingHealed / injured');
+  ok(h[0].state === 'healthy' && h[0].hookCount === 0 && h[0].hookStage === 0 && h[0].hookStages === 0 && !h[0].chased && h[0].resolve === 0 && h[0].deepWound === null, 'own entry: healthy, no hooks');
+  ok(obs[3].hud[3].beingHealed && obs[1].hud[1].activity === 'repair', 'every survivor gets the same HUD');
   ok(obs[0].hud !== obs[1].hud && obs[0].hud[1] !== obs[1].hud[1], 'hud arrays/entries are per-survivor objects');
   // carried
   const s1 = m.survivors[1]; ctl.S[1] = (o) => (obs[1] = o, {});
   s1.st = CARRIED; m.hunter.carrying = 1; run(m, 2);
-  ok(obs[0].hud[1].state === 'carried' && obs[0].hud[1].repairing === null, 'carried: state carried, no longer repairing');
+  ok(obs[0].hud[1].state === 'carried' && obs[0].hud[1].activity === null, 'carried: state carried, no longer repairing');
+  ctl.S[1] = (o) => (obs[1] = o, { act: 'wiggle' }); run(m, 3);
+  ok(obs[0].hud[1].activity === 'wiggle' && obs[0].hud[1].activityProgress > 0, 'wiggle shows as an activity with progress');
+  ctl.S[1] = (o) => (obs[1] = o, {});
   // hooked: stage 1, hook notification with when/where to teammates only
   const hk = m.hooks[0]; m._hookSurvivor(s1, hk); run(m, 2);
   ok(obs[0].hud[1].state === 'hooked' && obs[0].hud[1].hookStage === 1 && obs[0].hud[1].hookCount === 1, 'hooked: state hooked, stage 1, hookCount 1');
   for (const i of [0, 2, 3]) {
     const n = obs[i].notifications.filter(x => x.type === 'hooked');
-    ok(n.length === 1 && n[0].who === 1 && n[0].hookId === hk.id && n[0].x === hk.x && n[0].z === hk.z && typeof n[0].t === 'number', `survivor ${i} gets one {type:'hooked', who, hookId, x, z, t}`);
+    ok(n.length === 1 && n[0].who === 1 && n[0].hookId === hk.id && n[0].x === hk.x && n[0].z === hk.z && typeof n[0].t === 'number', 'survivor ' + i + " gets one {type:'hooked', who, hookId, x, z, t}");
   }
   ok(!s1.inbox.some(x => x.type === 'hooked'), 'the hooked survivor gets no notification about themself');
+  s1.resolve = 0.4; run(m, 1);
+  ok(Math.abs(obs[0].hud[1].resolve - s1.resolve) < 1e-9 && s1.resolve >= 0.4, 'Resolve meter visible to teammates (hud.resolve)');
   // stage 2 via the timer
   s1.hookTimer = 0.05; run(m, 2);
-  ok(obs[0].hud[1].hookStage === 2, 'hud hookStage follows the stage change');
+  ok(obs[0].hud[1].hookStage === 2 && obs[0].hud[1].hookStages === 2, 'hud hookStage follows the stage change');
   // rescue by survivor 2 -> unhooked by: 2
   const rp = freeNear(hk.x, hk.z); place(m.survivors[2], rp.x, rp.z);
-  ctl.S[2] = (o) => (obs[2] = o, { act: 'rescue', target: 1 }); run(m, 15);
+  ctl.S[2] = (o) => (obs[2] = o, { act: 'rescue', target: 1 }); run(m, 4);
+  ok(obs[0].hud[2].activity === 'rescue' && obs[0].hud[2].activityProgress > 0, 'rescue shows as an activity with progress');
+  run(m, 11);
   ok(s1.st === INJURED, 'rescued');
   const un = obs[0].notifications.find(x => x.type === 'unhooked');
   ok(un && un.who === 1 && un.by === 2 && typeof un.t === 'number', 'unhooked notification {who:1, by:2, t}');
   ctl.S[2] = (o) => (obs[2] = o, {}); run(m, 2);
-  ok(obs[0].hud[1].state === 'injured' && obs[0].hud[1].hookStage === 0 && obs[0].hud[1].hookCount === 1, 'after rescue: injured, stage 0, hookCount kept');
-  // second hook starts in stage 2; self-unhook -> by: 'self'
-  s1.st = CARRIED; m.hunter.carrying = 1; m._hookSurvivor(s1, m.hooks[1]); run(m, 2);
-  ok(obs[0].hud[1].hookStage === 2 && obs[0].hud[1].hookCount === 2, 'second hook: stage 2, hookCount 2');
-  s1.selfT = 0; run(m, 20);
+  ok(obs[0].hud[1].state === 'injured' && obs[0].hud[1].hookStage === 0 && obs[0].hud[1].hookStages === 2 && obs[0].hud[1].hookCount === 1, 'after rescue: injured, stage 0, 2 stages consumed, hookCount kept');
+  // deep wound shows as remaining fraction
+  s1.dwT = 10; run(m, 1);
+  ok(Math.abs(obs[0].hud[1].deepWound - s1.dwT / 20) < 0.02, 'teammates see the remaining Deep Wound timer');
+  s1.dwT = -1;
+  // self-unhook (survivor 3): by 'self'
+  const s3 = m.survivors[3];
+  s3.st = CARRIED; m.hunter.carrying = 3; m._hookSurvivor(s3, m.hooks[1]); s3.resolve = 1; ctl.S[3] = () => ({ act: 'selfUnhook' }); run(m, 20);
   const un2 = obs[0].notifications.filter(x => x.type === 'unhooked');
-  ok(s1.st === INJURED && un2.length === 2 && un2[1].by === 'self', "self-unhook: unhooked notification by 'self'");
+  ok(s3.st === INJURED && un2.length === 2 && un2[1].by === 'self', "self-unhook: unhooked notification by 'self'");
   // death
+  ctl.S[3] = () => ({});
   m._kill(m.survivors[3], 'test'); run(m, 2);
   const d = obs[0].notifications.find(x => x.type === 'died');
-  ok(d && d.who === 3 && typeof d.t === 'number' && obs[0].hud[3].state === 'dead' && !obs[0].hud[3].beingHealed, 'died notification {who:3, t}; hud state dead');
-  ok(obs[2].hud[2].healing === false, 'healer of a dead teammate is no longer healing');
-  // third hook: hooked + died
+  ok(d && d.who === 3 && typeof d.t === 'number' && obs[0].hud[3].state === 'dead' && !obs[0].hud[3].beingHealed && obs[0].hud[3].activity === null, 'died notification {who:3, t}; hud state dead');
+  ok(obs[2].hud[2].activity !== 'heal', 'healer of a dead teammate is no longer healing');
+  // rescued after struggle on hook 1 => the next hook kills: hooked + died
   s1.st = CARRIED; m.hunter.carrying = 1; m._hookSurvivor(s1, m.hooks[2]); run(m, 2);
   const tail = obs[0].notifications.slice(-2).map(x => x.type).join();
-  ok(tail === 'hooked,died' && obs[0].hud[1].state === 'dead', '3rd hook: hooked then died notifications, hud dead');
+  ok(tail === 'hooked,died' && obs[0].hud[1].state === 'dead', 'hook after struggle: hooked then died notifications, hud dead');
   // hunter gets none of these
   let ho = null; ctl.H = o => (ho = o, {}); run(m, 1);
   ok(!ho.notifications.some(x => x.type === 'hooked' || x.type === 'unhooked' || x.type === 'died'), 'hunter does not get the HUD notifications');
@@ -288,68 +300,117 @@ test('HUD: downed auras = live positions of downed (not carried) teammates', () 
   ok(obs[0].downedAuras.map(e => e.id).join() === '3', 'carried survivors have no aura');
   m.survivors[3].st = DEAD; run(m, 2);
   ok(obs[0].downedAuras.length === 0, 'dead: no aura');
+  // reciprocal: a dying survivor sees every teammate's aura (live, with state); others get mateAuras: null
+  s1.st = DOWNED; m.hunter.carrying = -1; run(m, 2);
+  const ma = obs[1].mateAuras;
+  ok(Array.isArray(ma) && ma.map(e => e.id).join() === '0,2' && ma.every(e => Object.keys(e).sort().join() === 'id,state,x,z'), 'downed survivor: mateAuras of all teammates still in the match');
+  ok(ma[0].x === m.survivors[0].x && ma[0].state === 'healthy' && obs[0].mateAuras === null, 'live positions; standing survivors get none');
+  ok(obs[1].lastSeen[0] === null || obs[1].lastSeen[0].t < m.t - 1, 'auras do not update lastSeen');
 });
 
-test('chase state: start (seen + approaching / swinging within 20 m), lose after 6 s, one at a time, ends when downed', () => {
-  const setup = (config) => {
+test('chase state: running survivor seen within 12 m starts it; ends > 18 m / 8 s unseen / downed / carrying; one at a time', () => {
+  const setup = (config, dist = 10) => {
     const h = mk({ config }); const m = h.m;
     const H = m.hunter;
-    let tgt = null;   // a spot ~12 m away with a clear straight run and line of sight
+    let tgt = null;   // a spot ~dist m away with a clear straight run and line of sight
     for (let a = 0; a < 64 && !tgt; a++) {
-      const t = a / 64 * 2 * Math.PI, x = H.x + 12 * Math.cos(t), z = H.z + 12 * Math.sin(t);
+      const t = a / 64 * 2 * Math.PI, x = H.x + dist * Math.cos(t), z = H.z + dist * Math.sin(t);
       if (circleFree(m.coll, m.W, m.Hh, x, z, 0.4) && H.api.los(H, { x, z }) && H.api.walkClear(H, { x, z })) tgt = { x, z, a: t };
     }
     if (!tgt) throw new Error('no chase lane');
     return { ...h, H, tgt };
   };
+  const toward = (H) => (o) => ({ moveDir: { x: H.x - o.self.x, z: H.z - o.self.z } });
   const { m, ctl, H, tgt } = setup();
   const obs = [null, null, null, null]; let ho = null;
   for (let i = 0; i < 4; i++) ctl.S[i] = (o) => (obs[i] = o, {});
-  ctl.H = o => (ho = o, {});
-  const s0 = m.survivors[0]; place(s0, tgt.x, tgt.z); H.face = tgt.a;
-  run(m, 10);
-  ok(H.seen[0] && ho.chase.target === null && !obs[0].self.chased, 'seen but hunter standing still: no chase');
   ctl.H = o => (ho = o, { moveDir: { x: Math.cos(tgt.a), z: Math.sin(tgt.a) } });
+  const s0 = m.survivors[0]; place(s0, tgt.x, tgt.z); H.face = tgt.a;
   run(m, 4);
-  ok(m.chaseTgt === 0 && obs[0].self.chased && obs[1].hud[0].chased && obs[0].hud[0].chased, 'hunter runs at a seen survivor within 20 m: chased (self.chased + hud)');
-  run(m, 1);
-  ok(ho.chase && ho.chase.target === 0 && Object.keys(ho.chase).join() === 'target', 'hunter obs.chase.target');
+  ok(H.seen[0] && m.chaseTgt === -1 && !obs[0].self.chased, 'seen, hunter approaching, survivor standing still: no chase (survivor must be running)');
+  ctl.H = o => (ho = o, {}); place(H, 24.5, 18.5); place(s0, tgt.x, tgt.z);
+  ctl.S[0] = (o) => (obs[0] = o, { ...toward(H)(o), walk: true }); run(m, 4);
+  ok(H.seen[0] && m.chaseTgt === -1, 'walking survivor: no chase');
+  place(s0, tgt.x, tgt.z); ctl.S[0] = (o) => (obs[0] = o, toward(H)(o)); run(m, 3);
+  ok(m.chaseTgt === 0 && obs[0].self.chased && obs[1].hud[0].chased, 'running survivor seen within 12 m: chased (self.chased + hud), hunter standing still');
+  ok(ho.chase && ho.chase.target === 0 && Object.keys(ho.chase).sort().join() === 'bloodlust,target', 'hunter obs.chase.target');
   ok(m.events.some(e => e.type === 'chaseStart' && e.who === 0), 'chaseStart event');
-  // break line of sight: turn away and stand
-  ctl.H = o => (ho = o, {}); H.face = tgt.a + Math.PI; run(m, 3);
+  // break line of sight: turn away; survivor stops (inside 18 m)
+  ctl.S[0] = (o) => (obs[0] = o, {}); H.face = tgt.a + Math.PI; run(m, 3);
   ok(!H.seen[0] && m.chaseTgt === 0, 'out of sight: still chased');
-  run(m, 50);
-  ok(m.chaseTgt === 0 && obs[0].self.chased, 'still chased ~5 s after losing sight');
+  run(m, 70);
+  ok(m.chaseTgt === 0 && obs[0].self.chased, 'still chased ~7 s after losing sight');
   run(m, 12);
-  ok(m.chaseTgt === -1 && !obs[0].self.chased && !obs[1].hud[0].chased && ho.chase.target === null, 'chase lost after 6 s unseen');
+  ok(m.chaseTgt === -1 && !obs[0].self.chased && !obs[1].hud[0].chased && ho.chase.target === null, 'chase lost after 8 s unseen');
   ok(m.events.some(e => e.type === 'chaseEnd' && e.who === 0 && e.reason === 'lost'), 'chaseEnd event (lost)');
-  // start range
-  const f = setup({ chase: { startRange: 8 } });
+  // start range: a running survivor at ~16 m starts nothing until inside 12 m
+  const f = setup({}, 16);
   place(f.m.survivors[0], f.tgt.x, f.tgt.z); f.H.face = f.tgt.a;
-  f.ctl.H = () => ({ moveDir: { x: Math.cos(f.tgt.a), z: Math.sin(f.tgt.a) } });
+  f.ctl.S[0] = toward(f.H);
   run(f.m, 4);
-  ok(f.m.hunter.seen[0] && f.m.chaseTgt === -1, 'beyond startRange (12 m > 8 m): no chase yet');
-  run(f.m, 14);
+  ok(f.m.hunter.seen[0] && f.m.chaseTgt === -1, 'beyond startRange (> 12 m): no chase yet');
+  run(f.m, 12);
   ok(f.m.chaseTgt === 0, 'chase starts once inside startRange');
-  // one at a time: chase 0, then run at survivor 1 (0 hidden) -> switches to 1
+  // range loss: target farther than 18 m (even if seen)
+  f.ctl.S[0] = () => ({});
+  const far = { x: f.H.x + 19 * Math.cos(f.tgt.a), z: f.H.z + 19 * Math.sin(f.tgt.a) };
+  ok(circleFree(f.m.coll, f.m.W, f.m.Hh, far.x, far.z, 0.4), 'setup: free spot 19 m out');
+  place(f.m.survivors[0], far.x, far.z); run(f.m, 1);
+  ok(f.m.chaseTgt === -1 && f.m.events.some(e => e.type === 'chaseEnd' && e.reason === 'range'), 'target beyond 18 m: chase ends (range)');
+  // one at a time: chase 0, then a running survivor 1 (0 hidden) -> switches to 1
   const g = setup(); const go = [null, null, null, null];
   for (let i = 0; i < 4; i++) g.ctl.S[i] = (o) => (go[i] = o, {});
   place(g.m.survivors[0], g.tgt.x, g.tgt.z); g.H.face = g.tgt.a;
-  g.ctl.H = () => ({ moveDir: { x: Math.cos(g.tgt.a), z: Math.sin(g.tgt.a) } });
-  run(g.m, 4); ok(g.m.chaseTgt === 0, 'chasing survivor 0');
+  g.ctl.S[0] = (o) => (go[0] = o, toward(g.H)(o));
+  run(g.m, 3); ok(g.m.chaseTgt === 0, 'chasing survivor 0');
+  g.ctl.S[0] = (o) => (go[0] = o, {});
   place(g.H, 24.5, 18.5); place(g.m.survivors[0], 3.5, 33.5); place(g.m.survivors[1], g.tgt.x, g.tgt.z); g.H.face = g.tgt.a;
-  run(g.m, 4);
+  g.ctl.S[1] = (o) => (go[1] = o, toward(g.H)(o));
+  run(g.m, 3);
   ok(g.m.chaseTgt === 1, 'new chase on survivor 1 replaces the old one (most recent)');
   ok(go[2].hud.filter(e => e.chased).map(e => e.id).join() === '1' && !go[0].self.chased && go[1].self.chased, 'exactly one chased survivor in the HUD');
   // downed ends it
-  g.ctl.H = () => ({}); g.m._hurt(g.m.survivors[1]); g.m._hurt(g.m.survivors[1]); run(g.m, 1);
+  g.ctl.S[1] = (o) => (go[1] = o, {});
+  g.m._hurt(g.m.survivors[1]); g.m._hurt(g.m.survivors[1]); run(g.m, 1);
   ok(g.m.chaseTgt === -1 && go[2].hud.every(e => !e.chased), 'downed: chase ends at once');
   ok(g.m.events.some(e => e.type === 'chaseEnd' && e.who === 1 && e.reason === 'downed'), 'chaseEnd event (downed)');
-  // swinging at a survivor in front starts a chase without approaching
-  const k = setup(); place(k.m.survivors[0], k.H.x + 1.5 * Math.cos(k.tgt.a), k.H.z + 1.5 * Math.sin(k.tgt.a)); k.H.face = k.tgt.a;
-  run(k.m, 3); ok(k.m.chaseTgt === -1, 'close but idle hunter: no chase');
-  k.ctl.H = () => ({ act: 'attack', target: 0 }); run(k.m, 2);
-  ok(k.m.chaseTgt === 0, 'winding up at a seen survivor: chase starts');
+  // carrying: ends the chase and none can start
+  const k = setup(); place(k.m.survivors[0], k.tgt.x, k.tgt.z); k.H.face = k.tgt.a; k.ctl.S[0] = toward(k.H);
+  run(k.m, 3); ok(k.m.chaseTgt === 0, 'chase before the pickup');
+  k.m.survivors[2].st = CARRIED; k.H.carrying = 2; run(k.m, 1);
+  ok(k.m.chaseTgt === -1 && k.m.events.some(e => e.type === 'chaseEnd' && e.reason === 'carrying'), 'picking someone up ends the chase');
+  place(k.m.survivors[0], k.tgt.x, k.tgt.z); run(k.m, 3);
+  ok(k.m.chaseTgt === -1, 'a carrying hunter starts no chase');
+});
+
+test('Bloodlust: +0.2/+0.4/+0.6 m/s at 15/25/35 s of chase; reset by a hit, a pallet break, the chase ending', () => {
+  const { m, ctl } = mk();
+  const H = m.hunter, s0 = m.survivors[0];
+  let ho = null; ctl.H = o => (ho = o, {});
+  place(H, 24.5, 18.5); place(s0, 30.5, 18.5); H.face = 0;
+  m.chaseTgt = 0; m.chaseSeenT = 0; m.chaseId++;          // force a chase (target seen, 6 m away, standing => continues)
+  run(m, 148); ok(m.blTier === 0 && Math.abs(m._hunterSpeed() - 4.6) < 1e-9, 'no Bloodlust before 15 s');
+  run(m, 4); ok(m.blTier === 1 && Math.abs(m._hunterSpeed() - 4.8) < 1e-9 && ho.self.bloodlust === 1 && ho.chase.bloodlust === 1, 'tier 1 at 15 s: 4.8 m/s');
+  ok(m.events.some(e => e.type === 'bloodlust' && e.tier === 1), 'bloodlust event');
+  run(m, 100); ok(m.blTier === 2 && Math.abs(m._hunterSpeed() - 5.0) < 1e-9, 'tier 2 at 25 s: 5.0 m/s');
+  run(m, 100); ok(m.blTier === 3 && Math.abs(m._hunterSpeed() - 5.2) < 1e-9, 'tier 3 at 35 s: 5.2 m/s');
+  const x0 = H.x; ctl.H = () => ({ moveDir: { x: -1, z: 0 } }); run(m, 1);
+  near(x0 - H.x, 0.52, 1e-6, 'moves at 5.2 m/s with tier 3');
+  ctl.H = () => ({}); place(H, 24.5, 18.5);
+  m._hurt(s0); run(m, 1);
+  ok(m.blTier === 0 && m.chaseTgt === 0, 'a hit removes Bloodlust (chase continues)');
+  s0.st = HEALTHY;
+  // pallet break
+  const p = m.md.pallets[0]; m._dropPallet(p, m.survivors[1]); H.stunT = 0;
+  const hz = p.axis === 'x' ? { x: p.x0 - 0.9, z: p.cz } : { x: p.cx, z: p.z0 - 0.9 };
+  place(H, hz.x, hz.z); place(s0, hz.x + (p.axis === 'x' ? -3 : 3), hz.z + (p.axis === 'x' ? 0 : 0)); m.blT = 30; m.chaseSeenT = m.t; run(m, 1);
+  ok(m.chaseTgt === 0 && m.blTier === 2, 'setup: tier 2');
+  ctl.H = () => ({ act: 'breakPallet', target: p.id }); run(m, 25);
+  ok(m.ps[p.index] === 2 && m.blTier === 0, 'breaking a pallet removes Bloodlust');
+  // chase end
+  ctl.H = () => ({}); m.blT = 30; m.chaseSeenT = m.t; run(m, 1); ok(m.blTier === 2, 'tier back');
+  place(s0, 3.5, 33.5); run(m, 2);
+  ok(m.chaseTgt === -1 && m.blTier === 0 && m.blT === 0, 'chase over: Bloodlust gone');
 });
 
 test('movement: speeds, collision, walk vs run, boost, crawl', () => {
@@ -361,7 +422,7 @@ test('movement: speeds, collision, walk vs run, boost, crawl', () => {
   place(m.survivors[0], 30.5, 26.5); m.survivors[0].st = DOWNED; m.survivors[0].bleedT = 200; ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
   run(m, 10); near(m.survivors[0].x, 31.2, 0.01, 'crawl 0.7 m/s');
   place(m.survivors[0], 30.5, 26.5); m.survivors[0].st = INJURED; m.survivors[0].boostT = 2; ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
-  run(m, 10); near(m.survivors[0].x, 36.5, 0.01, 'boost x1.5 = 6 m/s');
+  run(m, 10); near(m.survivors[0].x, 37.1, 0.01, 'on-hit boost x1.65 = 6.6 m/s');
   place(m.hunter, 30.5, 26.5); ctl.H = () => ({ moveDir: { x: 1, z: 0 } });
   run(m, 10); near(m.hunter.x, 35.1, 0.01, 'hunter 4.6 m/s');
   place(m.survivors[0], 3.5, 33.5); m.survivors[0].st = HEALTHY; ctl.S[0] = () => ({ moveDir: { x: 0, z: 1 } });
@@ -405,7 +466,7 @@ test('vault: window (survivor fast 0.5 s with run-up, hunter 1.7 s), only along 
   ok(vaulted || Math.hypot(m.survivors[0].x - 13.5, m.survivors[0].z - 11.5) < 1, 'moveTo reaches the house (vault or door route)');
 });
 
-test('pallet drop: 0.3 s, stuns hunter within footprint +-1 m along axis (2 s), hunter blocked until break (2.5 s), survivor vaults 1.2 s', () => {
+test('pallet drop: 0.3 s, stuns hunter within footprint +-1 m along axis (2 s), hunter blocked until break (2.5 s), survivor vaults 1.1 s loud / 2 s quiet', () => {
   const { m, ctl } = mk();
   const p = m.md.pallets.find(q => q.id === 'p-gap');                 // (25,22) axis z, length 1
   place(m.survivors[0], 25.5, 21.0); place(m.hunter, 25.5, 23.5);
@@ -426,13 +487,20 @@ test('pallet drop: 0.3 s, stuns hunter within footprint +-1 m along axis (2 s), 
   run(m, 22); ok(m.ps[p.index] === 1, 'still intact after 2.2 s'); run(m, 2); ok(m.ps[p.index] === 2, 'broken after 2.34 s (2.4 s in whole ticks)');
   place(m.survivors[0], 3.5, 33.5);   // out of the way (bodies block the hunter)
   ctl.H = () => ({ moveDir: { x: 0, z: -1 } }); run(m, 30); ok(m.hunter.z < 21.5, 'hunter walks through after the break');
-  // survivor vault over a dropped pallet: 1.2 s
-  const u = mk(); const pi = u.m.md.pallets.findIndex(q => q.id === 'p-gap');
-  u.m.ps[pi] = 1; u.m.coll[u.m.md.pallets[pi].cells[0]] = 1; u.m.palVersion++; u.m.droppedCount++;
-  place(u.m.survivors[0], 25.5, 20.9); u.ctl.S[0] = () => ({ moveDir: { x: 0, z: 1 } });
-  let s0 = -1, s1 = -1;
-  for (let i = 0; i < 60; i++) { u.m.step(); if (u.m.survivors[0].vault && s0 < 0) s0 = i; if (s0 >= 0 && !u.m.survivors[0].vault) { s1 = i; break; } }
-  ok(s0 >= 0, 'survivor vaults the dropped pallet'); near((s1 - s0) * 0.1, 1.2, 0.11, 'pallet vault takes 1.2 s'); near(u.m.survivors[0].z, 23.5, 1e-6, 'lands on the far side');
+  // survivor vault over a dropped pallet: running 1.1 s (loud), walking 2 s (quiet)
+  for (const walk of [false, true]) {
+    const u = mk(); const pi = u.m.md.pallets.findIndex(q => q.id === 'p-gap');
+    u.m.ps[pi] = 1; u.m.coll[u.m.md.pallets[pi].cells[0]] = 1; u.m.palVersion++; u.m.droppedCount++;
+    let hn = null; u.ctl.H = o => (hn = o, {});
+    place(u.m.survivors[0], 25.5, 20.9); u.ctl.S[0] = () => ({ moveDir: { x: 0, z: 1 }, walk });
+    let s0 = -1, s1 = -1, landZ = null;
+    for (let i = 0; i < 60; i++) { u.m.step(); if (u.m.survivors[0].vault && s0 < 0) s0 = i; if (s0 >= 0 && !u.m.survivors[0].vault) { s1 = i; landZ = u.m.survivors[0].z; break; } }
+    u.m.step();
+    ok(s0 >= 0, 'survivor vaults the dropped pallet'); near((s1 - s0) * 0.1, walk ? 2.0 : 1.1, 0.11, walk ? 'walking: slow pallet vault 2 s' : 'running: fast pallet vault 1.1 s');
+    near(landZ, 23.5, 1e-6, 'lands on the far side');
+    const loud = hn.notifications.some(n => n.type === 'loudNoise' && n.cause === 'palletVault');
+    ok(walk ? !loud : loud, walk ? 'slow pallet vault is quiet' : 'fast pallet vault: loudNoise (palletVault) to the hunter');
+  }
   // pushed out if standing in the footprint when it drops
   const w = mk(); place(w.m.survivors[0], 25.5, 22.5); place(w.m.hunter, 40.5, 5.5); w.ctl.S[0] = () => ({ act: 'dropPallet' });
   run(w.m, 3); ok(circleFree(w.m.coll, w.m.W, w.m.Hh, w.m.survivors[0].x, w.m.survivors[0].z, 0.4), 'actor standing in the pallet cell is pushed to a free spot');
@@ -465,53 +533,128 @@ test('attack: 0.35 s windup, hit needs range 2.2 + facing, injured -> downed, bo
   const w = mk(); place(w.m.hunter, 8.8, 12.5); place(w.m.survivors[0], 11.8 > 0 ? 10.7 : 0, 12.5);
 });
 
-test('carry / hook: pickup 2 s, hook 1 s, stage 1 (60 s) -> stage 2 (60 s) -> dead; 2nd hook starts in stage 2; 3rd hook kills at once', () => {
+test('carry / hook: pickup 2 s, hook 1.5 s, stage 1 (70 s) -> stage 2 (70 s) -> dead; stage accounting; last survivor sacrificed', () => {
   const { m, ctl } = mk({ config: { antiCamp: { enabled: false } } });   // hunter idles next to the hook: no Resolve here
   const s = m.survivors[0], hk = m.hooks[0];
-  s.st = DOWNED; s.bleedT = 240; place(s, 30.5, 26.5); place(m.hunter, 31.5, 26.5);
+  s.st = DOWNED; place(s, 30.5, 26.5); place(m.hunter, 31.5, 26.5);
   ctl.H = () => ({ act: 'pickup', target: 0 });
   run(m, 19); ok(s.st === DOWNED, 'not picked up before 2 s'); run(m, 2); ok(s.st === CARRIED && m.hunter.carrying === 0, 'picked up after 2 s');
   ctl.S[0] = () => ({ act: 'wiggle' });
   ctl.H = () => ({ moveDir: { x: 1, z: 0 } }); run(m, 10); near(m.hunter.x - 31.5, 3.68, 0.3, 'carrying speed 3.68 (pickup took 2 s)');
   ok(Math.abs(s.x - m.hunter.x) < 1e-9, 'carried survivor follows the hunter');
   place(m.hunter, hk.x + 1, hk.z); m.survivors[0].wiggle = 0; ctl.S[0] = () => ({});
-  ctl.H = () => ({ act: 'hook' }); run(m, 9); ok(s.st === CARRIED, 'not hooked before 1 s'); run(m, 2);
+  ctl.H = () => ({ act: 'hook' }); run(m, 14); ok(s.st === CARRIED, 'not hooked before 1.5 s'); run(m, 2);
   ok(s.st === HOOKED && s.hookCount === 1 && s.hookStage === 1 && hk.occ === 0, 'hooked: stage 1, hook occupied');
   ctl.H = () => ({});
-  run(m, 595); ok(s.st === HOOKED && s.hookStage === 1, 'still stage 1 at ~59.5 s'); run(m, 10); ok(s.hookStage === 2, 'stage 2 after 60 s');
-  run(m, 585); ok(s.st === HOOKED, 'alive at ~119.5 s'); run(m, 15); ok(s.st === DEAD && s.cause === 'hookDeath' && hk.occ === -1, 'dies after stage 2 (60 s), hook freed');
-  // 2nd hook begins in stage 2; rescue puts survivor injured with boost
+  run(m, 695); ok(s.st === HOOKED && s.hookStage === 1, 'still stage 1 at ~69.5 s'); run(m, 10); ok(s.hookStage === 2, 'stage 2 after 70 s');
+  run(m, 685); ok(s.st === HOOKED, 'alive at ~139.5 s'); run(m, 15); ok(s.st === DEAD && s.cause === 'hookDeath' && hk.occ === -1, 'dies after stage 2 (70 s), hook freed');
+  // rescued in stage 1 => 2nd hook begins in stage 2; rescue puts survivor injured with protections
   const t = mk(); const a = t.m.survivors[1], h2 = t.m.hooks[1];
-  a.st = CARRIED; a.hookCount = 1; t.m.hunter.carrying = 1; place(t.m.hunter, h2.x + 1, h2.z); t.ctl.H = () => ({ act: 'hook' }); run(t.m, 11);
-  ok(a.st === HOOKED && a.hookCount === 2 && a.hookStage === 2 && near(a.hookTimer, 59, 1.1, 'stage 2 timer starts at 60 s') !== false, 'second hook starts in stage 2');
+  a.st = CARRIED; a.hookCount = 1; a.hookStage = 1; t.m.hunter.carrying = 1; place(t.m.hunter, h2.x + 1, h2.z); t.ctl.H = () => ({ act: 'hook' }); run(t.m, 16);
+  ok(a.st === HOOKED && a.hookCount === 2 && a.hookStage === 2 && near(a.hookTimer, 69.5, 0.6, 'stage 2 timer starts at 70 s') !== false, 'second hook (rescued in stage 1) starts in stage 2');
   t.ctl.H = () => ({}); place(t.m.survivors[2], h2.x - 1, h2.z); t.ctl.S[2] = () => ({ act: 'rescue', target: 1 });
   run(t.m, 9); ok(a.st === HOOKED, 'not rescued before 1 s'); run(t.m, 2);
-  ok(a.st === INJURED && a.protT > 9 && a.endure && a.boostT === 0 && h2.occ === -1, 'rescued: injured with 10 s unhook protections, hook free');
-  // 3rd hook = instant death
+  ok(a.st === INJURED && a.protT > 9 && a.endure && a.elusT > 9 && a.boostT === 0 && h2.occ === -1, 'rescued: injured with 10 s unhook protections, hook free');
+  // two stages consumed = instant death on the next hook
   const u = mk(); const b = u.m.survivors[2], h3 = u.m.hooks[2];
-  b.st = CARRIED; b.hookCount = 2; u.m.hunter.carrying = 2; place(u.m.hunter, h3.x + 1, h3.z); u.ctl.H = () => ({ act: 'hook' }); run(u.m, 11);
-  ok(b.st === DEAD && b.cause === 'hook3' && u.m.hunter.carrying === -1, 'third hook kills instantly');
-  // wiggle 16 s
-  const w = mk(); const c = w.m.survivors[3]; c.st = CARRIED; c.bleedT = 100; w.m.hunter.carrying = 3; place(w.m.hunter, 30.5, 26.5);
+  b.st = CARRIED; b.hookCount = 2; b.hookStage = 2; u.m.hunter.carrying = 2; place(u.m.hunter, h3.x + 1, h3.z); u.ctl.H = () => ({ act: 'hook' }); run(u.m, 16);
+  ok(b.st === DEAD && b.cause === 'hook3' && u.m.hunter.carrying === -1, 'third stage on hooking kills instantly');
+  // rescued after reaching struggle on the FIRST hook => the next hook kills
+  const u2 = mk({ config: { antiCamp: { enabled: false } } }); const b2 = u2.m.survivors[1];
+  b2.st = CARRIED; u2.m.hunter.carrying = 1; u2.m._hookSurvivor(b2, u2.m.hooks[0]);
+  b2.hookTimer = 0.05; run(u2.m, 2); ok(b2.hookStage === 2 && b2.hookCount === 1, 'first hook reached struggle');
+  u2.m._unhook(b2, 2); ok(b2.st === INJURED && b2.hookStage === 2, 'rescued: stages consumed are kept');
+  b2.st = CARRIED; u2.m.hunter.carrying = 1; u2.m._hookSurvivor(b2, u2.m.hooks[1]);
+  ok(b2.st === DEAD && b2.cause === 'hook3' && b2.hookCount === 2, 'second hooking after struggle on hook 1 sacrifices');
+  // last survivor in the match is sacrificed immediately when hooked (normally the all-down rule ends the match first)
+  const l = mk(); for (const i of [0, 1, 2]) l.m._kill(l.m.survivors[i], 'test');
+  const ls = l.m.survivors[3]; ls.st = CARRIED; l.m.hunter.carrying = 3; l.m._hookSurvivor(ls, l.m.hooks[0]);
+  ok(ls.st === DEAD && ls.cause === 'lastHook' && ls.hookStage === 1 && l.m.hooks[0].occ === -1, 'last survivor: hooked => sacrificed at once (stage 1)');
+  // wiggle 16 s: escape releases the survivor INJURED
+  const w = mk(); const c = w.m.survivors[3]; c.st = CARRIED; w.m.hunter.carrying = 3; place(w.m.hunter, 30.5, 26.5);
   w.ctl.S[3] = () => ({ act: 'wiggle' }); w.ctl.H = () => ({ moveDir: { x: 1, z: 0 } });
   run(w.m, 150); ok(c.st === CARRIED, 'still carried at 15 s'); run(w.m, 15);
-  ok(c.st === DOWNED && w.m.hunter.carrying === -1 && w.m.hunter.stunT > 0, 'wiggle frees after 16 s and stuns the hunter');
-  // bleed out
-  const x = mk(); x.m.survivors[0].st = DOWNED; x.m.survivors[0].bleedT = 240; run(x.m, 2395); ok(x.m.survivors[0].st === DOWNED, 'alive at 239.5 s');
-  run(x.m, 10); ok(x.m.survivors[0].st === DEAD && x.m.survivors[0].cause === 'bleedout', 'bleeds out after 240 s');
+  ok(c.st === INJURED && w.m.hunter.carrying === -1 && w.m.hunter.stunT > 0 && c.wiggle === 0, 'wiggle frees after 16 s: survivor INJURED, hunter stunned');
+  // bleed out: 240 s budget, cumulative across downs
+  const x = mk(); const xs = x.m.survivors[0]; xs.st = DOWNED; run(x.m, 1000);
+  near(xs.bleedT, 140, 0.11, '100 s downed: 140 s of the budget left');
+  xs.st = INJURED; run(x.m, 100); near(xs.bleedT, 140, 0.11, 'standing: budget paused');
+  x.m._downSurvivor(xs); near(xs.bleedT, 140, 0.11, 'downed again: budget NOT refilled');
+  xs.st = CARRIED; x.m.hunter.carrying = 0; run(x.m, 50); near(xs.bleedT, 140, 0.11, 'carried: budget paused');
+  x.m.hunter.carrying = -1; xs.st = DOWNED; run(x.m, 1395); ok(xs.st === DOWNED, 'alive with 0.5 s left');
+  run(x.m, 10); ok(xs.st === DEAD && xs.cause === 'bleedout', 'bleeds out when the cumulative budget is spent');
 });
 
-test('heal: 16 s, not self; persists on the target; heals downed -> injured', () => {
-  const { m, ctl } = mk({ config: { gens: { fumbleChancePerS: 0 } } });
+test('carry: wiggle progress persists across drops / re-pickups; voluntary drop adds 25 %; pallet save releases INJURED', () => {
+  const { m, ctl } = mk();
+  const s = m.survivors[0]; s.st = CARRIED; m.hunter.carrying = 0; place(m.hunter, 30.5, 26.5);
+  ctl.S[0] = () => ({ act: 'wiggle' }); run(m, 50);
+  near(s.wiggle, 5, 0.11, '5 s of wiggling');
+  ctl.S[0] = () => ({}); ctl.H = () => ({ act: 'drop' }); run(m, 1);
+  ok(s.st === DOWNED && m.hunter.carrying === -1 && Math.abs(s.x - m.hunter.x) < 1e-9, 'voluntary drop: downed at the hunter');
+  near(s.wiggle, 9, 0.11, 'drop adds 25 % of 16 s = 4 s of wiggle progress');
+  ok(m.events.some(e => e.type === 'drop' && e.who === 0) && m.stats.drops === 1, 'drop event + stat');
+  ctl.H = () => ({ act: 'pickup', target: 0 }); run(m, 21);
+  ok(s.st === CARRIED && Math.abs(s.wiggle - 9) < 0.11, 're-pickup: wiggle progress kept');
+  ctl.H = () => ({}); ctl.S[0] = () => ({ act: 'wiggle' }); run(m, 69); ok(s.st === CARRIED, 'not free at 15.9 s total');
+  run(m, 2); ok(s.st === INJURED, 'free after 16 s of total progress, INJURED');
+  // pallet save: hunter carrying, stunned by a pallet -> released INJURED
+  const t = mk(); const c = t.m.survivors[1]; c.st = CARRIED; t.m.hunter.carrying = 1;
+  const p = t.m.md.pallets.find(q => q.id === 'p-gap');
+  place(t.m.survivors[0], 25.5, 21.0); place(t.m.hunter, 25.5, 22.5);
+  t.ctl.S[0] = () => ({ act: 'dropPallet', target: 'p-gap' }); run(t.m, 3);
+  ok(t.m.ps[p.index] === 1 && t.m.hunter.stunT > 0 && c.st === INJURED && t.m.hunter.carrying === -1, 'pallet save: survivor released INJURED');
+  ok(t.m.events.some(e => e.type === 'dropped' && e.who === 1 && e.state === 'injured'), 'dropped event (state injured)');
+});
+
+test('downed recovery: stationary 0.5 charges/s up to 95 % (30.4 s), crawling pauses, last 5 % needs help', () => {
+  const { m, ctl } = mk();
+  const s = m.survivors[0]; let so = null, mo = null; s.st = DOWNED;
+  ctl.S[0] = o => (so = o, {}); ctl.S[1] = o => (mo = o, {});
+  run(m, 100); near(s.heal, 5, 0.06, '10 s lying still: 5 charges');
+  ok(mo.hud[0].activity === 'recover' && Math.abs(mo.hud[0].activityProgress - 5 / 16) < 0.01, 'HUD: recover activity with progress');
+  ctl.S[0] = o => (so = o, { moveDir: { x: 1, z: 0 } }); run(m, 50);
+  near(s.heal, 5, 0.06, 'crawling pauses recovery');
+  ok(mo.hud[0].activity === null, 'crawling: no recover activity on the HUD');
+  ctl.S[0] = o => (so = o, {}); run(m, 300);
+  near(s.heal, 15.2, 1e-6, 'caps at 95 % (15.2 of 16 charges)');
+  ok(s.st === DOWNED && Math.abs(so.self.healProgress - 0.95) < 1e-9, 'still downed: the last 5 % needs a teammate');
+  const b = m.survivors[1]; place(b, s.x + 1, s.z); ctl.S[1] = () => ({ act: 'heal', target: 0 });
+  run(m, 9); ok(s.st === INJURED, 'a teammate finishes the last 5 % in < 1 s');
+  // full recovery time from 0
+  const t = mk(); const d = t.m.survivors[2]; d.st = DOWNED; run(t.m, 303); ok(d.heal < 15.2, 'not capped at 30.3 s'); run(t.m, 2); near(d.heal, 15.2, 1e-6, '95 % in 30.4 s');
+});
+
+test('heal: 16 s, not self; persists on the target; heals downed -> injured; max 2 healers; patient must stay available', () => {
+  const { m, ctl } = mk();
   const a = m.survivors[0], b = m.survivors[1];
   a.st = INJURED; place(a, 30.5, 26.5); place(b, 31.5, 26.5);
   ctl.S[0] = () => ({ act: 'heal', target: 0 }); run(m, 200); ok(a.st === INJURED, 'cannot self-heal');
+  ctl.S[0] = () => ({});
   ctl.S[1] = () => ({ act: 'heal', target: 0 }); run(m, 159); ok(a.st === INJURED, 'not healed before 16 s'); run(m, 3); ok(a.st === HEALTHY, 'healed after 16 s');
-  b.st = DOWNED; b.bleedT = 100; ctl.S[0] = () => ({ act: 'heal', target: 1 }); ctl.S[1] = () => ({}); run(m, 162); ok(b.st === INJURED, 'downed survivor picked up -> injured');
+  b.st = DOWNED; ctl.S[0] = () => ({ act: 'heal', target: 1 }); ctl.S[1] = () => ({}); run(m, 162); ok(b.st === INJURED, 'downed survivor picked up -> injured');
+  // patient participation: a moving patient or one busy with its own interaction gets no healing
+  const t = mk(); const p = t.m.survivors[0], h1 = t.m.survivors[1], h2 = t.m.survivors[2], h3 = t.m.survivors[3];
+  p.st = INJURED; place(p, 30.5, 26.5); place(h1, 31.5, 26.5);
+  t.ctl.S[1] = () => ({ act: 'heal', target: 0 });
+  t.ctl.S[0] = () => ({ moveDir: { x: 0, z: (t.m.tick % 10 < 5) ? 0.3 : -0.3 }, walk: true }); run(t.m, 30);
+  ok(p.heal === 0, 'moving patient: no healing progress');
+  const g = gen(t.m), sl = g.slots[0]; place(p, sl.x, sl.z);
+  let hp = null; for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.8, 0.8], [-0.8, 0.8], [0.8, -0.8], [-0.8, -0.8]]) if (!hp && circleFree(t.m.coll, t.m.W, t.m.Hh, sl.x + dx, sl.z + dz, 0.4) && Math.hypot(sl.x + dx - g.x, sl.z + dz - g.z) > 1) hp = { x: sl.x + dx, z: sl.z + dz };
+  place(h1, hp.x, hp.z);
+  t.ctl.S[0] = () => ({ act: 'repair', target: g.id }); run(t.m, 20);
+  ok(p.curAct === 'repair' && p.heal === 0, 'patient busy with another interaction (repair): no healing progress');
+  // at most two healers: 2 charges/s total, the third gets nothing
+  t.ctl.S[0] = () => ({}); place(p, 30.5, 26.5); place(h1, 31.5, 26.5); place(h2, 29.5, 26.5); place(h3, 30.5, 27.5); run(t.m, 2); p.heal = 0;
+  t.ctl.S[2] = () => ({ act: 'heal', target: 0 }); t.ctl.S[3] = () => ({ act: 'heal', target: 0 });
+  run(t.m, 40);
+  near(p.heal, 8, 0.25, 'three healers: only two count (2 charges/s, no penalty)');
+  ok([h1, h2, h3].filter(x => x.curAct === 'heal').length === 2, 'exactly two survivors are healing');
 });
 
-test('generators: 90 s solo, efficiency 1/0.85/0.7 for 1/2/3 workers, fumble -10% + loud notification, 5 gens power the gates', () => {
-  const cfg = { gens: { fumbleChancePerS: 0 } };
+test('generators: 90 s solo, efficiency 1/0.85/0.7 for 1/2/3 workers, legacy fumble off by default, 5 gens power the gates', () => {
+  const cfg = {};
+  ok(mk().m.cfg.gens.fumbleChancePerS === 0, 'random repair fumble is off by default (skill checks out of scope)');
   const { m, ctl } = mk({ config: cfg });
   const g = gen(m); place(m.survivors[0], g.x + 1, g.z);
   ctl.S[0] = () => ({ act: 'repair', target: g.id });
@@ -528,7 +671,7 @@ test('generators: 90 s solo, efficiency 1/0.85/0.7 for 1/2/3 workers, fumble -10
   v.ctl.S[0] = () => ({ act: 'repair', target: g4.id, moveDir: { x: 0, z: 1 } }); run(v.m, 20); ok(g4.p === 0, 'moving cancels repair');
   // out of range: no progress
   const w = mk({ config: cfg }); const g5 = gen(w.m); place(w.m.survivors[0], g5.x + 4, g5.z); w.ctl.S[0] = () => ({ act: 'repair', target: g5.id }); run(w.m, 20); ok(g5.p === 0, 'out of range: no repair');
-  // fumble
+  // legacy fumble (opt-in knob)
   const f = mk({ config: { gens: { fumbleChancePerS: 10 } } }); const g6 = gen(f.m); g6.p = 40; place(f.m.survivors[0], g6.x + 1, g6.z);
   let hn = []; f.ctl.H = o => (hn = o.notifications, {}); f.ctl.S[0] = () => ({ act: 'repair', target: g6.id }); run(f.m, 3);
   ok(g6.p < 40, 'fumble reduces progress'); ok(hn.some(n => n.type === 'fumble' && n.x === g6.x && n.z === g6.z), 'hunter gets fumble notification with position');
@@ -579,7 +722,7 @@ test('generators: 7 of the candidates per match (seeded), 5 needed; unfinished g
   run(t.m, 3); ok(t.m.gensDone === 5 && t.m.gatesPowered && !b.done, 'a gen finishing on the same tick as the 5th stays blocked');
 });
 
-test('exit gates: lever 20 s, open, escape at exit; endgame timer kills the rest; last-survivor auto-power', () => {
+test('exit gates: lever 20 s, open, escape at exit; endgame timer kills the rest', () => {
   const o = { config: { gens: { needed: 1 } } };
   const { m, ctl } = mk(o);
   m._powerGates('test');
@@ -596,18 +739,65 @@ test('exit gates: lever 20 s, open, escape at exit; endgame timer kills the rest
   const t = mk(o); t.m._powerGates('test'); const s2 = t.m.survivors[0]; place(s2, t.m.gates[0].ex, t.m.gates[0].ez + 0.6); t.ctl.S[0] = () => ({}); run(t.m, 5); ok(s2.st === HEALTHY, 'closed gate: no escape');
   // endgame: a gate opens, nobody leaves -> everyone dies 120 s after the opening
   run(t.m, 600); ok(t.m.endgameT < 0 && t.m.survivors.every(x => x.st === HEALTHY), 'powered for 60 s without an opening: no timer, nobody dies');
-  t.m._openGate(t.m.gates[1], t.m.survivors[0]);
+  t.m._openGate(t.m.gates[1], 0);
   run(t.m, 1190); ok(t.m.survivors.every(x => x.st < DEAD), 'alive at ~119 s after the opening'); run(t.m, 20);
   ok(t.m.survivors.every(x => x.st === DEAD && x.cause === 'endgame') && t.m.over, 'endgame timer kills all remaining survivors and ends the match');
-  ok(t.m.events.some(e => e.type === 'endgame'), 'endgame event emitted');
-  // hatch substitute: down to 1 survivor before gates powered
-  const u = mk(o); u.m._kill(u.m.survivors[0], 'test'); u.m._kill(u.m.survivors[1], 'test');
-  ok(!u.m.gatesPowered, 'two left: not powered'); u.m._kill(u.m.survivors[2], 'test');
-  ok(u.m.gatesPowered && u.m.endgameT < 0, 'last survivor: gates auto-power, timer waits for a gate opening');
-  const ls = u.m.survivors[3], lg = u.m.gates[1]; place(ls, lg.lx, lg.lz - 1); u.ctl.S[3] = () => ({ act: 'openGate', target: lg.id });
-  run(u.m, 202); ok(lg.open && u.m.endgameT > 118, 'last survivor opens a gate -> timer starts');
-  // match result sanity
-  const r = u.m.result(); ok(r.kills === 3 && r.escapes === 0, 'result counts kills');
+  ok(t.m.events.some(e => e.type === 'endgame' && e.cause === 'gate'), 'endgame event emitted (cause gate)');
+});
+
+test('endgame: collapse at half speed while anyone is downed/carried/hooked; hunter opens a powered gate in 0.75 s before the collapse; crawl-out', () => {
+  const { m, ctl } = mk();
+  m._powerGates('test');
+  let so = null; ctl.S[1] = o => (so = o, {});
+  m._openGate(m.gates[0], 1); run(m, 100);
+  near(m.endgameT, 110, 0.11, 'full speed: 10 s used in 10 s');
+  ok(so.endgame && so.endgame.slowed === false, 'obs: endgame.slowed false');
+  m.survivors[0].st = DOWNED; run(m, 100);
+  near(m.endgameT, 105, 0.11, 'someone downed: half speed (5 s in 10 s)');
+  ok(so.endgame.slowed === true, 'obs: endgame.slowed true');
+  m.survivors[2].st = HOOKED; m.survivors[2].hookIdx = 0; m.hooks[0].occ = 2; m.survivors[2].hookTimer = 999; m.survivors[2].hookStage = 1;
+  run(m, 100); near(m.endgameT, 100, 0.11, 'downed + hooked: still half speed (no stacking)');
+  // crawl out: the downed survivor reaches the exit of the open gate
+  const g = m.gates[0], d = m.survivors[0];
+  place(d, g.ex, g.ez + 1.5); ctl.S[0] = () => ({ moveTo: { x: g.ex, z: g.ez } }); run(m, 30);
+  ok(d.st === ESCAPED && m.events.some(e => e.type === 'escape' && e.who === 0 && e.crawled === true), 'downed survivor crawls out through the open gate');
+  // hunter opens a powered gate in 0.75 s (interrupted progress resets); not once the collapse has begun
+  const t = mk(); t.m._powerGates('test'); const tg = t.m.gates[1];
+  place(t.m.hunter, tg.lx, tg.lz + 1);
+  t.ctl.H = () => ({ act: 'openGate', target: tg.id }); run(t.m, 5);
+  t.ctl.H = () => ({}); run(t.m, 1); ok(!tg.open && t.m.hunter.prog === 0, 'interrupted: hunter progress resets');
+  t.ctl.H = () => ({ act: 'openGate', target: tg.id }); run(t.m, 7); ok(!tg.open, 'not open at 0.7 s'); run(t.m, 1);
+  ok(tg.open && t.m.endgameT > 119 && t.m.events.some(e => e.type === 'gateOpen' && e.by === 'hunter'), 'hunter opened the gate in 0.75 s (0.8 s in ticks): collapse starts');
+  const og = t.m.gates[0]; place(t.m.hunter, og.lx, og.lz + 1); t.ctl.H = () => ({ act: 'openGate', target: og.id }); run(t.m, 20);
+  ok(!og.open, 'collapse already running: the hunter cannot open the other gate');
+  const u = mk(); place(u.m.hunter, u.m.gates[1].lx, u.m.gates[1].lz + 1); u.ctl.H = () => ({ act: 'openGate', target: u.m.gates[1].id }); run(u.m, 20);
+  ok(!u.m.gates[1].open, 'unpowered gate: the hunter cannot open it');
+});
+
+test('last-survivor rule (user, replaces the hatch): one survivor left before the gates are powered => instant hunter win', () => {
+  { const { m } = mk(); const S = m.survivors;
+    m._kill(S[0], 'test'); m._kill(S[1], 'test'); run(m, 5); ok(!m.over, 'two left: continues');
+    m._kill(S[2], 'test'); run(m, 1);
+    const r = m.result();
+    ok(m.over && r.endReason === 'lastSurvivor' && r.kills === 4 && r.winner === 'hunter' && S[3].cause === 'lastSurvivor', 'one left, gates unpowered: ends at once, last survivor counts as killed');
+    ok(m.events.some(e => e.type === 'lastSurvivor' && e.who === 3) && !m.gatesPowered && m.endgameT < 0, 'lastSurvivor event; nothing powered, no collapse'); }
+  // escaped survivors are not "in the match"
+  { const { m } = mk(); const S = m.survivors;
+    S[0].st = ESCAPED; S[0].outcome = 'escaped'; m._kill(S[1], 'test'); run(m, 3); ok(!m.over, 'one escaped, one dead, two in the match: continues');
+    m._kill(S[2], 'test'); run(m, 1);
+    const r = m.result(); ok(m.over && r.endReason === 'lastSurvivor' && r.escapes === 1 && r.kills === 3 && S[0].outcome === 'escaped', 'escaped + 2 dead + 1 left: ends; the escaped one stays escaped'); }
+  // gates already powered: the last survivor plays on (gates / endgame)
+  { const { m, ctl } = mk(); const S = m.survivors; m._powerGates('test');
+    for (const i of [0, 1, 2]) m._kill(S[i], 'test'); run(m, 20);
+    ok(!m.over && S[3].st === HEALTHY, 'gates powered: the last survivor plays on');
+    const g = m.gates[1]; place(S[3], g.lx, g.lz - 1); ctl.S[3] = () => ({ act: 'openGate', target: g.id }); run(m, 202);
+    ok(g.open && m.endgameT > 118 && m.events.some(e => e.type === 'endgame' && e.cause === 'gate'), 'opens a gate: the collapse starts (only a gate opening triggers it)');
+    ctl.S[3] = () => ({ moveTo: { x: g.ex, z: g.ez } }); run(m, 60);
+    const r = m.result(); ok(m.over && r.escapes === 1 && r.kills === 3 && r.endReason === 'all-out', 'escapes: 3 kills, 1 escape'); }
+  // the all-down check runs first
+  { const { m } = mk(); const S = m.survivors; m._kill(S[0], 'test'); m._kill(S[1], 'test');
+    S[2].st = DOWNED; m._kill(S[3], 'test'); run(m, 1);
+    ok(m.over && m.result().endReason === 'allDown' && S[2].cause === 'allDown', 'last one left is downed: all-down ends it (checked first)'); }
 });
 
 test('survivor-side nav: reaches targets without leaving walkable space (several routes)', () => {
@@ -694,13 +884,13 @@ test('unhook protections: 10 s haste/endurance/elusive, deep wound, mend, conspi
   const a = unhook(m, 0); place(a, 30.5, 26.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
   run(m, 10); near(a.x, 30.5 + 4.4, 0.01, 'protected: run 4.0 x 1.10');
   ok(a.protT > 8.8 && a.protT <= 9.0001, 'protection lasts 10 s (counting down)');
-  place(a, 30.5, 26.5); a.boostT = 2; run(m, 10); near(a.x, 36.5, 0.01, 'on-hit burst (x1.5) takes precedence over haste');
+  place(a, 30.5, 26.5); a.boostT = 2; run(m, 10); near(a.x, 37.1, 0.01, 'on-hit burst (x1.65) takes precedence over haste');
   // elusive: no scratch marks / grunts while protected
   place(a, 30.5, 26.5); place(m.hunter, 30.5, 29.5); const marks0 = m.marks.length; const gr0 = m.hunter.grunts.length;
   ctl.S[0] = () => ({ moveDir: { x: 0, z: (m.tick % 20 < 10) ? 1 : -1 } }); a.boostT = 0;
   run(m, 40); ok(m.marks.length === marks0, 'elusive: no scratch marks while running');
   ok(m.hunter.grunts.length === gr0, 'elusive: no grunts of pain near the hunter');
-  run(m, 50); ok(a.protT === 0 && !a.endure, 'protections expire after 10 s');
+  run(m, 50); ok(a.protT === 0 && !a.endure && a.elusT === 0, 'protections expire after 10 s');
   run(m, 20); ok(m.marks.length > marks0, 'scratch marks again after protection');
   ok(m.hunter.grunts.length > gr0, 'grunts again after protection');
   // obs exposure: survivor sees protectedS / deepWoundS, hunter sees nothing extra
@@ -709,18 +899,20 @@ test('unhook protections: 10 s haste/endurance/elusive, deep wound, mend, conspi
   const b = unhook(t.m, 1); place(t.m.hunter, b.x + 3, b.z); t.m.hunter.face = Math.PI;
   run(t.m, 2); ok(so.self.protectedS > 9 && so.self.deepWoundS === null, 'self.protectedS shown, deepWoundS null');
   const hs = ho.survivors.find(x => x.id === 1);
-  ok(hs && Object.keys(hs).sort().join() === 'facing,hookCount,id,state,vaulting,vx,vz,x,z', 'hunter obs: no protection / deep wound info');
+  ok(hs && Object.keys(hs).sort().join() === 'deepWound,facing,hookCount,id,state,vaulting,vx,vz,x,z' && hs.deepWound === false, 'hunter obs: no protection info; deepWound presence only');
   // endurance: downing hit -> injured + deep wound (consumed); next hit downs
   t.m._hurt(b);
   ok(b.st === INJURED && b.dwT === 20 && !b.endure && b.boostT > 1.5, 'endurance absorbs the downing hit: injured + Deep Wound 20 s + burst');
+  ok(b.elusT === 0 && b.protT > 9, 'the hit ends Elusive (haste window continues)');
   run(t.m, 2); ok(so.self.deepWoundS > 19 && so.self.deepWoundS < 20, 'self.deepWoundS counts down');
-  // heal blocked while deep-wounded; mend 12 s clears it, progress persists, timer paused while mending
+  ok(ho.survivors.find(x => x.id === 1).deepWound === true && typeof ho.survivors.find(x => x.id === 1).deepWound === 'boolean', 'hunter sees Deep Wound presence (no timer)');
+  // heal blocked while deep-wounded; mend 10 s clears it, progress persists, timer paused while mending
   const c = t.m.survivors[2]; place(c, b.x + 1, b.z); t.ctl.S[2] = () => ({ act: 'heal', target: 1 }); run(t.m, 30);
   ok(b.heal === 0, 'cannot be healed while Deep Wound'); t.ctl.S[2] = () => ({});
   t.ctl.S[1] = o => (so = o, { act: 'mend' }); const dw0 = b.dwT; run(t.m, 60);
-  ok(b.dwT === dw0 && b.mendP > 5.9, 'deep wound timer paused while mending');
-  t.ctl.S[1] = o => (so = o, {}); run(t.m, 10); ok(b.dwT < dw0 && b.mendP > 5.9, 'mend progress persists, timer resumes');
-  t.ctl.S[1] = o => (so = o, { act: 'mend' }); run(t.m, 61); ok(b.dwT === -1 && b.st === INJURED && so.self.deepWoundS === null, 'mend (12 s) clears Deep Wound');
+  ok(b.dwT === dw0 && Math.abs(b.mendP - 0.6) < 0.011 && Math.abs(so.self.mendProgress - b.mendP) < 0.011, 'deep wound timer paused while mending (6 s = 60 % of a 10 s self-mend)');
+  t.ctl.S[1] = o => (so = o, {}); run(t.m, 10); ok(b.dwT < dw0 && b.mendP > 0.59, 'mend progress persists, timer resumes');
+  t.ctl.S[1] = o => (so = o, { act: 'mend' }); run(t.m, 41); ok(b.dwT === -1 && b.st === INJURED && so.self.deepWoundS === null, 'self-mend (10 s total) clears Deep Wound');
   ok(t.m.events.some(e => e.type === 'mend'), 'mend event');
   t.m._hurt(b); ok(b.st === DOWNED, 'no endurance left: next hit downs');
   // deep wound expiry downs; protections end on conspicuous actions but not on mend / dropPallet
@@ -735,13 +927,37 @@ test('unhook protections: 10 s haste/endurance/elusive, deep wound, mend, conspi
   const p = w.m.md.pallets[0]; place(e2, p.cx + (p.axis === 'x' ? 0 : 1), p.cz + (p.axis === 'x' ? 1 : 0)); w.ctl.S[0] = () => ({ act: 'dropPallet', target: p.id }); run(w.m, 5);
   ok(w.m.ps[p.index] === 1 && e2.protT > 8 && e2.endure, 'dropping a pallet keeps protections');
   const x = mk(); x.m._powerGates('test'); const e3 = unhook(x.m, 0); const gt = x.m.gates[0]; place(e3, gt.lx, gt.lz + 1);
-  ok(e3.protT === 10, 'same 10 s package after the gates are powered');
+  ok(e3.protT === 10 && e3.endure && e3.elusT === 0, 'after the gates are powered: Endurance + Haste only, no Elusive');
   x.ctl.S[0] = () => ({ act: 'openGate', target: gt.id }); run(x.m, 2); ok(e3.protT === 0 && !e3.endure, 'opening a gate ends protections');
   const y = mk(); const e4 = unhook(y.m, 1); const vic = y.m.survivors[2]; vic.st = INJURED; place(e4, vic.x + 1, vic.z);
-  y.ctl.S[1] = () => ({ act: 'heal', target: 2 }); run(y.m, 2); ok(e4.protT === 0, 'healing a teammate ends protections');
+  y.ctl.S[1] = () => ({ act: 'heal', target: 2 }); run(y.m, 2); ok(e4.protT === 0 && e4.elusT === 0, 'healing a teammate ends protections');
+  // entering the dying state ends Elusive
+  const z = mk(); const e5 = unhook(z.m, 0); z.m._downSurvivor(e5); ok(e5.elusT === 0 && e5.protT === 0, 'downed: all protections end');
 });
 
-test('spawns: survivors grouped within 15 m, hunter on the far side, deterministic', () => {
+test('Deep Wound: timer pauses while running; altruistic mend 6 s; two menders at 75 % each; max two helpers', () => {
+  const { m, ctl } = mk();
+  const p = m.survivors[0]; p.st = INJURED; p.dwT = 20; place(p, 30.5, 26.5);
+  ctl.S[0] = () => ({ moveDir: { x: 0, z: (m.tick % 20 < 10) ? 1 : -1 } }); run(m, 30);
+  near(p.dwT, 20, 1e-9, 'running: Deep Wound timer paused');
+  ctl.S[0] = () => ({ moveDir: { x: 0, z: (m.tick % 20 < 10) ? 1 : -1 }, walk: true }); run(m, 30);
+  near(p.dwT, 17, 0.01, 'walking: timer runs');
+  ctl.S[0] = () => ({}); place(p, 30.5, 26.5); run(m, 10); near(p.dwT, 16, 0.01, 'standing: timer runs');
+  // one teammate mends: 6 s
+  const a = m.survivors[1], b = m.survivors[2], c = m.survivors[3];
+  place(a, 31.5, 26.5); ctl.S[1] = () => ({ act: 'mend', target: 0 }); run(m, 30);
+  near(p.mendP, 0.5, 0.011, 'altruistic mend: 3 s = 50 % of 6 s'); near(p.dwT, 16, 0.01, 'timer paused while being mended');
+  // second helper: each at 75 %
+  place(b, 29.5, 26.5); ctl.S[2] = () => ({ act: 'mend', target: 0 }); run(m, 2); const p0 = p.mendP; run(m, 10);
+  near(p.mendP - p0, 2 * 0.75 / 6, 0.012, 'two menders: 2 x 75 % of the single rate');
+  place(c, 30.5, 27.5); ctl.S[3] = () => ({ act: 'mend', target: 0 }); run(m, 1);
+  ok([a, b, c].filter(x => x.curAct === 'mend').length === 2, 'a third helper gets nothing (max two)');
+  run(m, 20);
+  ok(p.dwT === -1 && p.st === INJURED && m.events.some(e => e.type === 'mend' && e.who === 0 && e.by !== 0) && m.stats.mends === 1, 'altruistic mend clears Deep Wound (mend event, by a teammate)');
+  ok(a.curAct !== 'mend' && b.curAct !== 'mend', 'menders stop when it is gone');
+});
+
+test('spawns: survivors grouped within 12 m, hunter on the far side, deterministic', () => {
   for (const map of [smallMap, bigMap].filter(Boolean)) {
     const diag = Math.hypot(map.size.w, map.size.h);
     let minH = Infinity, okGroup = true, okFree = true;
@@ -751,14 +967,14 @@ test('spawns: survivors grouped within 15 m, hunter on the far side, determinist
       const S = m.survivors, H = m.hunter;
       for (let i = 0; i < 4; i++) {
         if (!circleFree(m.coll, m.W, m.Hh, S[i].x, S[i].z, 0.4)) okFree = false;
-        for (let j = i + 1; j < 4; j++) { const d = Math.hypot(S[i].x - S[j].x, S[i].z - S[j].z); if (d > 15 + 1e-9 || d < 3 - 1e-9) okGroup = false; }
+        for (let j = i + 1; j < 4; j++) { const d = Math.hypot(S[i].x - S[j].x, S[i].z - S[j].z); if (d > 12 + 1e-9 || d < 3 - 1e-9) okGroup = false; }
         minH = Math.min(minH, Math.hypot(S[i].x - H.x, S[i].z - H.z));
       }
       hset.add(H.x + ',' + H.z); aset.add(S[0].x + ',' + S[0].z);
       const m2 = createMatch({ map, seed, hunter: hunterBrain, survivors: survivorBrain });
       ok(JSON.stringify([H.x, H.z, S.map(q => [q.x, q.z])]) === JSON.stringify([m2.hunter.x, m2.hunter.z, m2.survivors.map(q => [q.x, q.z])]), map.id + ' seed ' + seed + ': spawns deterministic');
     }
-    ok(okGroup, map.id + ': survivors pairwise 3..15 m apart (spawn.minSep)');
+    ok(okGroup, map.id + ': survivors pairwise 3..12 m apart (spawn.groupRadius / minSep)');
     ok(okFree, map.id + ': survivors on free positions');
     ok(aset.size > 1, map.id + ': anchor varies by seed');
     if (map === bigMap) ok(minH >= 0.55 * diag, map.id + ': hunter >= 0.55 x diagonal from every survivor (min ' + minH.toFixed(1) + ' / ' + (0.55 * diag).toFixed(1) + ')');
@@ -803,15 +1019,16 @@ test('vault tiers: fast 0.5 s (straight 2.5 m run-up, loud noise) / medium 0.9 s
   ok(!hn.notifications.some(n => n.type === 'loudNoise'), 'loudNoiseRange 5: far hunter hears nothing');
 });
 
-test('generators: repair noise, hunter kicks (-5% + regression at 1/4 rate), repair stops regression', () => {
-  const cfg = { gens: { fumbleChancePerS: 0 } };
+test('generators: repair noise 20 m, hunter kicks (-5% + regression at 1/4 rate), anti-tap: 5 % repair to cancel, max 8 kicks', () => {
+  const cfg = {};
   const { m, ctl } = mk({ config: cfg });
   let ho = null, so = null; ctl.H = o => (ho = o, {});
   const g = gen(m), s0 = m.survivors[0];
   place(s0, g.x + 1, g.z); ctl.S[0] = () => ({ act: 'repair', target: g.id });
-  place(m.hunter, g.x + 9.5, g.z); m.hunter.face = 0; run(m, 3);
-  ok(ho.noisyGens.length === 1 && ho.noisyGens[0].id === g.id && Object.keys(ho.noisyGens[0]).sort().join() === 'id,x,z', 'repair noise heard within 10 m (id, x, z only)');
-  place(m.hunter, g.x + 12, g.z); run(m, 2); ok(ho.noisyGens.length === 0, 'repair noise not heard beyond 10 m');
+  const at = (d) => { for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = g.x + dx * (d + 0.5), z = g.z + dz * (d + 0.5); if (x > 0 && z > 0 && x < m.W && z < m.Hh) return { x, z }; } throw new Error('no spot'); };
+  const p19 = at(19); place(m.hunter, p19.x, p19.z); m.hunter.face = 0; run(m, 3);
+  ok(ho.noisyGens.length === 1 && ho.noisyGens[0].id === g.id && Object.keys(ho.noisyGens[0]).sort().join() === 'id,x,z', 'repair noise heard within 20 m (id, x, z only)');
+  const p22 = at(21); place(m.hunter, p22.x, p22.z); run(m, 2); ok(ho.noisyGens.length === 0, 'repair noise not heard beyond 20 m');
   ctl.S[0] = () => ({}); place(m.hunter, g.x + 5, g.z); run(m, 2); ok(ho.noisyGens.length === 0, 'idle gen is silent');
   // kick preconditions: progress > 0
   const t = mk({ config: cfg }); const g2 = gen(t.m); place(t.m.hunter, g2.x + 1, g2.z); t.ctl.H = () => ({ act: 'kickGen', target: g2.id });
@@ -829,9 +1046,20 @@ test('generators: repair noise, hunter kicks (-5% + regression at 1/4 rate), rep
   run(t.m, 3); ok(ho.gens.find(x => x.id === g2.id).regressing === true, 'hunter obs: regressing');
   const sg = so.gens.find(x => x.id === g2.id); ok(sg.visible ? sg.regressing === true : sg.regressing === null, 'survivor obs: regressing only if the gen is perceived');
   place(t.m.survivors[1], g2.x - 1, g2.z); run(t.m, 3); ok(so.gens.find(x => x.id === g2.id).regressing === true, 'adjacent survivor sees regressing');
-  // repair stops regression
-  t.ctl.S[1] = o => (so = o, { act: 'repair', target: g2.id }); const p2 = g2.p; run(t.m, 10);
-  ok(!g2.regress && g2.p > p2 && t.m.events.some(e => e.type === 'genRegressStop' && e.reason === 'repair'), 'repairing stops the regression and resumes progress');
+  // anti-tap: repairing pauses the regression but only CANCELS it after 5 % (4.5 charges) of real repair
+  t.ctl.S[1] = o => (so = o, { act: 'repair', target: g2.id }); const p2 = g2.p; run(t.m, 30);
+  ok(g2.regress && Math.abs(g2.p - (p2 + 3)) < 0.03, '3 s of repair: progress +3, still regressing (passive regression paused)');
+  t.ctl.S[1] = o => (so = o, {}); run(t.m, 1); const p3 = g2.p; run(t.m, 40);
+  ok(g2.regress && g2.cancelP === 0 && Math.abs(g2.p - (p3 - 1)) < 0.03, 'repair stopped early: regression resumes, partial cancel progress lost');
+  t.ctl.S[1] = o => (so = o, { act: 'repair', target: g2.id }); run(t.m, 44);
+  ok(g2.regress, 'still regressing after 4.4 s of repair'); run(t.m, 2);
+  ok(!g2.regress && t.m.events.some(e => e.type === 'genRegressStop' && e.reason === 'repair'), '4.5 charges of repair cancel the regression');
+  // at most 8 kicks per generator
+  const kk = mk({ config: cfg }); const gk = gen(kk.m); gk.p = 80; place(kk.m.hunter, gk.x + 1, gk.z); let kho = null;
+  kk.ctl.H = o => (kho = o, { act: 'kickGen', target: gk.id });
+  for (let i = 0; i < 9; i++) { run(kk.m, 19); gk.regress = false; }
+  ok(gk.kicks === 8 && kk.m.events.filter(e => e.type === 'genKick').length === 8 && Math.abs(gk.p - (80 - 8 * 4.5)) < 0.5, 'only 8 kicks register on one generator');
+  ok(kho.gens.find(x => x.id === gk.id).kicksLeft === 0, 'hunter obs: kicksLeft 0');
   // regression stops at 0
   const u = mk({ config: cfg }); const g3 = gen(u.m); g3.p = 5; place(u.m.hunter, g3.x + 1, g3.z); u.ctl.H = () => ({ act: 'kickGen', target: g3.id });
   run(u.m, 18); u.ctl.H = () => ({}); ok(g3.regress, 'kicked'); run(u.m, 30);
@@ -845,12 +1073,13 @@ test('generators: repair noise, hunter kicks (-5% + regression at 1/4 rate), rep
 });
 
 test('anti-camp Resolve: face-camp fills in 30-40 s, kick-and-leave barely moves it, teammate/chase/grace/gates, self-unhook', () => {
-  // isolated hook scene: survivor 0 hooked on hook 0, the others removed (st DEAD without events, so no last-survivor power-up)
+  // isolated hook scene: survivor 0 hooked on hook 0, the others parked standing in far corners (> 16 m: no chase pause,
+  // > 8 m from the hook; standing, so the all-down rule doesn't end the match). The hooked brain takes the self-unhook.
   const scene = (opts = {}) => {
     const h = mk(opts); const m = h.m, s = m.survivors[0], hk = m.hooks[0];
-    for (const o of m.survivors.slice(1)) o.st = DEAD;
-    if (opts.hookCount) s.hookCount = opts.hookCount;
+    if (opts.hookCount) { s.hookCount = opts.hookCount; s.hookStage = opts.hookCount; }
     s.st = CARRIED; m.hunter.carrying = 0; m._hookSurvivor(s, hk);
+    h.ctl.S[0] = (o) => (o.self.canSelfUnhook ? { act: 'selfUnhook' } : {});
     return { ...h, s, hk };
   };
   const spotAt = (m, hk, d, ang0 = 0) => { for (let a = 0; a < 64; a++) { const t = ang0 + a / 64 * 2 * Math.PI, x = hk.x + d * Math.cos(t), z = hk.z + d * Math.sin(t); if (circleFree(m.coll, m.W, m.Hh, x, z, 0.4)) return { x, z }; } throw new Error('no spot at ' + d); };
@@ -860,8 +1089,8 @@ test('anti-camp Resolve: face-camp fills in 30-40 s, kick-and-leave barely moves
   run(a.m, 69); ok(a.s.resolve === 0, 'grace: no fill during the first 7 s after the hook'); run(a.m, 6); ok(a.s.resolve > 0, 'fills after the grace');
   for (let k = 0; k < 500 && fullT(a.m) < 0; k++) a.m.step();
   const tf = fullT(a.m); ok(tf >= 30 && tf <= 40, 'face-camp at 2 m fills in 30-40 s incl. grace (got ' + tf.toFixed(1) + ' s)');
-  const timer = a.s.hookTimer; run(a.m, 10); ok(a.s.st === HOOKED && a.s.hookTimer === timer, 'self-unhook attempt in progress, hook timer paused');
-  run(a.m, 6);
+  run(a.m, 1); const timer = a.s.hookTimer; run(a.m, 10); ok(a.s.st === HOOKED && a.s.hookTimer === timer && a.s.selfT > 0.9, 'self-unhook attempt in progress, hook timer paused');
+  run(a.m, 5);
   ok(a.s.st === INJURED && a.hk.occ === -1 && a.s.protT > 9 && a.s.endure && a.m.events.some(e => e.type === 'selfUnhook'), 'self-unhook after 1.5 s: injured + unhook protections, hook free');
   ok(a.s.resolve === 0, 'meter reset on unhook');
   // hook, kick a nearby gen and leave: < 10 %
@@ -869,8 +1098,22 @@ test('anti-camp Resolve: face-camp fills in 30-40 s, kick-and-leave barely moves
   place(b.m.hunter, n3.x, n3.z); run(b.m, 40); place(b.m.hunter, n9.x, n9.z); run(b.m, 60);
   place(b.m.hunter, 44.5, 33.5); run(b.m, 400);
   ok(b.s.resolve < 0.1 && b.s.st === HOOKED, 'hook, ~10 s within 10 m, leave: meter < 10 % (got ' + (b.s.resolve * 100).toFixed(1) + ' %)');
-  // out of range (> 20 m): nothing
-  const c = scene(); const far = spotAt(c.m, c.hk, 21); place(c.m.hunter, far.x, far.z); run(c.m, 400); ok(c.s.resolve === 0, 'hunter beyond 20 m: no fill');
+  // out of range (> 16 m): nothing
+  const c = scene(); const far = spotAt(c.m, c.hk, 17); place(c.m.hunter, far.x, far.z); run(c.m, 400); ok(c.s.resolve === 0, 'hunter beyond 16 m: no fill');
+  // full meter is a CHOICE: a hooked survivor that doesn't take it stays hooked, the hook timer keeps running
+  const ch = scene(); let cho = null; ch.ctl.S[0] = (o) => (cho = o, {}); ch.s.resolve = 0.999; const chp = spotAt(ch.m, ch.hk, 2); place(ch.m.hunter, chp.x, chp.z);
+  ch.s.graceT = 0; run(ch.m, 3);
+  ok(ch.s.resolve === 1 && cho.self.canSelfUnhook === true && cho.self.state === 'hooked', 'full meter: hooked obs offers canSelfUnhook');
+  ok(Object.keys(cho).sort().join() === 'endgame,gatesNeeded,gatesPowered,gensDone,gensNeeded,hud,newNotifications,notifications,self,t,tick'.replace('gatesNeeded,', ''), 'hooked obs: minimal keys');
+  const ct = ch.s.hookTimer; run(ch.m, 50);
+  ok(ch.s.st === HOOKED && ch.s.hookTimer < ct - 4.9, 'not taken: still hooked, the hook timer keeps running');
+  ch.ctl.S[0] = () => ({ act: 'selfUnhook' }); run(ch.m, 8); ch.ctl.S[0] = () => ({}); run(ch.m, 2);
+  ok(ch.s.st === HOOKED && ch.s.selfT === -1, 'interrupted attempt resets');
+  ch.ctl.S[0] = () => ({ act: 'selfUnhook' }); run(ch.m, 16); ok(ch.s.st === INJURED, 'taking it later works');
+  // camping time accrues only while the meter gains (not during the grace)
+  const cg = scene(); const cgp = spotAt(cg.m, cg.hk, 2); place(cg.m.hunter, cgp.x, cgp.z); run(cg.m, 65);
+  ok(cg.s.campT === 0 && cg.s.resolve === 0, 'grace: no camping time accrues');
+  run(cg.m, 20); ok(cg.s.campT > 0.9 && cg.s.campT < 1.6, 'camping time only counts filling seconds (' + cg.s.campT.toFixed(1) + ')');
   // teammate within 8 m of the hook freezes it (teammate behind the hunter, so not a chase)
   const d = scene(); const dp = spotAt(d.m, d.hk, 2); place(d.m.hunter, dp.x, dp.z);
   const mate = d.m.survivors[1]; mate.st = HEALTHY; const mp = spotAt(d.m, d.hk, 5, Math.atan2(d.hk.z - dp.z, d.hk.x - dp.x)); place(mate, mp.x, mp.z);
@@ -898,14 +1141,14 @@ test('anti-camp Resolve: face-camp fills in 30-40 s, kick-and-leave barely moves
   const k = scene(); k.m._powerGates('test'); const kp = spotAt(k.m, k.hk, 2); place(k.m.hunter, kp.x, kp.z); run(k.m, 600);
   ok(k.s.resolve === 0 && !k.m.events.some(x => x.type === 'selfUnhook'), 'gates powered: no Resolve');
   // works in stage 2 (second hook) and the meter persists across the stage change
-  const q = scene({ hookCount: 1 }); ok(q.s.hookStage === 2, 'second hook: stage 2'); const qp = spotAt(q.m, q.hk, 2); place(q.m.hunter, qp.x, qp.z);
+  const q = scene({ hookCount: 1 }); ok(q.s.hookStage === 2, 'second hook (rescued in stage 1): stage 2'); const qp = spotAt(q.m, q.hk, 2); place(q.m.hunter, qp.x, qp.z);
   run(q.m, 450); ok(q.s.st === INJURED && q.m.events.some(x => x.type === 'selfUnhook') && q.s.hookCount === 2, 'self-unhook works in stage 2');
   const st = scene(); st.s.hookTimer = 12; const sp = spotAt(st.m, st.hk, 2); place(st.m.hunter, sp.x, sp.z); run(st.m, 130);
   ok(st.s.hookStage === 2 && st.s.resolve > 0.1, 'meter persists across the stage change (' + st.s.resolve.toFixed(2) + ')');
   // survivors/hunter learn nothing new
   let ho = null, so = null; const z = scene(); z.ctl.H = o => (ho = o, {}); z.m.survivors[1].st = HEALTHY; z.ctl.S[1] = o => (so = o, {}); run(z.m, 3);
   ok(Object.keys(ho.hooked[0]).sort().join() === 'hookCount,hookId,id,stage,timerS', 'hunter obs: no resolve in hooked[]');
-  ok(!('resolve' in so.self) && so.teammates.every(t => !('resolve' in t)), 'survivor obs: no resolve info');
+  ok(so.hud[0].resolve === z.s.resolve && so.teammates.every(t => !('resolve' in t)), 'survivor obs: the Resolve meter only through the HUD (9.3.0 teammate-visible bar)');
 });
 
 test('vault collision: nobody can start a vault through a window someone is vaulting through', () => {
@@ -983,9 +1226,12 @@ test('collision: hunter vs survivor bodies (body block, post-hit pass, chase sti
   run(u.m, 50); ok(u.m.events.some(e => e.type === 'hit' && e.who === 0), 'open-ground chase: the hunter lands the hit despite bodies');
   ok(v.st === DOWNED || v.st === CARRIED, 'injured survivor downed');
   run(u.m, 40); ok(v.st === CARRIED, 'downed survivor does not collide: hunter picks them up');
-  // carrying hunter doesn't collide
-  place(m.survivors[1], 25.5, 22.5); m.survivors[0].st = CARRIED; H.carrying = 0; place(H, 25.5, 19.5); ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
-  run(m, 20); ok(H.z > 23.5, 'carrying hunter passes a survivor (no collision while carrying)');
+  // a carrying hunter still collides: survivors can body-block the carrier ...
+  place(m.survivors[1], 25.5, 22.5); m.survivors[0].st = CARRIED; H.carrying = 0; place(H, 25.5, 19.5); ctl.H = () => ({ moveTo: { x: 25.5, z: 25.5 } });
+  run(m, 20); ok(H.z < 22.2 && m.survivors[1].z === 22.5, 'carrying hunter is body-blocked by a survivor (z ' + H.z.toFixed(2) + ')');
+  // ... until the AFK rule: 10 s blocked without progress => the hunter stops colliding with survivors for a while
+  run(m, 70); ok(H.z < 22.2, 'still blocked at ~9 s');
+  run(m, 40); ok(H.z > 23.5 && m.events.some(e => e.type === 'unstick' && e.who === 'hunter'), 'after 10 s blocked: hunter loses survivor collision and passes (unstick event)');
   // collision.hunterSurvivor: false turns it off
   const w = mk({ config: { collision: { hunterSurvivor: false } } }); place(w.m.survivors[0], 25.5, 22.5); place(w.m.hunter, 25.5, 25.5);
   w.ctl.H = () => ({ moveDir: { x: 0, z: -1 } }); run(w.m, 30); ok(w.m.hunter.z < 21.5, 'collision.hunterSurvivor false: hunter walks through');
@@ -1071,6 +1317,91 @@ test('determinism with the param brains: same seed, same result regardless of ca
   for (let i = 0; i < seeds.length; i++) ok(fwd[i] === rev[i], 'seed ' + seeds[i] + ' identical forward vs reverse order');
 });
 
+test('all-down rule (user): no survivor standing => instant hunter win, the rest die (allDown); escaped stay escaped', () => {
+  // 2 hooked + 1 downed + 1 dead
+  { const { m } = mk({ config: { antiCamp: { enabled: false } } }); const S = m.survivors;
+    m._kill(S[3], 'test');
+    for (const i of [0, 1]) { S[i].st = CARRIED; m.hunter.carrying = i; m._hookSurvivor(S[i], m.hooks[i]); }
+    run(m, 5); ok(!m.over, 'one survivor still standing: the match continues');
+    S[2].st = DOWNED; run(m, 1);
+    const r = m.result();
+    ok(m.over && r.endReason === 'allDown' && r.kills === 4 && r.winner === 'hunter', '2 hooked + 1 downed + 1 dead: match ends at once, all dead');
+    ok([0, 1, 2].every(i => S[i].cause === 'allDown') && S[3].cause === 'test' && m.events.some(e => e.type === 'allDown'), "causes 'allDown' (the earlier death keeps its cause), allDown event");
+    ok(m.hooks[0].occ === -1 && m.hooks[1].occ === -1, 'hooks freed'); }
+  // 1 escaped + 3 downed/carried/hooked
+  { const { m } = mk({ config: { antiCamp: { enabled: false } } }); const S = m.survivors;
+    m._powerGates('test'); m._openGate(m.gates[0], 0); place(S[0], m.gates[0].ex, m.gates[0].ez); run(m, 1);
+    ok(S[0].st === ESCAPED, 'setup: one escaped');
+    S[1].st = CARRIED; m.hunter.carrying = 1; m._hookSurvivor(S[1], m.hooks[0]); S[2].st = DOWNED; run(m, 3); ok(!m.over, 'one standing left: continues');
+    S[3].st = CARRIED; m.hunter.carrying = 3; run(m, 1);
+    const r = m.result();
+    ok(m.over && r.endReason === 'allDown' && r.escapes === 1 && r.kills === 3 && S[0].outcome === 'escaped', 'escaped survivor stays escaped; the 3 down/hooked/carried die'); }
+  // gates powered, the last one left gets downed: all-down ends it
+  { const { m } = mk(); const S = m.survivors; m._powerGates('test');
+    for (const i of [0, 1, 2]) m._kill(S[i], 'test'); run(m, 2); ok(!m.over, 'setup: last survivor plays on (powered)');
+    S[3].st = DOWNED; run(m, 1);
+    ok(m.over && m.result().endReason === 'allDown' && m.result().kills === 4, 'last survivor downed: match ends at once'); }
+  // a standing survivor anywhere keeps it going
+  { const { m } = mk(); const S = m.survivors; for (const i of [0, 1, 2]) S[i].st = DOWNED; run(m, 20);
+    ok(!m.over && S.slice(0, 3).every(s => s.st === DOWNED), 'three downed, one standing far away: continues'); }
+});
+
+test('intent messages (10.2.0): predefined enum to teammates only, anti-spam cooldown 1 s rising to 5 s, reset after quiet', () => {
+  const { m, ctl } = mk();
+  const obs = [null, null, null, null]; let ho = null;
+  for (let i = 0; i < 4; i++) ctl.S[i] = o => (obs[i] = o, {});
+  ctl.H = o => (ho = o, {});
+  const msgs = m.cfg.intent.messages;
+  ok(msgs.length === 8 && new Set(msgs).size === 8, '8 predefined messages');
+  ctl.S[0] = o => (obs[0] = o, { intent: 'goingForGen' }); run(m, 1); ctl.S[0] = o => (obs[0] = o, {}); run(m, 1);
+  for (const i of [1, 2, 3]) {
+    const n = obs[i].newNotifications.concat(obs[i].notifications).find(x => x.type === 'intent');
+    ok(n && n.from === 0 && n.intent === 'goingForGen' && typeof n.t === 'number' && Object.keys(n).sort().join() === 'from,intent,t,type', 'teammate ' + i + ' gets {type:intent, from, intent, t} (no coordinates)');
+  }
+  ok(!obs[0].notifications.some(x => x.type === 'intent') && !ho.notifications.some(x => x.type === 'intent'), 'not the sender, not the hunter');
+  // spam every tick for 30 s: sends at t0, +1, +3, +6, +10, +15, +20, +25 (cooldown 1,2,3,4,5,5,...)
+  const s0 = m.survivors[0]; const t0 = m.t;
+  for (let k = 0; k < 2; k++) run(m, 1);
+  const { m: m2, ctl: c2 } = mk(); const sent = [];
+  c2.S[0] = () => ({ intent: 'help' });
+  for (let k = 0; k < 300; k++) { m2.step(); }
+  for (const e of m2.events) if (e.type === 'intent') sent.push(+(e.t).toFixed(1));
+  const gaps = sent.slice(1).map((t, i) => +(t - sent[i]).toFixed(1));
+  ok(gaps.slice(0, 6).join() === '1,2,3,4,5,5', 'spamming: cooldown 1 s, then +1 s per spam send up to 5 s (gaps ' + gaps.join() + ')');
+  ok(m2.survivors[0].intNext > m2.t - 5 && m2.stats.intents === sent.length, 'stats.intents counts sends');
+  // quiet for 10 s resets to 1 s
+  c2.S[0] = () => ({}); run(m2, 110); c2.S[0] = () => ({ intent: 'help' }); run(m2, 25);
+  const late = m2.events.filter(e => e.type === 'intent' && e.t > 30.5).map(e => e.t);
+  ok(late.length === 2 && Math.abs(late[1] - late[0] - 1) < 0.05, 'after 10 s quiet the cooldown is back to 1 s');
+  // unknown enum / free text ignored; self obs exposes the cooldown
+  const { m: m3, ctl: c3 } = mk(); let o3 = null; c3.S[0] = o => (o3 = o, { intent: 'meet me at 12,30' }); run(m3, 5);
+  ok(!m3.events.some(e => e.type === 'intent'), 'unknown intent / free text is ignored');
+  c3.S[0] = o => (o3 = o, { intent: 'thanks' }); run(m3, 2); ok(o3.self.intentCooldownS > 0 && o3.self.intentCooldownS <= 1, 'self.intentCooldownS');
+  // hooked survivors can send too
+  const { m: m4, ctl: c4 } = mk(); const h4 = m4.survivors[1]; h4.st = CARRIED; m4.hunter.carrying = 1; m4._hookSurvivor(h4, m4.hooks[0]);
+  c4.S[1] = () => ({ intent: 'help' }); run(m4, 2); ok(m4.events.some(e => e.type === 'intent' && e.from === 1), 'a hooked survivor can send an intent');
+});
+
+test('entity blocker: 3 vaults of one window in the SAME chase block it for that survivor; out-of-chase vaults do not count', () => {
+  const trial = (inChase, newChaseAfter2) => {
+    const { m, ctl } = mk(); const s = m.survivors[0];
+    place(s, 13.5, 4.6);
+    ctl.S[0] = o => ({ moveDir: { x: 0, z: o.self.z < 8 ? 1 : -1 } });
+    if (inChase) { m.chaseTgt = 0; m.chaseSeenT = 1e9; m.chaseId++; }
+    let n = 0;
+    for (let k = 0; k < 200 && !m.events.some(e => e.type === 'windowBlocked'); k++) {
+      const before = m.events.filter(e => e.type === 'vault').length; m.step();
+      if (m.events.filter(e => e.type === 'vault').length > before) { n++; if (n === 2 && newChaseAfter2) m.chaseId++; }
+      if (n >= 4) break;
+    }
+    return { m, n, blocked: m.events.some(e => e.type === 'windowBlocked' && e.who === 0) };
+  };
+  const a = trial(true, false);
+  ok(a.blocked && a.n === 3 && a.m._blockedWindows(0).includes('win-house') && !a.m._blockedWindows(1).length, 'third vault in one chase: blocked for that survivor only');
+  const b = trial(false, false); ok(!b.blocked && b.n >= 4, 'vaults outside a chase never block');
+  const c = trial(true, true); ok(!c.blocked && c.n >= 4, 'a new chase restarts the count');
+});
+
 test('full matches with the baseline brains: terminate, consistent, every mechanic fires', () => {
   // eased batch (faster gens, longer hook stages) so the trivial baseline brains reliably reach the gates
   const maps = [['test-small', smallMap, 30], ['test-small eased', smallMap, 10, { gens: { repairS: 8 }, hooks: { stageS: 120 }, hunter: { pickupS: 4, hookS: 3 } }]];
@@ -1081,13 +1412,21 @@ test('full matches with the baseline brains: terminate, consistent, every mechan
     for (let seed = 1; seed <= n; seed++) {
       const r = runMatch({ map, seed, config, hunter: hunterBrain, survivors: [survivorBrain, survivorBrain, survivorBrain, survivorBrain] });
       if (!(r.over && r.kills + r.escapes + r.timeouts === 4 && r.durationS <= 1200 + 0.2 && r.gensDone <= 7)) bad++;
-      for (const e of r.events) seen[e.type] = (seen[e.type] || 0) + 1;
+      for (const e of r.events) {
+        seen[e.type] = (seen[e.type] || 0) + 1;
+        if (e.type === 'escape' && e.crawled) seen['escape:crawl'] = (seen['escape:crawl'] || 0) + 1;
+        if (e.type === 'mend' && e.by !== e.who) seen['mend:other'] = (seen['mend:other'] || 0) + 1;
+        if (e.type === 'gateOpen' && e.by === 'hunter') seen['gateOpen:hunter'] = (seen['gateOpen:hunter'] || 0) + 1;
+      }
       for (const k of Object.keys(r.stats)) seen['stat:' + k] = (seen['stat:' + k] || 0) + r.stats[k];
+      seen['end:' + r.endReason] = (seen['end:' + r.endReason] || 0) + 1;
     }
     ok(bad === 0, `${name}: ${n} matches all terminate with consistent results`);
   }
-  for (const k of ['hit', 'pickup', 'hook', 'rescue', 'heal', 'palletDrop', 'genDone', 'death', 'escape', 'gatesPowered', 'gateOpen', 'stat:vaults'])
+  for (const k of ['hit', 'pickup', 'hook', 'rescue', 'heal', 'palletDrop', 'genDone', 'death', 'escape', 'gatesPowered', 'gateOpen', 'stat:vaults',
+    'escape:crawl', 'mend:other', 'intent', 'resolveFull', 'selfUnhook', 'drop', 'gateOpen:hunter', 'bloodlust', 'chaseStart', 'end:allDown', 'end:lastSurvivor'])
     ok(seen[k] > 0, `mechanic exercised: ${k} (${seen[k] || 0})`);
+  ok(!seen.fumble, 'no fumbles (off by default)');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

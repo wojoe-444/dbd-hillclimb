@@ -10,8 +10,10 @@ import { NavView, getShared, circleFree } from './nav.js';
 const S_HEALTHY = 0, S_INJURED = 1, S_DOWNED = 2, S_CARRIED = 3, S_HOOKED = 4, S_DEAD = 5, S_ESCAPED = 6;
 const S_NAME = ['healthy', 'injured', 'downed', 'carried', 'hooked', 'dead', 'escaped'];
 const PAL_NAME = ['up', 'dropped', 'broken'];
-const ACT_CODE = { repair: 1, heal: 2, rescue: 3, dropPallet: 4, openGate: 5, wiggle: 6, vault: 7, mend: 8 };
+const ACT_CODE = { repair: 1, heal: 2, rescue: 3, dropPallet: 4, openGate: 5, wiggle: 6, vault: 7, mend: 8, selfUnhook: 9 };
 const CONSPICUOUS = { repair: 1, heal: 1, rescue: 1, openGate: 1 };   // end unhook protections (mend / dropPallet do not)
+// survivor HUD activity names (interaction type only; never the object's identity)
+const ACTIVITY = { repair: 'repair', heal: 'heal', mend: 'mend', openGate: 'gate', rescue: 'rescue', wiggle: 'wiggle', selfUnhook: 'selfUnhook' };
 const EPS = 1e-6;
 const FRAC = [0.5, 0.25, 0.1];
 const IDLE = Object.freeze({});
@@ -27,6 +29,7 @@ function rectDist(x, z, x0, z0, x1, z1) {
   const dz = z < z0 ? z0 - z : (z > z1 ? z - z1 : 0);
   return Math.sqrt(dx * dx + dz * dz);
 }
+const mkSlots = n => Array.from({ length: n }, () => ({ id: -1, tick: -9 }));
 const hyp = (a, b) => Math.sqrt(a * a + b * b);   // Math.hypot is slow in V8
 const r2 = v => Math.round(v * 100) / 100;
 
@@ -56,8 +59,8 @@ export class Match {
     this.W = md.w; this.Hh = md.h; this.R = cfg.radius;
     this.coll = md.coll0.slice();
     this.ps = new Uint8Array(md.pallets.length);   // 0 up, 1 dropped, 2 broken
-    // window blocking: too many survivor vaults through one window in a short time blocks it for survivors
-    this.winVaults = md.windows.map(() => [[], [], [], []]);
+    // window blocking: too many vaults through one window by one survivor within one chase blocks it for that survivor
+    this.winVaults = md.windows.map(() => [0, 1, 2, 3].map(() => ({ chase: -1, n: 0 })));
     this.winBlockT = new Float64Array(md.windows.length * 4); // [window * 4 + survivor]
     this.winOfCell = new Map(md.windows.map((w, i) => [w.cell, i]));
     this.palVersion = 0; this.droppedCount = 0;
@@ -66,7 +69,7 @@ export class Match {
     this.recordOn = !!opts.record;
     this.frames = [];
     this._prevP = null;
-    this.stats = { hits: 0, downs: 0, hooks: 0, pickups: 0, stuns: 0, palletsDropped: 0, palletsBroken: 0, vaults: 0, wiggles: 0, rescues: 0, heals: 0, fumbles: 0, missed: 0 };
+    this.stats = { hits: 0, downs: 0, hooks: 0, pickups: 0, stuns: 0, palletsDropped: 0, palletsBroken: 0, vaults: 0, wiggles: 0, rescues: 0, heals: 0, fumbles: 0, missed: 0, drops: 0, mends: 0, intents: 0 };
     this._wp = { x: 0, z: 0 };
     this._sdx = 0; this._sdz = 0;
 
@@ -78,7 +81,7 @@ export class Match {
     this.gens = chosen.map((ci, gi) => {
       const c = cands[ci];
       return { idx: gi, ci, id: c.id, x: c.x, z: c.z, i: c.i, j: c.j, x0: c.x0, z0: c.z0, x1: c.x1, z1: c.z1,
-        p: 0, done: false, regress: false, nWork: 0, wIds: [-1, -1, -1, -1], lastN: 0, slots: genSlots(md, c) };
+        p: 0, done: false, regress: false, kicks: 0, cancelP: 0, nWork: 0, wIds: [-1, -1, -1, -1], lastN: 0, slots: genSlots(md, c) };
     });
     this.genById = new Map(this.gens.map(g => [g.id, g]));
     this.gensDone = 0;
@@ -96,7 +99,7 @@ export class Match {
     const G = this.gens.length, P = md.pallets.length;
     this.hunter = {
       role: 'hunter', id: 'hunter', x: hs.x, z: hs.z, vx: 0, vz: 0, face: Math.atan2(this.Hh / 2 - hs.z, this.W / 2 - hs.x),
-      carrying: -1, cdT: 0, cdSpeed: 1, windT: 0, stunT: 0, vault: null, prog: 0, curAct: null, curTgt: null,
+      carrying: -1, cdT: 0, cdSpeed: 1, windT: 0, stunT: 0, vault: null, prog: 0, curAct: null, curTgt: null, bodyT: 0, ghostT: 0,
       seen: [false, false, false, false], gSeen: new Uint8Array(G), gMem: this.gens.map(() => ({ progress: 0, regressing: false, seenT: -1 })), lastSeen: [null, null, null, null], visMarks: [],
       grunts: [], inbox: [], inboxRead: 0, lastAction: IDLE, nav: null, brain: null, api: null, ctx: null, spawn: hs,
     };
@@ -104,7 +107,11 @@ export class Match {
     for (let i = 0; i < 4; i++) {
       this.survivors.push({
         role: 'survivor', id: i, x: spawns[i].x, z: spawns[i].z, vx: 0, vz: 0, face: rs.range(-Math.PI, Math.PI),
-        st: S_HEALTHY, boostT: 0, runD: 0, runDx: 0, runDz: 0, protT: 0, endure: false, dwT: -1, mendP: 0, hookCount: 0, hookStage: 0, hookTimer: 0, hookIdx: -1, resolve: 0, campT: 0, outT: 0, graceT: 0, selfT: -1, bleedT: 0, heal: 0, wiggle: 0,
+        // hookStage = hook stages consumed so far (persistent; the current stage while hooked); bleedT = remaining cumulative
+        // bleed-out budget; mendP = Deep Wound mend progress 0..1; elusT = unhook Elusive timer (separate from protT)
+        st: S_HEALTHY, boostT: 0, runD: 0, runDx: 0, runDz: 0, protT: 0, elusT: 0, endure: false, dwT: -1, mendP: 0, hookCount: 0, hookStage: 0, hookTimer: 0, hookIdx: -1, resolve: 0, campT: 0, outT: 0, graceT: 0, selfT: -1, bleedT: cfg.survivor.bleedOutS, heal: 0, wiggle: 0,
+        crawled: false, ranTick: -9, mendTick: -9, healSlots: mkSlots(cfg.survivor.maxHealers), mendSlots: mkSlots(cfg.unhook.mendHelpers),
+        intNext: 0, intCd: cfg.intent.minCooldownS, intLast: -1e9,
         vault: null, curAct: null, curTgt: null, prog: 0, hitT: -1e9, bodyT: 0, ghostT: 0, gruntT: 0, scratchT: 0, outcome: null, cause: null, tOut: -1, repairS: 0, repairC: 0, leverS: 0,
         seesHunter: false, trLayer: 0, trPend: 0, trPendT: 0, seesMate: [false, false, false, false], gSeen: new Uint8Array(G), pSeen: new Uint8Array(P),
         mem: { lastHunter: null, lastSeen: [null, null, null, null], gens: this.gens.map(() => ({ progress: 0, done: false, workers: null, seenT: -1 })), pal: new Uint8Array(P) },
@@ -113,6 +120,8 @@ export class Match {
     }
     this.marks = [];
     this.chaseTgt = -1; this.chaseSeenT = 0;      // engine-level chase state (config.chase): at most one chased survivor
+    this.chaseId = 0;                             // increments on every chaseStart (window blocker counts per chase)
+    this.blT = 0; this.blTier = 0;                // Bloodlust: chase seconds since start / last hit / last pallet break; tier 0..3
     this._hudTick = -1; this._hudB = null; this._downB = null;   // per-tick HUD cache shared by all survivor obs
 
     // ---- brains ----
@@ -236,51 +245,57 @@ export class Match {
   _notifyAllSurvivors(n) { for (const s of this.survivors) if (s.st < S_DEAD) s.inbox.push({ ...n }); }
   _notifyMates(who, n) { for (const s of this.survivors) if (s !== who && s.st < S_DEAD) s.inbox.push({ ...n }); }
 
-  // ------------------------------------------------------------------ chase state (config.chase; rules assumed, see README)
-  // Starts when the hunter currently sees a standing survivor within startRange and either moves toward them
-  // (velocity component toward them > approachSpeed) or is winding up / swinging with them inside the attack arc.
-  // Ends when the hunter hasn't seen the target for loseS, or the target is downed/carried/hooked/out. At most one
-  // chased survivor: a different survivor meeting the start rule takes over (the most recent chase), unless the
-  // current target meets it too; several new candidates in one tick => the nearest.
+  // ------------------------------------------------------------------ chase state (config.chase; see README "Chase state")
+  // Start [S]: the non-carrying hunter currently sees (cone/range/visibility) a standing survivor within startRange who is
+  // RUNNING (speed > runSpeed). End [S]: target farther than loseRange, or not seen for loseS, or target
+  // downed/carried/hooked/out, or the hunter picks someone up. At most one chased survivor: a different survivor meeting
+  // the start rule takes over unless the current target meets it too; several new candidates in one tick => the nearest.
+  // Bloodlust [S]: chase seconds since start / last hit / last pallet break -> tiers (config.hunter.bloodlust).
   _updateChase() {
     const cc = this.cfg.chase;
     if (!cc) return;
     const H = this.hunter, S = this.survivors, t = this.t;
     let cur = this.chaseTgt;
+    const end = (reason) => { this.ev('chaseEnd', { who: cur, reason }); cur = -1; };
     if (cur >= 0) {
       const s = S[cur];
-      if (s.st > S_INJURED) { this.ev('chaseEnd', { who: cur, reason: S_NAME[s.st] }); cur = -1; }
+      if (s.st > S_INJURED) end(S_NAME[s.st]);
+      else if (H.carrying >= 0) end('carrying');
+      else if ((s.x - H.x) ** 2 + (s.z - H.z) ** 2 > cc.loseRange * cc.loseRange) end('range');
       else if (H.seen[cur]) this.chaseSeenT = t;
-      else if (t - this.chaseSeenT >= cc.loseS - EPS) { this.ev('chaseEnd', { who: cur, reason: 'lost' }); cur = -1; }
+      else if (t - this.chaseSeenT >= cc.loseS - EPS) end('lost');
     }
-    if (H.carrying >= 0) {   // a carrying hunter is never in a chase
-      if (cur >= 0) { this.ev('chaseEnd', { who: cur, reason: 'carrying' }); cur = -1; }
-      this.chaseTgt = cur;
-      return;
+    if (H.carrying < 0) {
+      const r2 = cc.startRange * cc.startRange, v2 = cc.runSpeed * cc.runSpeed;
+      let best = -1, bd = Infinity, curOk = false;
+      for (let i = 0; i < 4; i++) {
+        const s = S[i];
+        if (!H.seen[i] || s.st > S_INJURED || s.vx * s.vx + s.vz * s.vz <= v2) continue;
+        const dx = s.x - H.x, dz = s.z - H.z, d2 = dx * dx + dz * dz;
+        if (d2 > r2) continue;
+        if (i === cur) { curOk = true; break; }
+        if (d2 < bd) { bd = d2; best = i; }
+      }
+      if (!curOk && best >= 0) {
+        if (cur >= 0) end('switch');
+        cur = best; this.chaseSeenT = t; this.chaseId++;
+        this.ev('chaseStart', { who: best });
+      }
     }
-    const attacking = H.windT > 0 || H.curAct === 'attack';
-    const fx = Math.cos(H.face), fz = Math.sin(H.face), cosArc = Math.cos(this.cfg.hunter.attackHalfArcDeg * DEG);
-    const r2 = cc.startRange * cc.startRange;
-    let best = -1, bd = Infinity, curOk = false;
-    for (let i = 0; i < 4; i++) {
-      const s = S[i];
-      if (!H.seen[i] || s.st > S_INJURED) continue;
-      const dx = s.x - H.x, dz = s.z - H.z, d2 = dx * dx + dz * dz;
-      if (d2 > r2) continue;
-      const d = Math.sqrt(d2);
-      const toward = d > 0.05 && (H.vx * dx + H.vz * dz) > cc.approachSpeed * d;
-      const swing = attacking && (d <= 0.05 || (dx * fx + dz * fz) >= d * cosArc);
-      if (!toward && !swing) continue;
-      if (i === cur) { curOk = true; break; }
-      if (d < bd) { bd = d; best = i; }
-    }
-    if (!curOk && best >= 0) {
-      if (cur >= 0) this.ev('chaseEnd', { who: cur, reason: 'switch' });
-      cur = best; this.chaseSeenT = t;
-      this.ev('chaseStart', { who: best });
-    }
+    if (cur !== this.chaseTgt) this.blT = 0;      // new chase or chase over: Bloodlust starts again from 0
     this.chaseTgt = cur;
+    // Bloodlust
+    let tier = 0;
+    if (cur >= 0) {
+      this.blT += this.dt;
+      const bl = this.cfg.hunter.bloodlust || [];
+      for (let k = 0; k < bl.length; k++) if (this.blT >= bl[k][0] - EPS) tier = k + 1;
+    }
+    if (tier !== this.blTier) { if (tier > this.blTier) this.ev('bloodlust', { tier }); this.blTier = tier; }
   }
+
+  _resetBloodlust() { this.blT = 0; this.blTier = 0; }
+  _bloodlustBonus() { const bl = this.cfg.hunter.bloodlust; return this.blTier > 0 && bl ? bl[this.blTier - 1][1] : 0; }
 
   // ------------------------------------------------------------------ survivor HUD (computed once per tick, copied per survivor)
   _hudBase() {
@@ -289,13 +304,25 @@ export class Match {
     const S = this.survivors;
     const b = this._hudB || (this._hudB = S.map(s => ({ id: s.id })));
     for (const e of b) e.beingHealed = false;
+    const cfg = this.cfg, sv = cfg.survivor;
     for (let i = 0; i < 4; i++) {
-      const s = S[i], e = b[i], up = s.st <= S_INJURED;   // curAct is stale for dead/escaped survivors
-      e.state = S_NAME[s.st]; e.hookCount = s.hookCount; e.hookStage = s.st === S_HOOKED ? s.hookStage : 0;
-      e.healing = up && s.curAct === 'heal';
-      e.repairing = up && s.curAct === 'repair' ? s.curTgt : null;
+      const s = S[i], e = b[i], live = s.st < S_DEAD;   // curAct is stale for dead/escaped survivors
+      e.state = S_NAME[s.st]; e.hookCount = s.hookCount; e.hookStage = s.st === S_HOOKED ? s.hookStage : 0; e.hookStages = s.hookStage;
+      // activity: interaction TYPE + progress circle, never which generator/gate/teammate (solo-queue Status HUD)
+      let act = live ? (ACTIVITY[s.curAct] || null) : null, pr = null;
+      if (act === 'repair') { const g = this.genById.get(s.curTgt); pr = g ? g.p / this.need : null; }
+      else if (act === 'heal') { const p = S[s.curTgt]; pr = p ? p.heal / sv.healS : null; }
+      else if (act === 'mend') { const p = S[s.curTgt]; pr = p ? p.mendP : null; }
+      else if (act === 'gate') { const g = this.gates.find(x => x.id === s.curTgt); pr = g ? g.prog / cfg.gates.leverS : null; }
+      else if (act === 'rescue') pr = s.prog / sv.rescueS;
+      else if (act === 'wiggle') pr = s.wiggle / sv.wiggleS;
+      else if (act === 'selfUnhook') pr = Math.max(0, s.selfT) / cfg.antiCamp.selfUnhookS;
+      else if (s.st === S_DOWNED && !s.crawled) { act = 'recover'; pr = s.heal / sv.healS; }
+      e.activity = act; e.activityProgress = pr === null ? null : Math.min(1, pr);
       e.chased = this.chaseTgt === i;
-      if (e.healing && typeof s.curTgt === 'number') b[s.curTgt].beingHealed = true;
+      e.resolve = s.st === S_HOOKED ? s.resolve : 0;                       // teammate-visible Resolve meter (9.3.0)
+      e.deepWound = live && s.dwT >= 0 ? s.dwT / cfg.unhook.deepWoundS : null;   // remaining Deep Wound timer fraction
+      if (act === 'heal' && typeof s.curTgt === 'number') b[s.curTgt].beingHealed = true;
     }
     const dn = this._downB = [];
     for (const s of S) if (s.st === S_DOWNED) dn.push(s);
@@ -423,33 +450,29 @@ export class Match {
     return out;
   }
 
-  _seesLever(a, g, sc) {
-    const dx = g.lx - a.x, dz = g.lz - a.z, d2 = dx * dx + dz * dz;
-    if (d2 <= sc.adjacentReach * sc.adjacentReach) return true;
-    if (d2 > sc.range * sc.range) return false;
-    if (a === this.hunter && (dx * Math.cos(a.face) + dz * Math.sin(a.face)) < Math.sqrt(d2) * Math.cos(sc.hunterFovDeg * 0.5 * DEG)) return false;
-    return rayVis(this.md, a.x, a.z, g.lx, g.lz, sc.semiTransparency, sc.visThreshold) >= sc.visThreshold;
-  }
+  _seesLever(a, g) { return this._seesPoint(a, g.lx, g.lz); }
 
   _obsSurvivor(s) {
     const cfg = this.cfg, H = this.hunter, m = s.mem, sc = cfg.sight;
     const adj2 = sc.adjacentReach * sc.adjacentReach;
     const self = {
       id: s.id, x: s.x, z: s.z, vx: s.vx, vz: s.vz, facing: s.face, state: S_NAME[s.st],
-      hookCount: s.hookCount, hookStage: s.st === S_HOOKED ? s.hookStage : 0, hookTimerS: s.st === S_HOOKED ? s.hookTimer : null,
+      hookCount: s.hookCount, hookStage: s.st === S_HOOKED ? s.hookStage : 0, hookStages: s.hookStage, hookTimerS: s.st === S_HOOKED ? s.hookTimer : null,
       boosted: s.boostT > 0, vaulting: !!s.vault, act: s.curAct, progress: s.prog,
-      bleedS: s.st === S_DOWNED ? s.bleedT : null, healProgress: s.heal / cfg.survivor.healS, wiggle: s.wiggle / cfg.survivor.wiggleS,
-      deepWoundS: s.dwT >= 0 ? s.dwT : null, protectedS: s.protT > 0 ? s.protT : null, chased: this.chaseTgt === s.id,
+      bleedS: s.st === S_DOWNED || s.st === S_CARRIED ? s.bleedT : null, healProgress: s.heal / cfg.survivor.healS, wiggle: s.wiggle / cfg.survivor.wiggleS,
+      deepWoundS: s.dwT >= 0 ? s.dwT : null, mendProgress: s.dwT >= 0 ? s.mendP : null,
+      protectedS: s.protT > 0 ? s.protT : null, elusiveS: s.elusT > 0 ? s.elusT : null, chased: this.chaseTgt === s.id,
+      intentCooldownS: Math.max(0, s.intNext - this.t),
     };
-    this._hudBase();
-    const hud = new Array(4), hb = this._hudB;
-    for (let j = 0; j < 4; j++) {
-      const e = hb[j];
-      hud[j] = { id: e.id, state: e.state, hookCount: e.hookCount, hookStage: e.hookStage, beingHealed: e.beingHealed,
-        healing: e.healing, repairing: e.repairing, chased: e.chased };
-    }
+    const hud = this._hudCopy();
     const downedAuras = [];
     for (const o of this._downB) if (o !== s) downedAuras.push({ id: o.id, x: o.x, z: o.z });
+    // dying survivors see the auras of every teammate still in the match (reciprocal of downedAuras); not stored in lastSeen
+    let mateAuras = null;
+    if (s.st === S_DOWNED) {
+      mateAuras = [];
+      for (const o of this.survivors) if (o !== s && o.st < S_DEAD) mateAuras.push({ id: o.id, x: o.x, z: o.z, state: S_NAME[o.st] });
+    }
     let hunter = null;
     if (s.seesHunter) {
       hunter = { x: H.x, z: H.z, vx: H.vx, vz: H.vz, facing: H.face, fx: Math.cos(H.face), fz: Math.sin(H.face),
@@ -484,12 +507,49 @@ export class Match {
     return {
       t: this.t, tick: this.tick, self, hunter, lastHunter: m.lastHunter,
       terror: s.trLayer > 0 ? { layer: s.trLayer, approx: this._terrorApprox(s.trLayer) } : null,
-      teammates, lastSeen: m.lastSeen.slice(), hud, downedAuras,
+      teammates, lastSeen: m.lastSeen.slice(), hud, downedAuras, mateAuras,
       gens, gensDone: this.gensDone, gensNeeded: this.gensNeeded,
       pallets: pals, gates: this._gatesObs(s), gatesPowered: this.gatesPowered, blockedWindows: this._blockedWindows(s.id),
-      endgame: this.endgameT >= 0 ? { remainingS: this.endgameT } : null,
+      endgame: this._endgameObs(),
       notifications: inbox, newNotifications: newN,
     };
+  }
+
+  _hudCopy() {
+    this._hudBase();
+    const hud = new Array(4), hb = this._hudB;
+    for (let j = 0; j < 4; j++) {
+      const e = hb[j];
+      hud[j] = { id: e.id, state: e.state, hookCount: e.hookCount, hookStage: e.hookStage, hookStages: e.hookStages, beingHealed: e.beingHealed,
+        activity: e.activity, activityProgress: e.activityProgress, chased: e.chased, resolve: e.resolve, deepWound: e.deepWound };
+    }
+    return hud;
+  }
+
+  _endgameObs() { return this.endgameT >= 0 ? { remainingS: this.endgameT, slowed: this._collapseSlowed() } : null; }
+
+  // Hooked survivors' brains get a minimal obs: own hook state, Resolve and the self-unhook choice, the HUD and notifications.
+  _obsHooked(s) {
+    const ac = this.cfg.antiCamp, inbox = s.inbox;
+    const newN = inbox.slice(s.inboxRead); s.inboxRead = inbox.length;
+    return {
+      t: this.t, tick: this.tick,
+      self: { id: s.id, x: s.x, z: s.z, state: S_NAME[s.st], hookCount: s.hookCount, hookStage: s.hookStage, hookStages: s.hookStage,
+        hookTimerS: s.hookTimer, resolve: s.resolve, canSelfUnhook: this._canSelfUnhook(s), selfUnhookS: s.selfT >= 0 ? s.selfT : null,
+        selfUnhookNeedS: ac ? ac.selfUnhookS : null, intentCooldownS: Math.max(0, s.intNext - this.t) },
+      hud: this._hudCopy(), gensDone: this.gensDone, gensNeeded: this.gensNeeded, gatesPowered: this.gatesPowered,
+      endgame: this._endgameObs(), notifications: inbox, newNotifications: newN,
+    };
+  }
+
+  _canSelfUnhook(s) { const ac = this.cfg.antiCamp; return !!(ac && ac.enabled) && s.st === S_HOOKED && s.resolve >= 1 - EPS && !this.gatesPowered; }
+
+  _seesPoint(a, x, z) {
+    const sc = this.cfg.sight, dx = x - a.x, dz = z - a.z, d2 = dx * dx + dz * dz;
+    if (d2 <= sc.adjacentReach * sc.adjacentReach) return true;
+    if (d2 > sc.range * sc.range) return false;
+    if (a === this.hunter && (dx * Math.cos(a.face) + dz * Math.sin(a.face)) < Math.sqrt(d2) * Math.cos(sc.hunterFovDeg * 0.5 * DEG)) return false;
+    return rayVis(this.md, a.x, a.z, x, z, sc.semiTransparency, sc.visThreshold) >= sc.visThreshold;
   }
 
   // A slot is taken while a survivor repaired from it this tick or the previous one (obs are built before acts).
@@ -506,7 +566,7 @@ export class Match {
     for (let i = 0; i < 4; i++) {
       const s = this.survivors[i];
       if (!H.seen[i] || s.st >= S_DEAD) continue;
-      survivors.push({ id: i, x: s.x, z: s.z, vx: s.vx, vz: s.vz, facing: s.face, state: S_NAME[s.st], hookCount: s.hookCount, vaulting: !!s.vault });
+      survivors.push({ id: i, x: s.x, z: s.z, vx: s.vx, vz: s.vz, facing: s.face, state: S_NAME[s.st], hookCount: s.hookCount, vaulting: !!s.vault, deepWound: s.dwT >= 0 });   // Deep Wound: presence only
       H.lastSeen[i] = { x: s.x, z: s.z, state: S_NAME[s.st], t };
     }
     const gm = cfg.senses.gruntMemoryS;
@@ -522,7 +582,8 @@ export class Match {
       const vis = !g.done && (H.gSeen[i] === 1 || rectDist2(H.x, H.z, g.x0, g.z0, g.x1, g.z1) <= adj2);
       if (vis) { me.progress = g.p / this.need; me.regressing = g.regress; me.seenT = t; }
       return { id: g.id, x: g.x, z: g.z, progress: g.done ? 1 : me.progress, done: g.done, blocked: this.gatesPowered && !g.done,
-        regressing: g.done ? false : me.regressing, visible: vis, workers: vis ? g.wIds.slice(0, g.lastN) : null, seenT: me.seenT };
+        regressing: g.done ? false : me.regressing, visible: vis, workers: vis ? g.wIds.slice(0, g.lastN) : null, seenT: me.seenT,
+        kicksLeft: Math.max(0, cfg.gens.maxKicks - g.kicks) };   // its own kick count (anti-tap limit)
     });
     const noisyGens = [], nr = cfg.senses.repairNoiseRadius;
     for (const g of this.gens) if (g.lastN > 0 && rectDist(H.x, H.z, g.x0, g.z0, g.x1, g.z1) <= nr) noisyGens.push({ id: g.id, x: g.x, z: g.z });
@@ -537,10 +598,11 @@ export class Match {
     return {
       t, tick: this.tick,
       self: { x: H.x, z: H.z, vx: H.vx, vz: H.vz, facing: H.face, fx: Math.cos(H.face), fz: Math.sin(H.face),
-        carrying: H.carrying >= 0 ? H.carrying : null, cooldownS: H.cdT, windupS: H.windT, stunS: H.stunT, vaulting: !!H.vault, act: H.curAct, progress: H.prog },
+        carrying: H.carrying >= 0 ? H.carrying : null, cooldownS: H.cdT, windupS: H.windT, stunS: H.stunT, vaulting: !!H.vault, act: H.curAct, progress: H.prog,
+        bloodlust: this.blTier, speed: this._hunterSpeed() },
       survivors, lastSeen: H.lastSeen.slice(), grunts, scratches, gens, noisyGens, gensDone: this.gensDone, gensNeeded: this.gensNeeded,
-      hooked, status: out, chase: { target: this.chaseTgt >= 0 ? this.chaseTgt : null }, pallets: this._palNames(), gates: this._gatesObs(H), gatesPowered: this.gatesPowered, blockedWindows: [],
-      endgame: this.endgameT >= 0 ? { remainingS: this.endgameT } : null,
+      hooked, status: out, chase: { target: this.chaseTgt >= 0 ? this.chaseTgt : null, bloodlust: this.blTier }, pallets: this._palNames(), gates: this._gatesObs(H), gatesPowered: this.gatesPowered, blockedWindows: [],
+      endgame: this._endgameObs(),
       notifications: inbox, newNotifications: newN,
     };
   }
@@ -566,7 +628,7 @@ export class Match {
 
   // ---- character bodies (config.collision; README "Collision") ----
   _survBody(s) { return s.st <= S_INJURED && !s.vault && this.t - s.hitT >= this.cfg.survivor.noCollideAfterHitS - EPS; }
-  _hunterBody() { const H = this.hunter; return !H.vault && H.carrying < 0; }
+  _hunterBody() { const H = this.hunter; return !H.vault && !(H.ghostT > 0); }   // a carrying hunter still collides (body-blocking the carrier)
   // Fill this._bodies with the characters that block mover `a` (positions as of now: survivors act in a rotating
   // order, then the hunter). Returns the count. Pre-existing overlap never traps anyone (see _free).
   _collectBodies(a, isHunter) {
@@ -635,8 +697,8 @@ export class Match {
       a.x = bx; a.z = bz;
       // anti-deadlock (two survivors face to face in a 1-cell corridor): pushing a survivor without progress for
       // collision.unstickS => stop colliding with survivors for collision.unstickGhostS
+      const cc = this.cfg.collision;
       if (!isHunter) {
-        const cc = this.cfg.collision;
         if (firstBlocker && firstBlocker !== this.hunter && gain < 0.3 * len && cc.unstickGhostS > 0) {
           a.bodyT += this.dt;
           if (a.bodyT >= cc.unstickS - EPS) { a.bodyT = 0; a.ghostT = cc.unstickGhostS; this.ev('unstick', { who: a.id }); }
@@ -644,12 +706,27 @@ export class Match {
       }
     }
     if (!isHunter && this._blocker === null && a.bodyT > 0) a.bodyT = 0;
+    if (isHunter) this._hunterBlockCheck(nb);
     const mx = a.x - px, mz = a.z - pz;
     if (mx * mx + mz * mz < 0.36 * step * step) this._tryVault(a, dx, dz, isHunter);
     a.vx = (a.x - px) / this.dt; a.vz = (a.z - pz) / this.dt;
   }
 
+  // Official AFK rule: a hunter that keeps trying to move while touching a colliding survivor body for
+  // collision.hunterUnstickS (continuous contact) stops colliding with survivors for collision.hunterGhostS.
+  _hunterBlockCheck(nb) {
+    const H = this.hunter, cc = this.cfg.collision;
+    if (!(cc.hunterGhostS > 0)) return;
+    let touch = false;
+    const D = (2 * this.R + 0.25) ** 2;           // in (or nearly in) contact: wall corners can hold the hunter just short of the body
+    for (let k = 0; k < nb; k++) { const b = this._bodies[k]; if ((b.x - H.x) ** 2 + (b.z - H.z) ** 2 <= D) { touch = true; break; } }
+    if (!touch) { H.bodyT = 0; return; }
+    H.bodyT += this.dt;
+    if (H.bodyT >= cc.hunterUnstickS - EPS) { H.bodyT = 0; H.ghostT = cc.hunterGhostS; this.ev('unstick', { who: 'hunter' }); }
+  }
+
   _tryVault(a, dx, dz, isHunter) {
+    if (!isHunter && a.st > S_INJURED) return false;   // crawling survivors can't vault
     const md = this.md, W = md.w, Hh = md.h, kind = md.kind;
     const ci = Math.floor(a.x), cj = Math.floor(a.z);
     const adx = Math.abs(dx), adz = Math.abs(dz);
@@ -667,7 +744,7 @@ export class Match {
         dur = isHunter ? this.cfg.hunter.vaultS : this._survivorVaultS(a, nx, nz);
       } else if ((k === K_PAL_X || k === K_PAL_Z) && !isHunter && this.ps[md.palIdx[wc] - 1] === 1) {
         if ((k === K_PAL_X) !== (nx !== 0)) continue;
-        dur = this.cfg.survivor.palletVaultS;
+        dur = a.lastAction && a.lastAction.walk ? this.cfg.survivor.palletVaultSlowS : this.cfg.survivor.palletVaultFastS;
       } else continue;
       if (this.coll[fj * W + fi] !== 0) continue;
       if (this._vaultCellBusy(wc, a)) continue;   // someone is already vaulting through it: bodies collide
@@ -678,6 +755,7 @@ export class Match {
       a.vault = { t: 0, dur, x0: a.x, z0: a.z, x1: fi + 0.5, z1: fj + 0.5, cell: wc };
       if (!isHunter) {
         if (dur === this.cfg.survivor.vaultFastS && (k === K_WIN_X || k === K_WIN_Z)) this._loudNoise('vault', a.x, a.z);
+        else if ((k === K_PAL_X || k === K_PAL_Z) && !(a.lastAction && a.lastAction.walk)) this._loudNoise('palletVault', a.x, a.z);   // rushed pallet vault
         a.runD = 0;
       }
       if (!isHunter && (k === K_WIN_X || k === K_WIN_Z)) this._noteWindowVault(this.winOfCell.get(wc), a.id);
@@ -704,18 +782,20 @@ export class Match {
     if (!(r < Infinity) || hyp(H.x - x, H.z - z) <= r) this._notify(H, { type: 'loudNoise', cause, x, z, t: this.t });
   }
 
-  // Genre entity blocker: the Nth vault of one window by one survivor within withinS ("one chase") blocks that
-  // window for that survivor only, for blockS. Others (and the hunter) can still use it.
+  // Entity blocker [S]: the Nth vault of one window by one survivor within the SAME chase (that survivor being the chase
+  // target) blocks that window for that survivor only, for blockS. Vaults outside a chase don't count; a new chase
+  // starts the count again. Others (and the hunter) can still use it.
   _noteWindowVault(wi, sid) {
     const wb = this.cfg.windowBlock;
-    if (!wb || !wb.vaults) return;
-    const log = this.winVaults[wi][sid].filter((t) => this.t - t < wb.withinS);
-    log.push(this.t);
-    if (log.length >= wb.vaults) {
+    if (!wb || !wb.vaults || this.chaseTgt !== sid) return;
+    const e = this.winVaults[wi][sid];
+    if (e.chase !== this.chaseId) { e.chase = this.chaseId; e.n = 0; }
+    e.n++;
+    if (e.n >= wb.vaults) {
       this.winBlockT[wi * 4 + sid] = this.t + wb.blockS;
-      this.winVaults[wi][sid] = [];
+      e.n = 0;
       this.ev('windowBlocked', { window: this.md.windows[wi].id, who: sid });
-    } else this.winVaults[wi][sid] = log;
+    }
   }
 
   _blockedWindows(sid) {
@@ -774,8 +854,9 @@ export class Match {
     this._updateChase();
     if (this.tick % cfg.decisionEvery === 0) {
       for (const s of S) {
-        if (s.st >= S_HOOKED) { s.lastAction = IDLE; continue; }
-        s.lastAction = s.brain.decide(this._obsSurvivor(s), s.api) || IDLE;
+        if (s.st >= S_DEAD) { s.lastAction = IDLE; continue; }
+        s.lastAction = s.brain.decide(s.st === S_HOOKED ? this._obsHooked(s) : this._obsSurvivor(s), s.api) || IDLE;
+        if (s.lastAction.intent !== undefined && s.lastAction.intent !== null) this._sendIntent(s, s.lastAction.intent);
       }
       H.lastAction = H.brain.decide(this._obsHunter(), H.api) || IDLE;
     }
@@ -789,8 +870,49 @@ export class Match {
     this._worldTimers();
     this.tick++;
     if (this.recordOn && this.tick % cfg.recordEvery === 0) this._record();
-    if (this.inGameCount() === 0) this._end('all-out');
+    if (this._allDown()) this._end('allDown');
+    else if (this._lastSurvivor()) this._end('lastSurvivor');
+    else if (this.inGameCount() === 0) this._end('all-out');
     else if (this.tick >= this.maxTicks) this._end('time');
+  }
+
+  // User rule: once no survivor still in the match is standing (every one is downed / carried / hooked), the match ends at
+  // once as a hunter victory: all of them die (cause 'allDown'). Escaped survivors stay escaped. Checked after all actions/timers.
+  _allDown() {
+    let inGame = 0;
+    for (const s of this.survivors) { if (s.st >= S_DEAD) continue; if (s.st <= S_INJURED) return false; inGame++; }
+    if (inGame === 0) return false;
+    this.ev('allDown', { who: this.survivors.filter(s => s.st < S_DEAD).map(s => s.id) });
+    for (const s of this.survivors) if (s.st < S_DEAD) this._kill(s, 'allDown');
+    return true;
+  }
+
+  // User rule (replaces the hatch): exactly one survivor still in the match (escaped ones don't count) while the gates are
+  // NOT powered => the match ends at once as a hunter victory; that survivor counts as killed (cause 'lastSurvivor').
+  // With the gates already powered the last survivor plays on normally. Checked after the all-down check.
+  _lastSurvivor() {
+    if (this.gatesPowered || this.inGameCount() !== 1) return false;
+    const s = this.survivors.find(x => x.st < S_DEAD);
+    this.ev('lastSurvivor', { who: s.id });
+    this._kill(s, 'lastSurvivor');
+    return true;
+  }
+
+  // 10.2.0 intent messages: a predefined enum only, delivered to every OTHER survivor still in the match as
+  // {type:'intent', from, intent, t}. Anti-spam: each send locks further sends for the current cooldown (starts at
+  // intent.minCooldownS); a send within spamWindowS of the previous one raises it by 1 s up to maxCooldownS; after resetS
+  // without sending it drops back to the minimum. Sends during the lockout and unknown enums are ignored.
+  _sendIntent(s, intent) {
+    const ic = this.cfg.intent;
+    if (!ic || !ic.messages.includes(intent) || this.t < s.intNext - EPS) return false;
+    const since = this.t - s.intLast;
+    if (since >= ic.resetS - EPS) s.intCd = ic.minCooldownS;
+    else if (since < ic.spamWindowS - EPS) s.intCd = Math.min(ic.maxCooldownS, s.intCd + 1);
+    s.intNext = this.t + s.intCd; s.intLast = this.t;
+    this.stats.intents++;
+    this.ev('intent', { from: s.id, intent });
+    this._notifyMates(s, { type: 'intent', from: s.id, intent, t: this.t });
+    return true;
   }
 
   _end(reason) {
@@ -806,8 +928,18 @@ export class Match {
     const cfg = this.cfg, sv = cfg.survivor, dt = this.dt;
     const prevAct = s.curAct, prevTgt = s.curTgt;
     s.curAct = null; s.curTgt = null;
-    if (s.st === S_HOOKED) { s.vx = s.vz = 0; s.prog = 0; return; }
-    if (s.vault) { this._advanceVault(s); s.curAct = 'vault'; return; }
+    s.crawled = false;
+    if (s.st === S_HOOKED) {
+      s.vx = s.vz = 0; s.prog = 0;
+      // full Resolve meter => the survivor MAY self-unhook: repeat 'selfUnhook' for antiCamp.selfUnhookS (hook timer paused)
+      if (A.act === 'selfUnhook' && this._canSelfUnhook(s)) {
+        s.curAct = 'selfUnhook';
+        s.selfT = (prevAct === 'selfUnhook' && s.selfT >= 0 ? s.selfT : 0) + dt;
+        if (s.selfT >= cfg.antiCamp.selfUnhookS - EPS) { this.ev('selfUnhook', { who: s.id }); this._unhook(s, 'self'); }
+      } else s.selfT = -1;
+      return;
+    }
+    if (s.vault) { this._advanceVault(s); s.curAct = 'vault'; if (!(A.walk)) s.ranTick = this.tick; return; }   // a rushed vault counts as running
     if (s.st === S_CARRIED) {
       s.vx = s.vz = 0;
       if (A.act === 'wiggle') {
@@ -841,14 +973,16 @@ export class Match {
       }
       if (!A.face) s.face = Math.atan2(this._sdz, this._sdx);
       moved = true;
-      if (!crawl && !A.walk && !s.vault && s.protT <= 0) {   // elusive: no scratch marks
+      if (crawl) s.crawled = (s.x - px) ** 2 + (s.z - pz) ** 2 > 1e-8;   // crawling pauses downed recovery
+      else if (!A.walk && !s.vault) s.ranTick = this.tick;              // running pauses the Deep Wound timer
+      if (!crawl && !A.walk && !s.vault && s.elusT <= 0) {   // elusive: no scratch marks
         s.scratchT -= dt;
         if (s.scratchT <= 0) { this.marks.push({ x: s.x, z: s.z, t: this.t, dx: this._sdx, dz: this._sdz }); s.scratchT = cfg.senses.scratchEveryS; }
       }
     } else { s.vx = s.vz = 0; s.runD = 0; s.bodyT = 0; }
     if (s.vault) { s.curAct = 'vault'; return; }
     if (A.face) s.face = Math.atan2(A.face.z - s.z, A.face.x - s.x);
-    if (crawl) { s.prog = 0; return; }
+    if (crawl) { s.prog = 0; this._checkExit(s); return; }   // downed survivors can crawl out through an open gate
     if (!moved && A.act) {
       const same = (act, tgt) => { if (CONSPICUOUS[act]) this._endProtection(s); s.curAct = act; s.curTgt = tgt; if (prevAct === act && prevTgt === tgt) s.prog += dt; else s.prog = dt; return s.prog; };
       switch (A.act) {
@@ -879,11 +1013,14 @@ export class Match {
           if (!t || t === s || (t.st !== S_INJURED && t.st !== S_DOWNED) || t.dwT >= 0) break;   // Deep Wound: must mend first
           const dx = t.x - s.x, dz = t.z - s.z;
           if (dx * dx + dz * dz > cfg.reach.heal * cfg.reach.heal) break;
+          // shared interaction: the patient must stay available (not moving, no interaction of its own; as of its latest act)
+          if (t.vx !== 0 || t.vz !== 0 || t.vault || (t.curAct !== null && t.curAct !== undefined)) break;
+          if (!this._takeSlot(t.healSlots, s.id)) break;   // at most survivor.maxHealers healers per patient
           same('heal', t.id);
           t.heal += dt;
           if (t.heal >= sv.healS - EPS) {
             t.heal = 0;
-            if (t.st === S_DOWNED) { t.st = S_INJURED; t.bleedT = 0; } else t.st = S_HEALTHY;
+            if (t.st === S_DOWNED) { t.st = S_INJURED; t.wiggle = 0; } else t.st = S_HEALTHY;   // bleed-out budget is NOT refilled
             this.stats.heals++;
             this.ev('heal', { by: s.id, who: t.id, state: S_NAME[t.st] });
           }
@@ -903,11 +1040,25 @@ export class Match {
           }
           break;
         }
-        case 'mend': {
-          if (s.dwT < 0) break;
-          same('mend', s.id);
-          s.mendP += dt;
-          if (s.mendP >= cfg.unhook.mendS - EPS) { s.dwT = -1; s.mendP = 0; this.ev('mend', { who: s.id }); s.prog = 0; s.curAct = null; }
+        case 'mend': {   // Deep Wound: self (no target / own id) 10 s, or a teammate (target = id) 6 s; progress persists (0..1)
+          const u = cfg.unhook, tid = A.target === undefined || A.target === null ? s.id : A.target;
+          const t = typeof tid === 'number' ? this.survivors[tid] : null;
+          if (!t || t.dwT < 0 || t.st !== S_INJURED) break;
+          if (t === s) { same('mend', s.id); s.mendP += dt / u.mendS; }
+          else {
+            const dx = t.x - s.x, dz = t.z - s.z;
+            if (dx * dx + dz * dz > cfg.reach.heal * cfg.reach.heal) break;
+            if (!this._takeSlot(t.mendSlots, s.id)) break;   // at most unhook.mendHelpers teammates
+            same('mend', t.id);
+            const eff = this._slotCount(t.mendSlots) >= 2 ? u.mendTwoEff : 1;
+            t.mendP += eff * dt / u.mendOtherS;
+          }
+          t.mendTick = this.tick;                          // Deep Wound timer paused this tick
+          if (t.mendP >= 1 - EPS) {
+            t.dwT = -1; t.mendP = 0; this.stats.mends++;
+            this.ev('mend', { who: t.id, by: s.id });
+            s.prog = 0; s.curAct = null;
+          }
           break;
         }
         case 'dropPallet': {
@@ -927,7 +1078,7 @@ export class Match {
           g.user = s.id; g.userTick = this.tick;
           same('openGate', g.id);
           g.prog += dt; s.leverS += dt;                  // lever progress persists on the gate when the opener lets go
-          if (g.prog >= cfg.gates.leverS - EPS) this._openGate(g, s);
+          if (g.prog >= cfg.gates.leverS - EPS) this._openGate(g, s.id);
           break;
         }
         default: break;
@@ -937,17 +1088,37 @@ export class Match {
     this._checkExit(s);
   }
 
-  _openGate(g, s) {
-    g.open = true; g.prog = this.cfg.gates.leverS; g.user = -1;
-    this.ev('gateOpen', { gate: g.id, by: s.id });
-    if (this.endgameT < 0) {                         // endgame collapse starts when the FIRST gate is opened
-      this.endgameT = this.cfg.gates.endgameS;
-      this.ev('endgame', { gate: g.id });
+  // Interaction slots on a patient (healers / menders): a helper keeps its slot while it used it this tick or the previous
+  // one; otherwise it needs a free slot. Returns false when all slots are held by others.
+  _takeSlot(slots, id) {
+    let free = null;
+    for (const sl of slots) {
+      if (sl.id === id && sl.tick >= this.tick - 1) { sl.tick = this.tick; return true; }
+      if (!free && (sl.tick < this.tick - 1 || sl.id === -1)) free = sl;
     }
+    if (!free) return false;
+    free.id = id; free.tick = this.tick;
+    return true;
+  }
+  _slotCount(slots) { let n = 0; for (const sl of slots) if (sl.id >= 0 && sl.tick >= this.tick - 1) n++; return n; }
+
+  _openGate(g, by) {
+    g.open = true; g.prog = this.cfg.gates.leverS; g.user = -1;
+    this.ev('gateOpen', { gate: g.id, by });
+    this._startCollapse('gate', { gate: g.id });     // endgame collapse starts when the FIRST gate is opened
     const n = { type: 'gateOpen', gate: g.id, t: this.t };
     this._notify(this.hunter, { ...n });
     this._notifyAllSurvivors(n);
   }
+
+  _startCollapse(cause, f) {
+    if (this.endgameT >= 0) return;
+    this.endgameT = this.cfg.gates.endgameS;
+    this.ev('endgame', { cause, ...f });
+  }
+
+  // collapse runs at gates.collapseSlowFactor while any survivor is dying (downed / carried) or hooked
+  _collapseSlowed() { for (const s of this.survivors) if (s.st >= S_DOWNED && s.st <= S_HOOKED) return true; return false; }
 
   // shared unhook result (rescue or self-unhook): injured + unhook protections; anti-camp state reset.
   // by = rescuer id | 'self'; teammates get an `unhooked` HUD notification.
@@ -964,16 +1135,12 @@ export class Match {
   _antiCamp(s) {
     const ac = this.cfg.antiCamp, dt = this.dt, H = this.hunter;
     if (!ac || !ac.enabled) return false;
-    if (s.selfT >= 0) {                                   // full meter: guaranteed self-unhook attempt
-      s.selfT += dt;
-      if (s.selfT >= ac.selfUnhookS - EPS) { this.ev('selfUnhook', { who: s.id }); this._unhook(s, 'self'); }
-      return true;
-    }
-    if (this.gatesPowered) return false;
+    if (s.selfT >= 0) return true;                        // self-unhook attempt in progress (see _survivorAct): timer paused
+    if (this.gatesPowered || s.resolve >= 1 - EPS) return false;
     const hk = this.hooks[s.hookIdx];
     const d = hyp(H.x - hk.x, H.z - hk.z);
     const prox = d <= ac.nearM ? 1 : d <= ac.radius ? 1 - (1 - ac.farFactor) * (d - ac.nearM) / (ac.radius - ac.nearM) : 0;
-    if (prox > 0) { s.campT += dt; s.outT = 0; } else { s.outT += dt; if (s.outT >= ac.campResetS - EPS) s.campT = 0; }
+    if (prox > 0) s.outT = 0; else { s.outT += dt; if (s.outT >= ac.campResetS - EPS) s.campT = 0; }
     if (s.graceT > 0) { s.graceT = Math.max(0, s.graceT - dt); return false; }
     if (prox <= 0 || H.carrying >= 0) return false;
     const cr2 = ac.chaseRadius * ac.chaseRadius, mr2 = ac.mateRadius * ac.mateRadius;
@@ -986,37 +1153,39 @@ export class Match {
     for (const [lim, mult] of ac.timeMult) if (s.campT < lim) { tm = mult; break; }
     const fr = Math.min(1, Math.max(0, 1 - s.hookTimer / this.cfg.hooks.stageS));
     s.resolve += dt / ac.baseFullS * prox * tm * (1 + ac.stageCurve * fr * fr);
-    if (s.resolve >= 1 - EPS) { s.resolve = 1; s.selfT = 0; this.ev('resolveFull', { who: s.id }); }
+    s.campT += dt;                                        // camping time accrues only while the meter gains
+    if (s.resolve >= 1 - EPS) { s.resolve = 1; this.ev('resolveFull', { who: s.id }); }   // now the survivor MAY self-unhook
     return false;
   }
 
+  // 10.1.0 unhook protections: Endurance + Haste (protT) always; Elusive (elusT) only while the gates are not powered.
   _grantProtection(s) {
-    s.protT = this.cfg.unhook.protectS; s.endure = true;
-    this.ev('protect', { who: s.id, s: s.protT });
+    const u = this.cfg.unhook;
+    s.protT = u.protectS; s.endure = true;
+    s.elusT = this.gatesPowered ? 0 : (u.elusiveS ?? u.protectS);
+    this.ev('protect', { who: s.id, s: s.protT, elusiveS: s.elusT });
   }
 
-  _endProtection(s) {
-    s.protT = 0; s.endure = false;
+  _endProtection(s) {   // conspicuous action / downed: everything ends
+    s.protT = 0; s.endure = false; s.elusT = 0;
   }
 
-  _downSurvivor(s) {
-    const sv = this.cfg.survivor;
-    s.st = S_DOWNED; s.bleedT = sv.bleedOutS; s.heal = 0; s.dwT = -1; s.mendP = 0; this.stats.downs++;
+  _downSurvivor(s) {    // bleed-out budget is cumulative: NOT refilled here
+    s.st = S_DOWNED; s.heal = 0; s.dwT = -1; s.mendP = 0; s.wiggle = 0; this.stats.downs++;
     this._endProtection(s);
   }
 
+  // escape: reach the exit of an open gate. Standing and downed (crawling) survivors; never mid-vault.
   _checkExit(s) {
-    if (!this.gatesPowered || s.vault || s.st > S_INJURED) return;
+    if (!this.gatesPowered || s.vault || (s.st !== S_HEALTHY && s.st !== S_INJURED && s.st !== S_DOWNED)) return;
     const reach = this.cfg.gates.exitReach;
-    for (const g of this.gates) {
-      if (g.open && hyp(g.ex - s.x, g.ez - s.z) <= reach) { this._escape(s, g); return; }
-    }
+    for (const g of this.gates) if (g.open && hyp(g.ex - s.x, g.ez - s.z) <= reach) { this._escape(s, { gate: g.id }); return; }
   }
 
-  _escape(s, gate) {
+  _escape(s, how) {
+    const downed = s.st === S_DOWNED;
     s.st = S_ESCAPED; s.outcome = 'escaped'; s.tOut = this.t; s.vx = s.vz = 0;
-    this.ev('escape', { who: s.id, gate: gate.id });
-    this._afterOut();
+    this.ev('escape', { who: s.id, ...how, ...(downed ? { crawled: true } : {}) });
   }
 
   _kill(s, cause) {
@@ -1026,11 +1195,6 @@ export class Match {
     s.st = S_DEAD; s.outcome = 'dead'; s.cause = cause; s.tOut = this.t; s.vx = s.vz = 0; s.vault = null;
     this.ev('death', { who: s.id, cause });
     this._notifyMates(s, { type: 'died', who: s.id, t: this.t });
-    this._afterOut();
-  }
-
-  _afterOut() {
-    if (!this.gatesPowered && this.inGameCount() === 1) this._powerGates('last-survivor');
   }
 
   _powerGates(reason) {
@@ -1044,8 +1208,7 @@ export class Match {
 
   _wiggleFree(s) {
     const H = this.hunter;
-    H.carrying = -1; s.st = S_DOWNED; s.wiggle = 0; s.prog = 0;
-    s.bleedT = Math.max(s.bleedT, 1);
+    H.carrying = -1; s.st = S_INJURED; s.wiggle = 0; s.heal = 0; s.prog = 0;   // a successful escape releases the survivor INJURED
     H.stunT = this.cfg.hunter.wiggleStunS; H.prog = 0; H.windT = 0;
     this.stats.wiggles++; this.stats.stuns++;
     this.ev('wiggle', { who: s.id });
@@ -1079,8 +1242,8 @@ export class Match {
     this.stats.stuns++;
     if (H.carrying >= 0) {
       const c = this.survivors[H.carrying];
-      H.carrying = -1; c.st = S_DOWNED; c.wiggle = 0;
-      this.ev('dropped', { who: c.id });
+      H.carrying = -1; c.st = S_INJURED; c.wiggle = 0; c.heal = 0;   // pallet save: released INJURED
+      this.ev('dropped', { who: c.id, state: 'injured' });
     }
   }
 
@@ -1091,18 +1254,22 @@ export class Match {
       if (this.gatesPowered) { g.nWork = 0; g.lastN = 0; continue; }
       if (g.nWork === 0) {
         if (g.regress) {
+          g.cancelP = 0;                                  // repair stopped before the cancel threshold: regression resumes
           g.p -= cfg.regressRate * dt;
           if (g.p <= EPS) { g.p = 0; g.regress = false; this.ev('genRegressStop', { gen: g.id, reason: 'empty' }); }
         }
         continue;
       }
-      if (g.regress) { g.regress = false; this.ev('genRegressStop', { gen: g.id, reason: 'repair' }); }
       const n = g.nWork;
       const eff = cfg.efficiency[Math.min(n, cfg.efficiency.length) - 1];
       g.p += n * eff * dt;
+      if (g.regress) {   // anti-tap: passive regression is paused while repairing; it only stops after cancelRegressFrac of real repair
+        g.cancelP += n * eff * dt;
+        if (g.cancelP >= cfg.cancelRegressFrac * this.need - EPS) { g.regress = false; g.cancelP = 0; this.ev('genRegressStop', { gen: g.id, reason: 'repair' }); }
+      }
       for (let k = 0; k < g.lastN; k++) { const w = this.survivors[g.wIds[k]]; w.repairS += dt; w.repairC += (eff * dt) / this.need; }
-      const pf = cfg.fumbleChancePerS * dt;
-      for (let k = 0; k < n; k++) {
+      const pf = cfg.fumbleChancePerS * dt;   // legacy fumble, off by default (no world-rng draw at 0)
+      for (let k = 0; pf > 0 && k < n; k++) {
         if (this.world.next() < pf) {
           g.p = Math.max(0, g.p - cfg.fumbleLoss * this.need);
           this.stats.fumbles++;
@@ -1126,6 +1293,8 @@ export class Match {
   _hurt(s) {
     const sv = this.cfg.survivor;
     this.stats.hits++; s.hitT = this.t;   // no body collision for survivor.noCollideAfterHitS
+    s.elusT = 0;                          // any hit ends unhook Elusive
+    this._resetBloodlust();               // Bloodlust is lost on a hit
     if (s.st === S_HEALTHY) { s.st = S_INJURED; s.boostT = sv.hitBoostS; s.gruntT = 0; this.ev('hit', { who: s.id, state: 'injured' }); }
     else if (s.st === S_INJURED && s.endure && s.protT > 0) {   // Endurance: survive the downing hit with Deep Wound
       s.endure = false; s.boostT = sv.hitBoostS; s.dwT = this.cfg.unhook.deepWoundS; s.mendP = 0; s.gruntT = 0;
@@ -1155,26 +1324,26 @@ export class Match {
     if (H.stunT > 0) { H.stunT = Math.max(0, H.stunT - dt); H.curAct = 'stunned'; H.vx = H.vz = 0; return; }
     if (H.vault) { this._advanceVault(H); H.curAct = 'vault'; return; }
     const carrying = H.carrying >= 0;
-    if (A.act === 'attack' && H.windT <= 0 && H.cdT <= 0 && !carrying) {
+    if (A.act === 'attack' && H.windT <= 0 && H.cdT <= 0) {   // (a carrying hunter may swing too, e.g. to clear a body block)
       H.windT = hc.windupS; H.prog = 0;
       if (A.face) H.face = Math.atan2(A.face.z - H.z, A.face.x - H.x);
       else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) H.face = Math.atan2(t.z - H.z, t.x - H.x); }
     }
     if (H.windT > 0) {
       // lunge forward along the facing, but plant once a valid target is already inside range + arc (no overshoot)
-      if (!this._targetInReach()) this._applyMove(H, Math.cos(H.face), Math.sin(H.face), hc.speed * hc.lungeSpeedMult * dt, true);
+      const lunge = carrying ? hc.carrySpeed : hc.speed * hc.lungeSpeedMult;   // no lunge while carrying
+      if (!this._targetInReach()) this._applyMove(H, Math.cos(H.face), Math.sin(H.face), lunge * dt, true);
       else { H.vx = H.vz = 0; }
       H.curAct = 'attack';
       H.windT -= dt;
       if (H.windT <= EPS) { H.windT = 0; this._resolveAttack(); }
       return;
     }
-    const speed = carrying ? hc.carrySpeed : (H.cdT > 0 ? H.cdSpeed : hc.speed);
-    const moving = this._steer(H, A, speed);
+    const moving = this._steer(H, A, this._hunterSpeed());
     if (moving) {
       this._applyMove(H, this._sdx, this._sdz, this._sstep, true);
       if (!A.face) H.face = Math.atan2(this._sdz, this._sdx);
-    } else { H.vx = H.vz = 0; }
+    } else { H.vx = H.vz = 0; H.bodyT = 0; }
     if (A.face) H.face = Math.atan2(A.face.z - H.z, A.face.x - H.x);
     if (H.vault) { H.curAct = 'vault'; return; }
     if (!moving && A.act && H.cdT <= 0) {
@@ -1186,7 +1355,7 @@ export class Match {
           if (!t) { let bd = Infinity; for (const o of this.survivors) if (o.st === S_DOWNED) { const d = hyp(o.x - H.x, o.z - H.z); if (d < bd) { bd = d; t = o; } } }
           if (!t || t.st !== S_DOWNED || t.vault || hyp(t.x - H.x, t.z - H.z) > cfg.reach.pickup) break;
           if (same('pickup', t.id) >= hc.pickupS - EPS) {
-            t.st = S_CARRIED; t.wiggle = 0; t.prog = 0; H.carrying = t.id; H.prog = 0; H.curAct = null;
+            t.st = S_CARRIED; t.prog = 0; H.carrying = t.id;   // wiggle progress persists across drops / re-pickups H.prog = 0; H.curAct = null;
             this.stats.pickups++;
             this.ev('pickup', { who: t.id });
           }
@@ -1202,14 +1371,14 @@ export class Match {
         }
         case 'kickGen': {
           if (carrying || this.gatesPowered) break;
-          const kickable = c => !c.done && !c.regress && c.p > EPS;
+          const kickable = c => !c.done && !c.regress && c.p > EPS && c.kicks < cfg.gens.maxKicks;   // anti-tap kick limit
           let g = A.target !== undefined && A.target !== null ? this.genById.get(A.target) : null;
           if (!g) { let bd = Infinity; for (const c of this.gens) { if (!kickable(c)) continue; const d = rectDist(H.x, H.z, c.x0, c.z0, c.x1, c.z1); if (d < bd) { bd = d; g = c; } } }
           if (!g || !kickable(g) || rectDist(H.x, H.z, g.x0, g.z0, g.x1, g.z1) > cfg.reach.kickGen) break;
           if (same('kickGen', g.id) >= hc.kickS - EPS) {
             g.p = Math.max(0, g.p - cfg.gens.kickLoss * this.need);
-            g.regress = g.p > EPS;
-            this.ev('genKick', { gen: g.id, progress: g.p / this.need });
+            g.regress = g.p > EPS; g.cancelP = 0; g.kicks++;
+            this.ev('genKick', { gen: g.id, progress: g.p / this.need, kicks: g.kicks });
             H.prog = 0; H.curAct = null;
           }
           break;
@@ -1223,14 +1392,44 @@ export class Match {
             for (const c of p.cells) this.coll[c] = 0;   // (sight grid is shared across matches: broken pallets stay semi-transparent)
             this.stats.palletsBroken++;
             this.ev('palletBreak', { pallet: p.id });
+            this._resetBloodlust();                       // Bloodlust is lost on breaking a pallet
             H.prog = 0; H.curAct = null;
           }
+          break;
+        }
+        case 'drop': {                                    // voluntary drop: survivor downed at the hunter's feet, +25 % wiggle
+          if (!carrying) break;
+          if (same('drop', H.carrying) >= hc.dropS - EPS) { this._dropCarried(); H.prog = 0; H.curAct = null; }
+          break;
+        }
+        case 'openGate': {                                // hunter opens a powered gate, only before the collapse has begun
+          if (carrying || !this.gatesPowered || this.endgameT >= 0) break;
+          let g = A.target !== undefined && A.target !== null ? this.gates.find(x => x.id === A.target) : null;
+          if (!g) { let bd = Infinity; for (const c of this.gates) { if (c.open) continue; const d = hyp(c.lx - H.x, c.lz - H.z); if (d < bd) { bd = d; g = c; } } }
+          if (!g || g.open || hyp(g.lx - H.x, g.lz - H.z) > cfg.reach.lever) break;
+          if (same('openGate', g.id) >= hc.openGateS - EPS) { this._openGate(g, 'hunter'); H.prog = 0; H.curAct = null; }
           break;
         }
         default: break;
       }
     }
     if (H.curAct === null) H.prog = 0;
+  }
+
+  // normal movement speed: carrying (also during a cooldown: the slower of the two), cooldown, else base + Bloodlust
+  _hunterSpeed() {
+    const H = this.hunter, hc = this.cfg.hunter;
+    if (H.carrying >= 0) return H.cdT > 0 ? Math.min(hc.carrySpeed, H.cdSpeed) : hc.carrySpeed;
+    return H.cdT > 0 ? H.cdSpeed : hc.speed + this._bloodlustBonus();
+  }
+
+  _dropCarried() {
+    const H = this.hunter, c = this.survivors[H.carrying], sv = this.cfg.survivor;
+    H.carrying = -1;
+    c.st = S_DOWNED; c.x = H.x; c.z = H.z; c.vx = c.vz = 0;
+    c.wiggle = Math.min(sv.wiggleS, c.wiggle + this.cfg.hunter.dropWiggleBonus * sv.wiggleS);
+    this.stats.drops++;
+    this.ev('drop', { who: c.id, wiggle: c.wiggle / sv.wiggleS });
   }
 
   _targetInReach() {
@@ -1279,14 +1478,17 @@ export class Match {
     s.hookCount++; this.stats.hooks++;
     s.wiggle = 0; s.vault = null;
     this._notifyMates(s, { type: 'hooked', who: s.id, hookId: hk.id, x: hk.x, z: hk.z, t: this.t });   // HUD: when/where
-    if (s.hookCount >= hcfg.maxHooks) {
-      this.ev('hook', { who: s.id, hook: hk.id, count: s.hookCount, stage: 3 });
+    // hook-stage accounting: every hooking consumes one stage (on top of stages consumed by timers on earlier hooks)
+    s.hookStage++;
+    const last = this.inGameCount() === 1;             // the last survivor left is sacrificed immediately
+    if (s.hookStage >= hcfg.deathStage || last) {
+      this.ev('hook', { who: s.id, hook: hk.id, count: s.hookCount, stage: s.hookStage, ...(last ? { last: true } : {}) });
       s.st = S_DOWNED; // so _kill doesn't think it is carried
-      this._kill(s, 'hook3');
+      this._kill(s, s.hookStage >= hcfg.deathStage ? 'hook3' : 'lastHook');
       return;
     }
     hk.occ = s.id; s.hookIdx = hk.idx; s.st = S_HOOKED;
-    s.hookStage = s.hookCount === 1 ? 1 : 2; s.hookTimer = hcfg.stageS;
+    s.hookTimer = hcfg.stageS;
     s.x = hk.x; s.z = hk.z; s.vx = s.vz = 0;
     s.resolve = 0; s.campT = 0; s.outT = 0; s.selfT = -1;
     const gs = this.cfg.antiCamp ? this.cfg.antiCamp.graceS : 0;
@@ -1302,22 +1504,28 @@ export class Match {
       if (s.st >= S_DEAD) continue;
       if (s.boostT > 0) s.boostT = Math.max(0, s.boostT - dt);
       if (s.ghostT > 0) s.ghostT = Math.max(0, s.ghostT - dt);
-      if (s.protT > 0) { s.protT = Math.max(0, s.protT - dt); if (s.protT <= EPS) { s.protT = 0; this._endProtection(s); } }
-      if (s.dwT >= 0 && s.st === S_INJURED && s.curAct !== 'mend') {
+      if (s.protT > 0) { s.protT = Math.max(0, s.protT - dt); if (s.protT <= EPS) { s.protT = 0; s.endure = false; } }
+      if (s.elusT > 0) { s.elusT = Math.max(0, s.elusT - dt); if (s.elusT <= EPS) s.elusT = 0; }
+      // Deep Wound timer: paused while running or being mended (self or by a teammate) this tick
+      if (s.dwT >= 0 && s.st === S_INJURED && s.ranTick !== this.tick && s.mendTick !== this.tick) {
         s.dwT -= dt;
         if (s.dwT <= EPS) { this._downSurvivor(s); this.ev('deepWoundDown', { who: s.id }); this._scream(s, 'down'); continue; }
       }
       if (s.st === S_DOWNED) {
-        s.bleedT -= dt;
-        if (s.bleedT <= EPS) this._kill(s, 'bleedout');
+        // automatic recovery while stationary, up to recoverCap of the downed->injured heal (crawling pauses it)
+        const cap = cfg.survivor.recoverCap * cfg.survivor.healS;
+        if (!s.crawled && s.heal < cap) s.heal = Math.min(cap, s.heal + cfg.survivor.recoverRate * dt);
+        s.bleedT -= dt;                                  // cumulative budget (paused while carried / hooked)
+        if (s.bleedT <= EPS) { s.bleedT = 0; this._kill(s, 'bleedout'); }
       } else if (s.st === S_HOOKED) {
         if (this._antiCamp(s) || s.st !== S_HOOKED) continue;   // self-unhook attempt pauses the hook timer
         s.hookTimer -= dt;
         if (s.hookTimer <= EPS) {
-          if (s.hookStage === 1) { s.hookStage = 2; s.hookTimer = cfg.hooks.stageS; this.ev('hookStage', { who: s.id, stage: 2 }); }
-          else this._kill(s, 'hookDeath');
+          s.hookStage++;                                 // reaching struggle consumes a stage
+          if (s.hookStage >= cfg.hooks.deathStage) this._kill(s, 'hookDeath');
+          else { s.hookTimer = cfg.hooks.stageS; this.ev('hookStage', { who: s.id, stage: s.hookStage }); }
         }
-      } else if (s.st === S_INJURED && s.protT <= 0) {   // elusive: no grunts of pain
+      } else if (s.st === S_INJURED && s.elusT <= 0) {   // elusive: no grunts of pain
         s.gruntT -= dt;
         if (s.gruntT <= 0) {
           const dx = s.x - H.x, dz = s.z - H.z;
@@ -1328,8 +1536,9 @@ export class Match {
         }
       }
     }
+    if (H.ghostT > 0) H.ghostT = Math.max(0, H.ghostT - dt);
     if (this.endgameT >= 0) {
-      this.endgameT -= dt;
+      this.endgameT -= dt * (this._collapseSlowed() ? cfg.gates.collapseSlowFactor : 1);
       if (this.endgameT <= EPS) {
         this.endgameT = 0;
         for (const s of this.survivors) if (s.st < S_DEAD) this._kill(s, 'endgame');
@@ -1376,7 +1585,7 @@ export class Match {
       gens: this.gens.map(g => g.id), pallets: this.md.pallets.map(p => p.id),
       legend: {
         h: '[x, z, facing(rad), carryingSurvivorId|-1, status 0 normal|1 windup|2 cooldown|3 stunned|4 vaulting|5 interacting]',
-        s: '[x, z, facing, state 0 healthy|1 injured|2 downed|3 carried|4 hooked|5 dead|6 escaped, act 0 none|1 repair|2 heal|3 rescue|4 dropPallet|5 openGate|6 wiggle|7 vault|8 mend, boost 0|1]',
+        s: '[x, z, facing, state 0 healthy|1 injured|2 downed|3 carried|4 hooked|5 dead|6 escaped, act 0 none|1 repair|2 heal|3 rescue|4 dropPallet|5 openGate|6 wiggle|7 vault|8 mend|9 selfUnhook, boost 0|1]',
         g: 'generator progress 0..1 in meta.gens order', p: 'pallet state per meta.pallets order: 0 up|1 dropped|2 broken',
       },
     };

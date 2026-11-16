@@ -16,18 +16,32 @@ export function survivorBrain(ctx) {
   const { generators: gens, pallets, exitGates, hooks } = ctx.map;
   let genTarget = -1;
   const slots = makeSlotPicker(ctx.config.reach.repairSlot);
+  let holdUntil = -1;          // stand still (accept a heal) until this time
 
   return {
     decide(obs, api) {
       const me = obs.self, nav = api.nav, h = obs.hunter;
+      // hooked: the minimal hooked obs; take the Resolve self-unhook the moment it is offered, else ask for help
+      if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : { intent: 'help' };
       if (me.state === 'carried') return { act: 'wiggle' };
       if (me.state === 'downed') {
+        // crawl out through an open gate if possible, else away from a visible hunter, else lie still (recover)
+        for (const g of obs.gates) if (g.open) { const gd = exitGates.find(x => x.id === g.id); return { moveTo: { x: gd.exit.x, z: gd.exit.z } }; }
         if (h) { const dx = me.x - h.x, dz = me.z - h.z; return { moveDir: { x: dx, z: dz } }; }
         return {};
       }
+      // a teammate right next to me says it's healing me: stand still for a moment (healing needs a stationary patient)
+      for (const n of obs.newNotifications) {
+        if (n.type !== 'intent' || n.intent !== 'healing') continue;
+        const t = obs.teammates.find(x => x.id === n.from);
+        if (t && hyp(t.x - me.x, t.z - me.z) <= 2.5 && me.state !== 'healthy') holdUntil = obs.t + 3;
+      }
+      if (obs.t < holdUntil && !h) return {};
+      if (me.deepWoundS !== null && !h) return { act: 'mend' };              // self-mend Deep Wound
 
       // ---- hunter in sight: pallets first, then run ----
       if (h) {
+        const intent = me.chased ? 'chasingMe' : undefined;
         const dh = hyp(h.x - me.x, h.z - me.z);
         if (dh <= 3.0) {
           for (let i = 0; i < pallets.length; i++) {
@@ -43,7 +57,7 @@ export function survivorBrain(ctx) {
           const dm = nav.dist(me, pc);
           if (dm < bd && dm < 25 && dm < hyp(h.x - p.cx, h.z - p.cz) * 0.9) { bd = dm; best = pc; }
         }
-        if (best) return { moveTo: best };
+        if (best) return { moveTo: best, intent };
         // else just flee (prefer the farthest generator from the hunter, else straight away)
         let far = null, fd = -1;
         for (const g of gens) { const d = hyp(g.x - h.x, g.z - h.z); if (d > fd && nav.dist(me, g) < 1e8) { fd = d; far = g; } }
@@ -60,9 +74,15 @@ export function survivorBrain(ctx) {
           if (hk) return { moveTo: { x: hk.x, z: hk.z } };
         }
       }
+      for (const t of obs.teammates) {   // mend a teammate's Deep Wound (HUD shows it)
+        if (t.state === 'injured' && obs.hud[t.id].deepWound !== null && me.deepWoundS === null) {
+          if (hyp(t.x - me.x, t.z - me.z) <= 1.5) return { act: 'mend', target: t.id };
+          return { moveTo: { x: t.x, z: t.z } };
+        }
+      }
       for (const t of obs.teammates) {
         if ((t.state === 'injured' || t.state === 'downed') && me.state === 'healthy') {
-          if (hyp(t.x - me.x, t.z - me.z) <= 1.5) return { act: 'heal', target: t.id };
+          if (hyp(t.x - me.x, t.z - me.z) <= 1.5) return { act: 'heal', target: t.id, intent: t.state === 'injured' ? 'healing' : undefined };
           return { moveTo: { x: t.x, z: t.z } };
         }
       }
@@ -73,6 +93,8 @@ export function survivorBrain(ctx) {
         for (const c of obs.gates) { const gd = exitGates.find(x => x.id === c.id); const d = nav.dist(me, c.open ? gd.exit : gd.lever); if (d < bd) { bd = d; g = c; } }
         if (g) {
           const gd = exitGates.find(x => x.id === g.id);
+          // a teammate is crawling out: wait at the lever (leaving would end the match for them: all-down rule)
+          if (g.open && obs.downedAuras.length && obs.endgame && obs.endgame.remainingS > 15) return { moveTo: { x: gd.lever.x, z: gd.lever.z } };
           if (g.open) return { moveTo: { x: gd.exit.x, z: gd.exit.z } };
           if (hyp(gd.lever.x - me.x, gd.lever.z - me.z) <= 1.4) return { act: 'openGate', target: g.id };
           return { moveTo: { x: gd.lever.x, z: gd.lever.z } };
@@ -90,7 +112,8 @@ export function survivorBrain(ctx) {
         }
       }
       if (genTarget >= 0) {
-        return slots.act(obs, genTarget, gens[genTarget]);   // walk to a free side slot, repair there
+        const a = slots.act(obs, genTarget, gens[genTarget]);   // walk to a free side slot, repair there
+        return a.act === 'repair' && me.act !== 'repair' ? { ...a, intent: 'goingForGen' } : a;
       }
       return {};
     },
@@ -103,13 +126,15 @@ export function hunterBrain(ctx) {
   let lastGoto = null;
   let pdTick = -99, pdCache = 0;
   let hookTarget = null;
+  let hookN = 0, campHook = null, campUntil = -1;   // camp every 2nd hook for 45 s (exercises Resolve)
 
   return {
     decide(obs, api) {
       const me = obs.self, nav = api.nav;
 
       if (me.carrying === null) hookTarget = null;
-      // ---- carrying: bring to the nearest free hook ----
+      // ---- carrying: drop to chase if the collapse is on or a standing survivor is right there, else hook ----
+      if (me.carrying !== null && (obs.endgame || obs.survivors.some(s => (s.state === 'healthy' || s.state === 'injured') && hyp(s.x - me.x, s.z - me.z) < 3))) return { act: 'drop' };
       if (me.carrying !== null) {
         if (hookTarget === null || obs.hooked.some(x => x.hookId === hookTarget.id)) {   // pick once per carry
           const taken = new Set(obs.hooked.map(x => x.hookId));
@@ -118,12 +143,15 @@ export function hunterBrain(ctx) {
         }
         const hk = hookTarget;
         if (!hk) return {};
-        if (hyp(hk.x - me.x, hk.z - me.z) <= 1.3) return { act: 'hook', target: hk.id };
+        if (hyp(hk.x - me.x, hk.z - me.z) <= 1.3) {
+          if (me.act === 'hook' && me.progress >= ctx.config.hunter.hookS - 0.15 && ++hookN % 2 === 0) { campHook = hk; campUntil = obs.t + 45; }
+          return { act: 'hook', target: hk.id };
+        }
         return { moveTo: { x: hk.x, z: hk.z } };
       }
 
       // ---- visible survivors ----
-      if (obs.survivors.length) {
+      if (obs.survivors.length && !obs.endgame) {   // (the baseline gives up chasing once the collapse runs)
         const vis = obs.survivors.filter(s => s.state !== 'hooked' && s.state !== 'carried');
         let tgt = null, bd = Infinity;
         for (const s of vis) {
@@ -155,6 +183,13 @@ export function hunterBrain(ctx) {
         }
       }
 
+      // ---- camping a fresh hook ----
+      if (campHook && obs.t < campUntil && obs.hooked.some(x => x.hookId === campHook.id)) {
+        if (hyp(campHook.x - me.x, campHook.z - me.z) > 2.5) return { moveTo: { x: campHook.x, z: campHook.z } };
+        return {};
+      }
+      campHook = null;
+
       // ---- investigate sounds / marks / notifications ----
       for (const n of obs.newNotifications) if (n.x !== undefined) lastGoto = { x: n.x, z: n.z };
       if (obs.grunts.length) { const g = obs.grunts[obs.grunts.length - 1]; lastGoto = { x: g.x, z: g.z }; }
@@ -162,6 +197,13 @@ export function hunterBrain(ctx) {
       if (lastGoto) {
         if (hyp(lastGoto.x - me.x, lastGoto.z - me.z) < 2.5) lastGoto = null;
         else return { moveTo: lastGoto };
+      }
+
+      // ---- gates powered, nobody in sight, no collapse yet: open the nearest gate (starts the collapse) ----
+      if (obs.gatesPowered && !obs.endgame) {
+        let gd = null, bd = Infinity;
+        for (const g of ctx.map.exitGates) { const d = hyp(g.lever.x - me.x, g.lever.z - me.z); if (d < bd) { bd = d; gd = g; } }
+        if (gd) return bd <= 1.3 ? { act: 'openGate', target: gd.id } : { moveTo: { x: gd.lever.x, z: gd.lever.z } };
       }
 
       // ---- patrol generators (most progressed first) ----
