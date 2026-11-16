@@ -9,8 +9,6 @@ export const survivorSpace = {
   vaultDist:     [1.5, 8, 4],    // cross a window/dropped pallet when hunter on our side within this
   loopRace:      [0.4, 1.2, 0.8],// take a loop only if my path to its entry < loopRace * the hunter's distance to it
   altruism:      [0, 1, 0.6],    // willingness to rescue / heal
-  rescueDelayS:  [0, 40, 8],     // wait after spotting a hooked teammate (anti-camp)
-  campAvoidDist: [0, 20, 8],     // don't approach a hook while the hunter is seen within this of it
   healDist:      [0, 40, 15],    // heal visible injured/downed teammates within this
   genDistW:      [0, 2, 1],
   genProgW:      [0, 2, 1],
@@ -21,13 +19,10 @@ export const survivorSpace = {
   mendRiskDist:  [0, 40, 16],    // only mend Deep Wound if the hunter isn't seen within this
   holdMaxS:      [0, 20, 4],     // max time to hold at a loop entry while the hunter isn't pressing us (seen + approaching)
   // ---- HUD-driven teamwork (solo queue: no comms, but the HUD shows states / gens / chases / hooks / downed auras) ----
-  rescueSlack:   [0, 40, 10],    // go for a rescue if my distance <= the closest teammate's estimated distance + this
-  unknownDist:   [10, 80, 40],   // assumed distance to a hook for a teammate whose whereabouts the HUD doesn't reveal
-  rescueWhenChased: [0, 1, 0.6], // >0.5: skip the rescue delay while another survivor is being chased (hunter busy)
+  ...rescueSpace,                // rescue utility (closest / stage urgency / camping / busy hunter / claims / own risk) + chaseFromHookW: rescue.js
   trustChase:    [0, 1, 0.6],    // >0.5: don't abandon my gen on terror while another survivor is being chased
   downedStillDist: [0, 40, 12],  // downed: lie still (auto-recover to 95%) unless the hunter is seen within this; then crawl away
   seekHeal:      [0, 1, 0.4],    // >0.5: when injured, walk to a visible healthy teammate and stand still to be healed
-  trustIntent:   [0, 1, 0.6],    // >0.5: skip a rescue if a teammate just said "going for unhook" (unless I'm right there)
   // ---- generator choice ----
   farFromHunterW: [0, 2, 0.5],   // prefer gens far from the hunter's last known position (linear up to 60 m)
   genJitter:     [0, 2, 0.3],    // per-survivor fixed random preference per gen (breaks the four-identical-bots symmetry)
@@ -81,6 +76,7 @@ import { HunterBelief } from './hunterbelief.js';
 import { LoopModel } from './loops.js';
 import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
+import { rescueSpace, makeRescuePlanner } from './rescue.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
@@ -135,10 +131,6 @@ export function makeSurvivor(P) {
     const slots = makeSlotPicker(ctx.config.reach.repairSlot);   // generator side slots (one repairer per side)
     let fleePoint = null, fleeT = -99;
     let sneakStart = -1;
-    const hookedAt = {};          // teammate id -> { hookId, x, z, t } from the HUD hook notifications
-    let notesRead = 0;
-    let unhookIntentT = -99;      // last time a teammate said "going for unhook"
-    const sentUnhookFor = {};     // hooked teammate id -> hook time we announced for
     let helpSentT = -99, chaseSentT = -99;
 
     const anchorUsable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] !== 'broken');
@@ -162,6 +154,7 @@ export function makeSurvivor(P) {
       hideT = obs.t; hideSpot = null; hideLook = null; hidePeekV = 0;
       const tg = [{ x: h.x, z: h.z, p: 1 }, { x: h.x + (h.vx || 0) * 1.5, z: h.z + (h.vz || 0) * 1.5, p: 0.5 }];
       let best = null, bs = -Infinity, nFound = 0;
+      const hkN = rescue.nearestHook(me);   // peek-spot score is ~1-scaled: the route bias enters at a tenth
       for (let rr = 2; rr <= P.peekMoveMaxM && nFound < 8; rr += 2) {
         for (let k = 0; k < 12; k++) {
           const a = (k / 12) * 2 * Math.PI, pt = { x: me.x + Math.cos(a) * rr, z: me.z + Math.sin(a) * rr };
@@ -169,7 +162,7 @@ export function makeSurvivor(P) {
           if (!api.walkClear(me, pt)) continue;
           nFound++;
           const pv = P.peekW > 0 ? peekValue(api, pt, tg) : { v: 0, look: null };
-          const sc = -rr / Math.max(2, P.peekMoveMaxM) + P.peekW * pv.v;
+          const sc = -rr / Math.max(2, P.peekMoveMaxM) + P.peekW * pv.v + 0.1 * rescue.fromHookTerm(me, hkN, pt);
           if (sc > bs) { bs = sc; best = pt; hideLook = pv.look; hidePeekV = pv.v; }
         }
       }
@@ -180,6 +173,8 @@ export function makeSurvivor(P) {
     // ---- hiding from an UNSEEN hunter: own belief map + static cover ----
     const belief = new HunterBelief(ctx, { spread: P.hbSpread });
     const beliefOn = P.hideThreat <= 1 || P.genThreatW > 0;   // otherwise only the terror trend is tracked
+    const beliefFull = beliefOn || P.rescueCampFear > 0;       // the rescue's camp estimate needs the full belief update
+    const rescue = makeRescuePlanner(ctx, P, belief);          // hooked teammates, teammate whereabouts, rescue utility
     // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
     const CAM = ctx.config.survivor.camera || { enabled: false };
     const camAt = (x, z, yaw) => {
@@ -301,6 +296,7 @@ export function makeSurvivor(P) {
     function pickHideSpot(obs, api, me) {
       const fl = fleeingMates(obs, me);
       const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
+      const hkN = rescue.nearestHook(me);
       const R = P.hideMoveMaxM, W = M.w, Hh = M.h;
       const here = { x: me.x, z: me.z };
       if (R < 1.5) return here;
@@ -332,6 +328,7 @@ export function makeSurvivor(P) {
         if (top) s -= P.exposeW * belief.exposure(api, c.pt, top);
         if (fl.length) s += P.followFleeW * 10 * alignTo(fl, me, c.pt);
         if (cc) s += P.genClusterW * 10 * clusterAt(cc, c.pt);
+        if (hkN) s += rescue.fromHookTerm(me, hkN, c.pt);
         const pv = P.peekW > 0 && pts.length ? peekValue(api, c.pt, pts) : { v: 0, look: null };
         s += P.peekW * pv.v;
         if (hide && hide.spot && d2(c.pt, hide.spot) < 1.5) s += 0.1;     // keep the current spot unless clearly worse
@@ -528,7 +525,8 @@ export function makeSurvivor(P) {
       if (!hp) return null;
       // mid-vault: committed until landing (no re-planning); keep pushing through
       if (me.vaulting) { const c = myVault ? myVault.c : null; return c !== null ? { moveTo: loops.sidePt[c ^ 1] } : {}; }
-      const extra = (pt) => P.chaseToMatesW * 10 * mateCloseness(mates, pt) - P.edgeAvoidW * 10 * edgeness(pt) + P.followFleeW * 10 * alignTo(fl, me, pt) + P.genClusterW * 10 * clusterAt(cc, pt);
+      const hk = rescue.nearestHook(me);
+      const extra = (pt) => rescue.fromHookTerm(me, hk, pt) + P.chaseToMatesW * 10 * mateCloseness(mates, pt) - P.edgeAvoidW * 10 * edgeness(pt) + P.followFleeW * 10 * alignTo(fl, me, pt) + P.genClusterW * 10 * clusterAt(cc, pt);
       const dhm = d2(hp, me);
       if (circ && !circ.seq.every((x) => crossOK(anchors[x >> 1], obs))) circ = null;
       if (circ && circ.phase === 'toP' && d2(me, loops.sidePt[circ.seq[circ.i]]) > P.loopTravelMaxM + 8) circ = null;
@@ -679,6 +677,7 @@ export function makeSurvivor(P) {
       know,
       loops,
       belief,
+      rescue,
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -690,7 +689,7 @@ export function makeSurvivor(P) {
         // hooked brains are called now (minimal obs): take the Resolve self-unhook when offered (was automatic before)
         if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
         if (me.state === 'carried') return { act: 'wiggle' };
-        belief.update(obs, api, 2.0, beliefOn);   // heavy belief step every 2 s (sightings, hooks, auras, layer changes apply at once)
+        belief.update(obs, api, 2.0, beliefFull);   // heavy belief step every 2 s (sightings, hooks, auras, layer changes apply at once)
         stats.decides++;
         if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; if (obs.t - lastPeekT < 5) stats.peekFound++; }   // chase on me began within 5 s of hiding
         wasChased = !!me.chased;
@@ -751,14 +750,7 @@ export function makeSurvivor(P) {
 
         // ---- HUD bookkeeping ----
         const hud = obs.hud || null;
-        const notes = obs.notifications || [];
-        for (; notesRead < notes.length; notesRead++) {
-          const n = notes[notesRead];
-          if (n.type === 'hooked') hookedAt[n.who] = { hookId: n.hookId, x: n.x, z: n.z, t: n.t };
-          else if (n.type === 'unhooked' || n.type === 'died') delete hookedAt[n.who];
-          else if (n.type === 'intent' && n.intent === 'goingForUnhook') unhookIntentT = n.t;
-        }
-        if (hud) for (const k of Object.keys(hookedAt)) if (hud[k] && hud[k].state !== 'hooked') delete hookedAt[k];
+        rescue.update(obs);
         const otherChased = !!hud && hud.some((x) => x.id !== me.id && x.chased);
 
         // ---- threat state ----
@@ -858,32 +850,10 @@ export function makeSurvivor(P) {
           if (far !== null) return slots.act(obs, far, obs.gens[far], { walk, hold: holdProtection });
         }
 
-        // ---- altruism: rescue (the HUD announces every hook with its location) ----
+        // ---- altruism: rescue (utility: am I the closest, stage urgency, camping, busy hunter, claims, own risk; rescue.js) ----
         if (P.altruism > 0.25) {
-          for (const k of Object.keys(hookedAt)) {
-            const j = +k, hk = hookedAt[k];
-            if (j === me.id) continue;
-            const waited = obs.t - hk.t;
-            const busy = otherChased && P.rescueWhenChased > 0.5;
-            if (waited < P.rescueDelayS * (1.2 - P.altruism) && !busy) continue;
-            if (h && d2(h, hk) < P.campAvoidDist) continue;
-            // am I (roughly) the closest? teammates seen recently are near their last sighting; others unknown
-            // (the HUD shows activity type only, not which generator)
-            const myD = nav.dist(me, hk);
-            let best = Infinity;
-            if (hud) for (const x of hud) {
-              if (x.id === me.id || x.id === j || x.state === 'dead' || x.state === 'escaped' || x.state === 'hooked' || x.state === 'carried' || x.state === 'downed') continue;
-              const ls = obs.lastSeen[x.id];
-              const est = ls && obs.t - ls.t < 15 ? d2(ls, hk) : P.unknownDist;
-              if (est < best) best = est;
-            }
-            if (myD > best + P.rescueSlack) continue;
-            const claimedByOther = P.trustIntent > 0.5 && obs.t - unhookIntentT < 20 && sentUnhookFor[j] !== hk.t && myD > 12;
-            if (claimedByOther) continue;
-            if (d2(me, hk) <= 1.6 && !holdProtection) return { act: 'rescue', target: j };
-            if (sentUnhookFor[j] !== hk.t) { sentUnhookFor[j] = hk.t; return say({ moveTo: { x: hk.x, z: hk.z } }, 'goingForUnhook'); }
-            return { moveTo: { x: hk.x, z: hk.z } };
-          }
+          const ra = rescue.decide(obs, api, { holdProtection, say, beliefFull });
+          if (ra) return ra;
         }
 
         // ---- injured: go get healed by a visible healthy teammate ----
