@@ -157,9 +157,10 @@ export function createLayers({ scene3d, panel, storeKey = 'layers', defaults = {
 
   // static per-map scans
   function navRoute(actor) {
-    const rt = actor.nav && actor.nav.rt;
-    if (!rt || !rt.nodes) return null;
+    const rt = actor.nav && actor.nav.rt, to = (actor.lastAction || {}).moveTo;
+    if (!rt || !rt.nodes || !to) return null;
     const W = match.W, out = [];
+    if (rt.tc !== Math.floor(to.z) * W + Math.floor(to.x) || rt.ver !== match.palVersion) return null;   // stale: planned for an older goal
     for (let k = Math.max(0, rt.i); k < rt.nodes.length; k++) { const c = rt.nodes[k]; out.push([(c % W) + 0.5, Math.floor(c / W) + 0.5]); }
     return out.length > 1 ? out : null;
   }
