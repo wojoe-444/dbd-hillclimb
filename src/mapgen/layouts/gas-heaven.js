@@ -18,14 +18,15 @@ export const gasHeavenLayout = {
     { pool: 'maze', x: 8, z: 24 },            // mazetile W (10)
     { pool: 'maze', x: 72, z: 72 },           // mazetile S (5)
     { pool: 'carpile', x: 24, z: 40 },        // car pile (BITIC)
-    { pool: 'carpile', x: 56, z: 56 },        // car pile (MID)
-    { pool: 'carpile', x: 88, z: 40 },        // car pile (3/4)
+    { pool: 'jg', x: 56, z: 56 },             // user: one jungle gym v1 + one v2 on every variant (was car pile MID)
+    { pool: 'jg', x: 88, z: 40 },             // ...second jungle gym (was car pile 3/4)
     { pool: 'carpile', x: 8, z: 56 },         // car pile (8/9)
   ],
 
   pools: {
     maze: { decay: 0.35, tiles: { 'maze-a': 1, 'maze-b': 1, 'maze-c': 1 } },
     carpile: { decay: 0.6, tiles: { 'carpile-a': 1, 'carpile-b': 1 } },
+    jg: { decay: 0, tiles: { jgv1: 1, jgv2: 1 } },   // decay 0: the second slot always gets the other variation
     inner16: {
       decay: 0.6,
       tiles: { jgv1: 3, jgv2: 1.5, 'tl-wall': 3, 'filler-wallcar': 2, 'filler-rock': 2, 'filler-windowl': 1.5, 'filler-junk': 1.5 },
