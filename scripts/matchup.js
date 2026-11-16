@@ -1,5 +1,5 @@
 // Quick single-thread matchup: node scripts/matchup.js [--hunter param] [--survivor param] [--n 50]
-//   [--map maps/gas-heaven.json] [--champ runs/x/champions.json]
+//   [--map maps/gas-heaven]  (default: the tile variant pool evolution uses; maps/gas-heaven.json = old hand-made map) [--champ runs/x/champions.json]
 import { readFileSync } from 'node:fs';
 import { loadMapPool } from '../src/hillclimb/maps.js';
 import { runMatch } from '../src/sim/index.js';
@@ -9,7 +9,7 @@ import { defaults } from '../src/hillclimb/params.js';
 const a = {};
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) a[argv[i].slice(2)] = argv[++i];
-const maps = loadMapPool(a.map ?? 'maps/gas-heaven.json');
+const maps = loadMapPool(a.map ?? 'maps/gas-heaven');
 const B = getBrains(a.hunter ?? 'param', a.survivor ?? 'param');
 let hp = defaults(B.hunter.space), sp = defaults(B.survivor.space);
 if (a.champ) ({ hunter: hp, survivor: sp } = JSON.parse(readFileSync(a.champ, 'utf8')).champ);
