@@ -199,7 +199,8 @@ Survivor `obs`:
           deepWoundS /* null if none */, mendProgress /* 0..1, null if no Deep Wound */,
           protectedS /* remaining Endurance+Haste, null if none */, elusiveS /* remaining Elusive, null if none */,
           chased /* chase music */, intentCooldownS },
-  hunter: { x,z,vx,vz,facing,fx,fz,carrying,windup,cooldown,stunned } | null,       // only if visible now
+  hunter: { x,z,vx,vz,facing,fx,fz,carrying,windup,cooldown,stunned,
+            vaulting, vault: { window /* id */, fromX, fromZ, toX, toZ, progress /* 0..1 */ } | null } | null,   // only if visible now
   lastHunter: { x,z,vx,vz,facing,t } | null,
   terror: { layer: 1|2|3, approx } | null,   // heard terror-radius layer (thirds of 32 m, 1 = outermost), lagged; approx = band midpoint m
   teammates: [{ id,x,z,vx,vz,facing,state }],                                       // visible now

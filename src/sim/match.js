@@ -524,6 +524,11 @@ export class Match {
     return out;
   }
 
+  _vaultObs(v) {
+    const wi = this.winOfCell.get(v.cell);
+    return { window: wi !== undefined ? this.md.windows[wi].id : null, fromX: v.x0, fromZ: v.z0, toX: v.x1, toZ: v.z1, progress: Math.min(1, v.t / v.dur) };
+  }
+
   _camObs(s) {
     if (!(this.cfg.survivor.camera && this.cfg.survivor.camera.enabled)) return null;
     this._camPos(s);
@@ -557,7 +562,9 @@ export class Match {
     let hunter = null;
     if (s.seesHunter) {
       hunter = { x: H.x, z: H.z, vx: H.vx, vz: H.vz, facing: H.face, fx: Math.cos(H.face), fz: Math.sin(H.face),
-        carrying: H.carrying >= 0, windup: H.windT > 0, cooldown: H.cdT > 0, stunned: H.stunT > 0 };
+        carrying: H.carrying >= 0, windup: H.windT > 0, cooldown: H.cdT > 0, stunned: H.stunT > 0,
+        // a visible vault is visible: which window, from where to where, how far along (no hidden state)
+        vaulting: !!H.vault, vault: H.vault ? this._vaultObs(H.vault) : null };
       m.lastHunter = { x: H.x, z: H.z, vx: H.vx, vz: H.vz, facing: H.face, t: this.t };
     }
     const dh = hyp(H.x - s.x, H.z - s.z);

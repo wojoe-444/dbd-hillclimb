@@ -138,6 +138,19 @@ test('perception (survivor.camera.enabled = false): cone-limited for the hunter,
   ok((Math.hypot(sObs.lastHunter.x - 30.5, sObs.lastHunter.z - 26.5) < 12.5 || Math.hypot(sObs.lastHunter.x - 5.5, sObs.lastHunter.z - 12.5) < 0.5) && sObs.lastHunter.t < 2, 'lastHunter has last seen position/time');
 });
 
+test('survivor obs: a visible hunter vault is visible (vaulting, window, from/to, progress)', () => {
+  const { m, ctl } = mk({ config: { survivor: { camera: { enabled: false } } } });
+  let o = null; ctl.S[0] = x => (o = x, {}); ctl.H = () => ({});
+  const w = m.md.windows[0], wx = w.cell % m.md.w, wz = Math.floor(w.cell / m.md.w);
+  place(m.hunter, wx + 0.5, wz - 0.5); place(m.survivors[0], wx + 0.5, wz - 6.5);
+  run(m, 3);
+  ok(o.hunter && o.hunter.vaulting === false && o.hunter.vault === null, 'not vaulting: vaulting false, vault null');
+  m.hunter.vault = { t: 0, dur: 1.7, x0: wx + 0.5, z0: wz - 0.5, x1: wx + 0.5, z1: wz + 1.5, cell: w.cell };
+  run(m, 3);
+  ok(o.hunter && o.hunter.vaulting === true && o.hunter.vault.window === w.id, 'mid-vault: vaulting true + the window id');
+  ok(o.hunter.vault.toZ === wz + 1.5 && o.hunter.vault.progress > 0 && o.hunter.vault.progress < 1, 'landing point and progress visible');
+});
+
 test('survivor camera: clamped by walls, FOV-limited, body awareness, peeking around a corner', () => {
   const { m, ctl } = mk();
   let sObs = null, hObs = null;
