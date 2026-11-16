@@ -4,7 +4,11 @@ import { SurvivorBelief } from './belief.js';
 export const hunterSpace = {
   lungeDist:     [1.2, 4.5, 2.5],  // start the attack when target is this close (and reachable)
   chaseAbandonS: [8, 90, 40],      // give up a chase after this long without a hit
-  breakRatio:    [1.2, 5, 2.5],    // break a nearby dropped pallet if path/straight distance exceeds this
+  // pallet breaking: the deciding variable is the DETOUR -- extra metres to walk around a dropped pallet from one side
+  // to the other compared with going straight through (breaking costs ~2.34 s ~= 10.8 m of walking at 4.6 m/s)
+  breakDetourM:  [0, 60, 10.8],   // in a chase: break the dropped pallet between me and my target if its detour exceeds this
+  breakNearM:    [2, 12, 6],      // ...and the pallet is within this distance of me
+  breakIdleDetourM: [0, 80, 80],  // on patrol: break a dropped pallet within 12 m if its detour exceeds this (80 = never)
   campS:         [0, 45, 5],       // linger near a fresh hook this long
   campRadius:    [4, 24, 10],
   tunnel:        [0, 1, 0.3],      // target preference for survivors with hooks already
@@ -66,7 +70,37 @@ export function makeHunter(P) {
     let hookTarget = null;
     let camp = null;              // { x, z, until }
     let patrolGen = -1, patrolT = -99;
-    let ratioT = -99, ratio = 1;
+    // detour cache: pallet index -> { ver, d } where d = extra path metres to get from one side to the other
+    const detourCache = new Map();
+    const palletSides = M.pallets.map((p) => {
+      const ax = p.axis === 'x' ? { x: 1, z: 0 } : { x: 0, z: 1 };
+      return { ax, a: { x: p.cx - ax.x * 1.6, z: p.cz - ax.z * 1.6 }, b: { x: p.cx + ax.x * 1.6, z: p.cz + ax.z * 1.6 } };
+    });
+    function detour(obs, nav, i) {
+      const ver = obs.pallets.join(',');
+      const c = detourCache.get(i);
+      if (c && c.ver === ver) return c.d;
+      const sd = palletSides[i];
+      const around = nav.dist(sd.a, sd.b);             // hunter nav: the dropped pallet itself is blocked
+      const d = (around === Infinity ? 200 : around) - 3.2;
+      detourCache.set(i, { ver, d });
+      return d;
+    }
+    // the dropped pallet (index) lying between me and point q, if any
+    function palletBetween(obs, me, q) {
+      let bi = -1, bd = Infinity;
+      M.pallets.forEach((p, i) => {
+        if (obs.pallets[i] !== 'dropped') return;
+        const { ax } = palletSides[i];
+        const sm = (me.x - p.cx) * ax.x + (me.z - p.cz) * ax.z, sq = (q.x - p.cx) * ax.x + (q.z - p.cz) * ax.z;
+        if (sm * sq >= 0) return;                         // same side
+        const lat = (o) => Math.abs((o.x - p.cx) * ax.z - (o.z - p.cz) * ax.x);
+        if (lat(me) > 6 || lat(q) > 6) return;            // not really across this pallet
+        const d = hyp(p.cx - me.x, p.cz - me.z);
+        if (d < bd) { bd = d; bi = i; }
+      });
+      return bi;
+    }
     let prevHooks = 0;
     let stillT = 0, lastX = null, lastZ = null;   // stall guard
     const belief = new SurvivorBelief(ctx, { spread: P.beliefSpread, genPull: P.beliefGenPull });
@@ -181,16 +215,12 @@ export function makeHunter(P) {
           } else {
             lastPos = { x: best.x + best.vx * 0.8, z: best.z + best.vz * 0.8 }; lastPosT = obs.t;
             const d = d2(best, me);
-            if (obs.t - ratioT >= 0.5) { ratioT = obs.t; ratio = d > 3 ? nav.dist(me, best) / d : 1; }
-            if (ratio > P.breakRatio && d > 2) {
-              let bp = null, bpd = Infinity;
-              M.pallets.forEach((p, i) => {
-                if (obs.pallets[i] !== 'dropped') return;
-                const pd = hyp(p.cx - me.x, p.cz - me.z);
-                if (pd < bpd && pd < 8) { bpd = pd; bp = p; }
-              });
-              if (bp) {
-                if (bpd <= 2.0) return { act: 'breakPallet', target: bp.id };
+            // a dropped pallet between us: break it if walking around costs more than breakDetourM
+            const pi = d > 2 ? palletBetween(obs, me, best) : -1;
+            if (pi >= 0) {
+              const bp = M.pallets[pi], pd = hyp(bp.cx - me.x, bp.cz - me.z);
+              if (pd <= P.breakNearM && detour(obs, nav, pi) > P.breakDetourM) {
+                if (pd <= 2.0) return { act: 'breakPallet', target: bp.id };
                 return { moveTo: { x: bp.cx, z: bp.cz } };
               }
             }
@@ -267,6 +297,17 @@ export function makeHunter(P) {
         camp = null;
 
         // ---- patrol gens ----
+        // ---- patrol housekeeping: break a nearby dropped pallet that's expensive to walk around ----
+        if (P.breakIdleDetourM < 80) {
+          let bi = -1, bd = Infinity;
+          M.pallets.forEach((p, i) => { if (obs.pallets[i] === 'dropped') { const dd = hyp(p.cx - me.x, p.cz - me.z); if (dd < 12 && dd < bd) { bd = dd; bi = i; } } });
+          if (bi >= 0 && detour(obs, nav, bi) > P.breakIdleDetourM) {
+            const bp = M.pallets[bi];
+            if (bd <= 2.0) return { act: 'breakPallet', target: bp.id };
+            return { moveTo: { x: bp.cx, z: bp.cz } };
+          }
+        }
+
         // ---- belief patrol: go where survivors most likely are ----
         if (P.beliefPatrol > 0.5) {
           if (!beliefTgt || obs.t - beliefT > 2 || d2(beliefTgt, me) < 3) {
