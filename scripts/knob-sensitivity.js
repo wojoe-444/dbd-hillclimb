@@ -98,5 +98,11 @@ console.log(`${'knob'.padEnd(kw)}${'value'.padEnd(10)}${'pos'.padEnd(6)}${'down:
 for (const r of rows) console.log(`${r.knob.padEnd(kw)}${String(+r.value.toFixed(3)).padEnd(10)}${r.pos.toFixed(2).padEnd(6)}${fx(r.down).padEnd(20)}${fx(r.up).padEnd(20)}${r.verdict}${r.wants ? `; better ${r.wants}` : ''}`);
 const n = (f) => rows.filter(f).length;
 console.log(`\n${n((r) => r.verdict.startsWith('matters'))} matter (|t| >= 2), ${n((r) => r.verdict.startsWith('weak'))} weak, ${n((r) => r.verdict.startsWith('inert'))} inert here, ${n((r) => r.verdict.startsWith('no effect'))} with no effect at all (identical games); ${n((r) => r.edge)} at a range edge (${n((r) => r.verdict.includes('pinned'))} pinned against it)`);
+// Chaos baseline: any game-changing perturbation re-rolls the (chaotic) matches, so if the base happened to do well on
+// these seeds, nearly every variant shows a negative dFit (regression to the mean). Read dFit relative to this median.
+const moved = rows.flatMap((r) => [r.down, r.up]).filter((x) => x && x.identical < seeds.length).map((x) => x.dFit).sort((a, b) => a - b);
+const chaosMedian = moved.length ? moved[moved.length >> 1] : 0;
+console.log(`chaos baseline: median dFit of the ${moved.length} game-changing variants ${chaosMedian >= 0 ? '+' : ''}${chaosMedian.toFixed(3)} ` +
+  `(${moved.filter((x) => x < 0).length} negative). If clearly below 0 the base was lucky on these seeds: treat dFit near it as noise, use more --n.`);
 
-if (args.json) writeFileSync(resolve(args.json), JSON.stringify({ git: gitInfo(), set: { name: set.name, source: set.source, stale: set.stale }, side, vs: vs.name, sigma, seeds: { first: seeds[0], n: seeds.length }, baseFit, baseOut, rows }, null, 2));
+if (args.json) writeFileSync(resolve(args.json), JSON.stringify({ git: gitInfo(), set: { name: set.name, source: set.source, stale: set.stale }, side, vs: vs.name, sigma, seeds: { first: seeds[0], n: seeds.length }, baseFit, baseOut, chaosMedian, rows }, null, 2));
