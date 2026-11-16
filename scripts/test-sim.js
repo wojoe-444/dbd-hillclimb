@@ -10,6 +10,10 @@ import { getBrains } from '../src/brains/index.js';
 import { makeLoopMind } from '../src/brains/loopmind.js';
 import { defaults } from '../src/hillclimb/params.js';
 import { slotReport, allMapFiles } from './check-gen-slots.js';
+import { LoopModel } from '../src/brains/loops.js';
+import { MapKnowledge } from '../src/brains/mapknow.js';
+import { RouteEval } from '../src/brains/routes.js';
+import { RouteLookahead } from '../src/brains/lookahead.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = p => JSON.parse(fs.readFileSync(path.resolve(root, p), 'utf8'));
@@ -1574,6 +1578,63 @@ test('intent messages (10.2.0): predefined enum to teammates only, anti-spam coo
   // hooked survivors can send too
   const { m: m4, ctl: c4 } = mk(); const h4 = m4.survivors[1]; h4.st = CARRIED; m4.hunter.carrying = 1; m4._hookSurvivor(h4, m4.hooks[0]);
   c4.S[1] = () => ({ intent: 'help' }); run(m4, 2); ok(m4.events.some(e => e.type === 'intent' && e.from === 1), 'a hooked survivor can send an intent');
+});
+
+test('route lookahead (brains/lookahead.js): knobs, knowledge gate, next resource vs hunter race, open ground, state cache', () => {
+  // knobs: evolvable, 0 (= off) inside every range, defaults inside the range and on
+  const B = getBrains();
+  for (const k of ['routeLookaheadW', 'openGroundPenalty', 'lookaheadMaxM', 'chainAfterBreakW']) {
+    const r = B.survivor.space[k];
+    ok(Array.isArray(r) && r[0] <= 0 && r[1] > 0 && r[2] > 0 && r[2] >= r[0] && r[2] <= r[1], `${k} in survivorSpace, range includes 0, default on (${JSON.stringify(r)})`);
+  }
+  // a survivor ctx from a real match on test-small
+  let sctx = null;
+  const idle = () => ({ decide: () => ({}) });
+  createMatch({ map: smallMap, seed: 3, hunter: idle, survivors: [(c) => { sctx = c; return idle(); }, idle, idle, idle] });
+  const loops = new LoopModel(sctx), know = new MapKnowledge(sctx, loops.anchors), routes = new RouteEval(loops, sctx);
+  const ahead = new RouteLookahead(loops, know, sctx);
+  const st = { pallets: smallMap.pallets.map(() => 'up'), blockedWindows: [] };
+  const all = () => true, vl = () => 3, ps = (k) => st.pallets[loops.anchors[k].i];
+  const pal = loops.anchors.find((a) => a.kind === 'p' && a.id === 'p-wide'), E = pal.s[0];
+  const me = { x: E.x, z: E.z + 6 };
+  ok(routes.prepare(st, me, { x: 3.5, z: 33.5 }, 0), 'route fields prepared (me next to p-wide, hunter far away)');
+  // nothing seen yet: no resource at all (solo queue: only what this survivor has seen / explored)
+  near(ahead.begin(st, me, 30, all, all, vl, ps), 0, 0, 'no anchor known, nothing explored -> no resources');
+  know.anchorKnown.fill(1);
+  ok(ahead.begin(st, me, 30, all, all, vl, ps) > 0, 'anchors known -> resources listed');
+  const r14 = ahead.nextResource(routes, me, 14), r1 = ahead.nextResource(routes, me, 7);
+  ok(r14.v >= r1.v && r14.open <= r1.open, 'a longer lookahead never finds less');
+  ok(r1.r && r1.r.k === pal.k && r1.v > 0, `lookahead 7 m: the pallet 6 m from the destination is the next resource (got ${r1.r && r1.r.k} v=${r1.v.toFixed(2)})`);
+  ok(r1.open <= 6.5, `open ground ~ distance to its entry (got ${r1.open.toFixed(2)})`);
+  near(r1.v, Math.min(24, Math.max(loops.palletGain(pal.k), r1.v)), 1e-6, 'value capped / at least the pallet\'s own distance held');
+  // a short lookahead radius sees nothing -> v 0, open = the whole radius
+  const r0 = ahead.nextResource(routes, me, 2);
+  ok(r0.v === 0 && r0.open === 2, `lookahead 2 m: nothing reachable, open = 2 (got v=${r0.v} open=${r0.open})`);
+  // the hunter standing on the entry wins the race: that pallet stops counting
+  routes.prepare(st, me, { x: E.x, z: E.z }, 0);
+  ahead.begin(st, me, 30, all, all, vl, ps);
+  const rh = ahead.nextResource(routes, me, 14);
+  ok(!(rh.r && rh.r.k === pal.k), 'hunter at the pallet entry -> the pallet is not a reachable next resource');
+  // pallet broken -> state signature changes, the anchor drops out (usable says so)
+  st.pallets[pal.i] = 'broken';
+  routes.prepare(st, me, { x: 3.5, z: 33.5 }, 0);
+  const usable = (a) => (a.kind === 'w' ? !st.blockedWindows.includes(a.id) : st.pallets[a.i] !== 'broken');
+  ahead.begin(st, me, 30, usable, usable, vl, ps);
+  ok(!ahead.res.some((r) => r.k === pal.k), 'broken pallet is no longer a resource');
+  // unexplored tall blockers don't count; explored ones do (small constant value)
+  ok(!ahead.res.some((r) => r.kind === 'b'), 'tall blockers in unexplored areas are not resources');
+  know.seen.fill(1);
+  ahead.begin(st, me, 40, usable, usable, vl, ps);
+  ok(ahead.res.some((r) => r.kind === 'b'), 'tall blockers count once their area is explored');
+});
+
+test('route lookahead off (all knobs 0 / lookaheadMaxM 0) = identical matches; on = deterministic', () => {
+  const B = getBrains();
+  const go = (sp, seed) => JSON.stringify(runMatch({ map: smallMap, seed, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make({ ...defaults(B.survivor.space), ...sp }) }).events);
+  for (const seed of [41, 42]) {
+    ok(go({ routeLookaheadW: 0, chainAfterBreakW: 0, openGroundPenalty: 0 }, seed) === go({ lookaheadMaxM: 0 }, seed), `seed ${seed}: weights 0 == radius 0 (both off)`);
+    ok(go({}, seed) === go({}, seed), `seed ${seed}: lookahead on is deterministic`);
+  }
 });
 
 test('entity blocker: 3 vaults of one window in the SAME chase block it for that survivor; out-of-chase vaults do not count', () => {

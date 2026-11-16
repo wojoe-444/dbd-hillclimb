@@ -71,6 +71,8 @@ export const survivorSpace = {
   // ---- exploration (survivors only know the generators / loop anchors they have found) ----
   exploresMap:   [0, 1, 0.5],      // propensity to explore unexplored areas instead of working a known gen (0 = only when no gen is known)
   exploreRadM:   [10, 80, 35],     // preferred distance of exploration targets (score = unexplored share - distance / this)
+  // ---- route lookahead: open flee destinations scored by the next resource reachable from there (lookahead.js) ----
+  ...lookaheadSpace,
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -78,6 +80,7 @@ import { HunterBelief } from './hunterbelief.js';
 import { LoopModel } from './loops.js';
 import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
+import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } from './lookahead.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
@@ -102,6 +105,8 @@ export function makeSurvivor(P) {
     const anchors = loops.anchors;
     const know = new MapKnowledge(ctx, anchors);  // explored area + anchors seen
     const routes = new RouteEval(loops, ctx);     // short-horizon distance held for open-field routes
+    const ahead = new RouteLookahead(loops, know, ctx);   // next resource reachable from a flee destination + open ground
+    let lastBreakT = -99;                         // last pallet break I saw (chain to the next tile)
     let routeT = -99, chaseStartT = -99, wasChasedR = false;
     // exploration pull toward unseen anchors that would complete a strong loop with anchors I already know
     let scoutMap = null, scoutKnownN = -1;
@@ -471,6 +476,11 @@ export function makeSurvivor(P) {
       const chaseS = me.chased ? obs.t - blT0 : 0;
       if (!routes.prepare(obs, me, hp, chaseS, brk ? brk.remainS : 0)) return false;
       const Hz = P.holdHorizonS, r0 = Math.min(30, Math.max(6, routes.vS * Hz * 0.5));   // first leg ~ half the horizon
+      // route lookahead (lookahead.js), in a chase only: open flee points also count the next resource I can still
+      // reach from there and the bare ground before it (pallet broken just now: chainAfterBreakW on top)
+      const laW = P.routeLookaheadW + (obs.t - lastBreakT < 6 ? P.chainAfterBreakW : 0);
+      const useLA = me.chased && (laW > 0 || P.openGroundPenalty > 0) && P.lookaheadMaxM > 0 &&
+        ahead.begin(obs, me, r0 + P.lookaheadMaxM + 2, (a) => crossOK(a, obs) && !contested(a, obs), (a) => anchorUsable(a, obs), vaultsLeft(obs), palletState(obs)) > 0;
       let best = null, bs = -Infinity;
       for (let k = 0; k < 12; k++) {
         const ang = (k / 12) * 2 * Math.PI, ux = Math.cos(ang), uz = Math.sin(ang);
@@ -486,6 +496,12 @@ export function makeSurvivor(P) {
         const ro = routes.rollout(T.x, T.z, Hz, false, true, me);
         if (!ro) continue;
         let v = ro.gap + extra(T);
+        // the lookahead weighs in as far as this route's own gap collapses within the horizon (doom 1 at <= 0 m, 0 from
+        // LOOKAHEAD_DOOM_M up: a route that holds the gap all the way needs no rescue plan), and only for real flee
+        // points (0 within LOOKAHEAD_NEAR_M of me, full 4 m farther: a point I reach at once is my position, and
+        // re-planning on arrival then flip-flops between nearby points)
+        const doom = useLA ? Math.min(1, Math.max(0, 1 - ro.gap / LOOKAHEAD_DOOM_M)) * Math.min(1, Math.max(0, (d2(me, T) - LOOKAHEAD_NEAR_M) / 4)) : 0;
+        if (doom > 0) { const la = ahead.nextResource(routes, T, P.lookaheadMaxM); v += doom * (laW * la.v - P.openGroundPenalty * la.open); }
         if (!circ && fleePoint && d2(T, fleePoint) < 6) v += 2;           // hysteresis
         if (circ) v -= 2;                                                  // leaving a loop for open ground: needs a clear win
         if (v > bs) { bs = v; best = { kind: 'open', T }; }
@@ -545,7 +561,7 @@ export function makeSurvivor(P) {
       // the visible hunter is breaking a pallet: that pallet is as good as gone, and the break time is mine to run
       // (tileplay.js); a break that just started forces a re-plan instead of waiting behind the pallet
       brk = palletBreakInfo(obs, M, ctx.config);
-      if (brk) { obs = withPalletGone(obs, brk.i); if (brkSeenT < obs.t - 0.25) routeT = -99; brkSeenT = obs.t; }
+      if (brk) { obs = withPalletGone(obs, brk.i); if (brkSeenT < obs.t - 0.25) routeT = -99; brkSeenT = obs.t; lastBreakT = obs.t; }
       // the visible hunter's body stands in a dropped pallet's lane (bodies collide: I can't get through it):
       // busy for now (not standing pallets: a hunter there is what a stun drop is for; windows: A/B'd worse)
       if (h && !h.vaulting) for (const a of anchors) if (a.kind === 'p' && obs.pallets[a.i] === 'dropped' && laneBlockedBy(h, a)) { occupiedUntil.set(a.k, Math.max(occupiedUntil.get(a.k) ?? -1, obs.t + 0.5)); if (circ && circ.seq.some((x) => (x >> 1) === a.k)) routeT = -99; }
@@ -758,7 +774,7 @@ export function makeSurvivor(P) {
         // Bloodlust resets on a hit and on a pallet break (observed)
         if (me.state !== prevMyState && (me.state === 'injured' || me.state === 'downed')) blT0 = obs.t;
         prevMyState = me.state;
-        if (prevPal && obs.pallets.some((st, i) => st === 'broken' && prevPal[i] !== 'broken')) blT0 = obs.t;
+        if (prevPal && obs.pallets.some((st, i) => st === 'broken' && prevPal[i] !== 'broken')) { blT0 = obs.t; lastBreakT = obs.t; }
         prevPal = obs.pallets.slice();
         // visible hunter vaults: that window is occupied now and for vaultClearanceS after
         if (obs.hunter && obs.hunter.vaulting && obs.hunter.vault && obs.hunter.vault.window) {
