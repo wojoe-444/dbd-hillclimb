@@ -278,6 +278,9 @@ export class NavView {
     const fc = this.cell(from.x, from.z), tc = this.cell(to.x, to.z);
     if (fc < 0 || tc < 0) return Infinity;
     if (fc === tc) return Math.hypot(to.x - from.x, to.z - from.z);
+    // from inside a solid cell (e.g. a brain's extrapolated / estimated position): no move enters a solid cell, so every
+    // field says Infinity there, while a cold A* would step out of it -> answer like the field (cache-state independent)
+    if (this.md.kind[fc] === K_SOLID) return Infinity;
     const dyn = this._dyn();
     if (dyn) { const lf = this._peekLocal(tc); if (lf !== undefined) return lf[fc] / 1000; }
     // NOTE: no reverse-field shortcut (using the field of `from`): fields are not symmetric at solid/window endpoints,
