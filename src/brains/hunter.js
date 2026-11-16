@@ -225,7 +225,8 @@ export function makeHunter(P) {
               }
             }
             // only swing if we can physically reach: straight line clear, or a short walking path
-            if (d <= P.lungeDist && (api.walkClear(me, best) || nav.dist(me, best) <= P.lungeDist + 1)) {
+            // (a survivor mid-vault is hittable until fully landed, even though the window blocks walking)
+            if (d <= P.lungeDist && (best.vaulting || api.walkClear(me, best) || nav.dist(me, best) <= P.lungeDist + 1)) {
               return { act: 'attack', target: best.id, face: { x: best.x, z: best.z } };
             }
             return { moveTo: { x: best.x, z: best.z } };

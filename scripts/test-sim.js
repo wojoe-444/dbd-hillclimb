@@ -1294,6 +1294,26 @@ test('generator slots on every shipped map: each candidate has >= 1 usable side 
   for (const r of rows) if (r.sides.length <= 2) console.log(`    WARN ${r.file} ${r.id}: only ${r.sides.length} usable side(s) ${r.sides.join('')}`);
 });
 
+test('re-vault behind the hunter: no fast vault within revaultNoFastS of the hunter clearing the window; survivor hittable mid-vault', () => {
+  const { m, ctl } = mk();
+  // window (13,8) axis z. Hunter vaults north->south; survivor then runs a long straight run-up south->north and re-vaults.
+  place(m.hunter, 13.5, 6.4); ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+  place(m.survivors[0], 13.5, 13.5); ctl.S[0] = () => ({});
+  for (let i = 0; i < 40 && !(m.hunter.z > 9 && !m.hunter.vault); i++) m.step();
+  ok(m.hunter.z > 9, 'hunter came through the window');
+  place(m.hunter, 20.5, 12.5); ctl.H = () => ({});                       // hunter steps aside
+  ctl.S[0] = () => ({ moveDir: { x: 0, z: -1 } });
+  let dur = null;
+  for (let i = 0; i < 20 && dur === null; i++) { m.step(); if (m.survivors[0].vault) dur = m.survivors[0].vault.dur; }
+  ok(dur !== null && dur > m.cfg.survivor.vaultFastS, 're-vault right after the hunter is not a fast vault (' + dur + ')');
+  // mid-vault the survivor can be hit
+  const t = mk(); place(t.m.survivors[0], 13.5, 10.9); t.ctl.S[0] = () => ({ moveDir: { x: 0, z: -1 } });
+  let started = false; for (let i = 0; i < 10 && !started; i++) { t.m.step(); started = !!t.m.survivors[0].vault; }
+  place(t.m.hunter, 13.5, 11.2); t.ctl.H = () => ({ act: 'attack', face: { x: 13.5, z: 7 } });
+  run(t.m, 5);
+  ok(t.m.survivors[0].st === INJURED, 'a vaulting survivor is hit before landing');
+});
+
 test('pickup locks the downed survivor in place (no crawling out of reach mid-pickup)', () => {
   const { m, ctl } = mk();
   const v = m.survivors[0];

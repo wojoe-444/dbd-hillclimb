@@ -50,6 +50,7 @@ export const defaultConfig = {
     healS: 16,              // heal another survivor (injured->healthy, downed->injured); persists on the target
     wiggleS: 16,            // wiggle seconds needed to escape a carry
     vaultFastS: 0.5,        // window, fast vault: running with a straight run-up >= fastVaultRunupM toward the window (LOUD)
+    revaultNoFastS: 2,      // [user] a survivor re-vaulting a window within this long after the hunter cleared it gets at best a medium vault
     vaultMediumS: 0.9,      // window, medium vault: running, short run-up / angled approach / bumped into the wall
     vaultSlowS: 1.5,        // window, slow vault: walking (quiet)
     fastVaultRunupM: 2.5,   // continuous running distance with heading within fastVaultAngleDeg of the vault direction

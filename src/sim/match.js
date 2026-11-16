@@ -62,6 +62,7 @@ export class Match {
     // window blocking: too many vaults through one window by one survivor within one chase blocks it for that survivor
     this.winVaults = md.windows.map(() => [0, 1, 2, 3].map(() => ({ chase: -1, n: 0 })));
     this.winBlockT = new Float64Array(md.windows.length * 4); // [window * 4 + survivor]
+    this.winHunterClearT = new Map();   // window cell -> time the hunter last finished vaulting it
     this.winOfCell = new Map(md.windows.map((w, i) => [w.cell, i]));
     this.palVersion = 0; this.droppedCount = 0;
     this.shared = getShared(md, cfg);
@@ -741,7 +742,7 @@ export class Match {
       if (k === K_WIN_X || k === K_WIN_Z) {
         if ((k === K_WIN_X) !== (nx !== 0)) continue;
         if (!isHunter && this.winBlockT[this.winOfCell.get(wc) * 4 + a.id] > this.t) continue;
-        dur = isHunter ? this.cfg.hunter.vaultS : this._survivorVaultS(a, nx, nz);
+        dur = isHunter ? this.cfg.hunter.vaultS : this._survivorVaultS(a, nx, nz, wc);
       } else if ((k === K_PAL_X || k === K_PAL_Z) && !isHunter && this.ps[md.palIdx[wc] - 1] === 1) {
         if ((k === K_PAL_X) !== (nx !== 0)) continue;
         dur = a.lastAction && a.lastAction.walk ? this.cfg.survivor.palletVaultSlowS : this.cfg.survivor.palletVaultFastS;
@@ -768,9 +769,12 @@ export class Match {
   }
 
   // Window vault tier for a survivor vaulting in direction (nx, nz): walking = slow; running with a straight run-up = fast.
-  _survivorVaultS(a, nx, nz) {
+  _survivorVaultS(a, nx, nz, wc) {
     const sv = this.cfg.survivor;
     if (a.lastAction && a.lastAction.walk) return sv.vaultSlowS;
+    // re-vaulting a window the hunter just came through: no momentum, no fast vault
+    const cl = this.winHunterClearT.get(wc);
+    if (cl !== undefined && this.t - cl < sv.revaultNoFastS) return sv.vaultMediumS;
     const cosT = Math.cos(sv.fastVaultAngleDeg * DEG);
     if (a.runD >= sv.fastVaultRunupM - EPS && a.runDx * nx + a.runDz * nz >= cosT) return sv.vaultFastS;
     return sv.vaultMediumS;
@@ -820,7 +824,11 @@ export class Match {
     const u = v.t >= v.dur - EPS ? 1 : v.t / v.dur;
     a.x = v.x0 + (v.x1 - v.x0) * u; a.z = v.z0 + (v.z1 - v.z0) * u;
     a.vx = (a.x - px) / this.dt; a.vz = (a.z - pz) / this.dt;
-    if (u >= 1) a.vault = null;
+    if (u >= 1) {
+      // remember when the hunter last cleared a window (a survivor re-vaulting right behind it can't fast-vault)
+      if (a === this.hunter && this.winOfCell.has(v.cell)) this.winHunterClearT.set(v.cell, this.t);
+      a.vault = null;
+    }
   }
 
   // ------------------------------------------------------------------ step

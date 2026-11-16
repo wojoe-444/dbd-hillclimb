@@ -365,6 +365,7 @@ Brains must not use `Math.random`/`Date.now` — use `ctx.rng`.
   larger than 2.2 m. Unspecified numbers chosen in `config.js`: `wiggleStunS 1.5`, `dropS 0`, `hunterGhostS 3`, `chase.runSpeed 3`, reach distances, `scratchEveryS 0.5`, `gruntIntervalS 1`.
 * A dropped pallet that drops onto an actor pushes the actor to the nearer approach side.
 * `face` is a point to look at, not a direction. Hunter grunts carry no survivor id.
+* Re-vault behind the hunter: for `survivor.revaultNoFastS` (2 s, user rule) after the hunter finishes vaulting a window, survivors get at best a medium vault through it. Survivors are hittable for the whole vault until they land.
 * Survivors cannot act while downed except crawling (and lying still recovers); a carried survivor can only `wiggle`; a hooked one only `selfUnhook` / `intent`.
 
 ## Research report implementation (`docs/research/missing-mechanics.md`, user-reviewed)
