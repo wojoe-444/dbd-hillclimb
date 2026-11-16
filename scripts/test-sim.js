@@ -151,6 +151,24 @@ test('survivor obs: a visible hunter vault is visible (vaulting, window, from/to
   ok(o.hunter.vault.toZ === wz + 1.5 && o.hunter.vault.progress > 0 && o.hunter.vault.progress < 1, 'landing point and progress visible');
 });
 
+test('survivor obs: a visible hunter interaction (pallet break) is visible: act, actTarget, actProgress; hidden when unseen', () => {
+  const { m, ctl } = mk({ config: { survivor: { camera: { enabled: false } } } });
+  let o = null; ctl.S[0] = x => (o = x, {}); ctl.H = () => ({});
+  const p = m.md.pallets.find(q => q.id === 'p-gap');                 // (25,22) axis z
+  m.ps[p.index] = 1; for (const c of p.cells) m.coll[c] = 1; m.palVersion++; m.droppedCount++;
+  place(m.hunter, 25.5, 23.5); place(m.survivors[0], 25.5, 28.5);
+  run(m, 2);
+  ok(o.hunter && o.hunter.act === null && o.hunter.actTarget === null && o.hunter.actProgress === null, 'idle hunter: act null');
+  ctl.H = () => ({ act: 'breakPallet', target: 'p-gap' });
+  run(m, 6);                                                          // obs reflects the previous tick's act
+  ok(o.hunter && o.hunter.act === 'breakPallet' && o.hunter.actTarget === 'p-gap', 'breaking: act breakPallet + pallet id');
+  near(o.hunter.actProgress, 0.5 / 2.34, 0.05, 'break progress as a fraction of breakPalletS');
+  const p1 = o.hunter.actProgress; run(m, 5); ok(o.hunter.actProgress > p1, 'progress grows');
+  // out of sight (tall house wall): no hunter, so no interaction info
+  place(m.survivors[0], 14.5, 12.5); place(m.hunter, 5.5, 12.5); ctl.H = () => ({ act: 'breakPallet' });
+  run(m, 3); ok(o.hunter === null, 'unseen hunter: obs.hunter null (no interaction leak)');
+});
+
 test('survivor camera: clamped by walls, FOV-limited, body awareness, peeking around a corner', () => {
   const { m, ctl } = mk();
   let sObs = null, hObs = null;
