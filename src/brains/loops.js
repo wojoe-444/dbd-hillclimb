@@ -173,10 +173,11 @@ export class LoopModel {
   }
 
   // evaluate a circuit (array of crossings); returns { lap, lapNP, perCross[] } in metres of hunter running
-  evaluate(seq) {
+  // open: optional Set of pallet anchor indices left standing (crossed as an open gap, no drop) for this lap
+  evaluate(seq, open = null) {
     const k = seq.length, vS = this.vS, vH = this.vH;
     let lap = 0, palGain = 0, palOpen = 0;
-    const palSeen = new Set();
+    const palSeen = new Set(open || []);
     for (let i = 0; i < k; i++) {
       const c = seq[i], n = seq[(i + 1) % k], prev = seq[(i - 1 + k) % k];
       const leg = this.L(this.qSide(c), this.pSide(n));
@@ -192,6 +193,12 @@ export class LoopModel {
       if (this.anchors[c >> 1].kind === 'p') { palSeen.add(c >> 1); palGain += g; palOpen += open; }
     }
     return { lap, lapNP: lap - palGain + palOpen };
+  }
+
+  // one pass over a dropped pallet: hunter's cheaper of break + walk through or walking around, minus my vault
+  palletGain(k) {
+    const Th = Math.min(this.hBreak + 3.2 / this.vH, this.detour(k) / this.vH);
+    return (Th - this.sPalVault) * this.vH;
   }
 
   // top circuits that start with crossing c (memoised; full map knowledge, static values)

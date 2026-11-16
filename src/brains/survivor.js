@@ -6,7 +6,6 @@ export const survivorSpace = {
   fleeTR:        [0, 32, 12],    // abandon a gen when the heard terror layer's midpoint (26.7 / 16 / 5.3 m) is below this
   calmS:         [1, 12, 4],     // seconds without sighting (and terror > fleeTR) before calming down
   walkWhenTR:    [0, 1, 0.5],    // >0.5: walk (no scratch marks) when sneaking away from terror
-  palletDropDist:[1.5, 6, 3],    // drop an up pallet when the hunter is this close to it
   vaultDist:     [1.5, 8, 4],    // cross a window/dropped pallet when hunter on our side within this
   loopRace:      [0.4, 1.2, 0.8],// take a loop only if my path to its entry < loopRace * the hunter's distance to it
   altruism:      [0, 1, 0.6],    // willingness to rescue / heal
@@ -46,8 +45,9 @@ export const survivorSpace = {
   edgeAvoidW:    [-1, 1, 0],     // in a chase: >0 avoid loops / flee points within 16 m of the map's outer wall, <0 prefer them
   followFleeW:   [-1, 1, 0],     // fleeing (chase flee point / loop anchor / hide spot): >0 run the same way as a visible teammate who's fleeing the hunter, <0 diverge
   genClusterW:   [-1, 1, 0],     // fleeing (flee point / loop anchor / hide spot): >0 toward the tightest cluster of unfinished gens I've perceived, <0 away
-  weakPalletM:   [0, 20, 8],     // a pallet whose hunter detour is below this is "weak"...
-  weakDropDist:  [1.5, 8, 4],    // ...and gets dropped as soon as the hunter is this close (no holding for a stun)
+  // ---- pallets: drop vs save, by distance held ----
+  palletGreed:   [0, 3, 1],      // value of keeping a standing pallet for later (x its distance held): high = drop only when it's that or get hit
+  stunSeek:      [0, 1, 0.5],    // once dropping: 1 = hold the drop until the hunter is in the stun zone (risky), 0 = drop early (hunter within ~6 m)
   // ---- hiding while the hunter is NOT visible (own belief map about the hunter: hunterbelief.js) ----
   hbSpread:      [0.3, 1.2, 0.8],  // belief: how fast the hunter's possible area grows, as a fraction of hunter speed
   hideThreat:    [0.05, 1.05, 1.05],// hide when P(hunter within hideThreatR, soft) >= this (> 1 = never; default off: A/B vs the default hunter cost gens)
@@ -361,6 +361,29 @@ export function makeSurvivor(P) {
       circ.seq = rev; circ.phase = 'toP'; circ.lockT = obs.t + 1.5;
     }
 
+    // at a standing pallet with the hunter coming: drop now vs keep it for later, by distance held.
+    //   drop  = the pallet's distance held (hunter breaks or walks around) + a stun (2 s of hunter running) if the hunter
+    //           will be in the stun zone when the drop lands (0.3 s);
+    //   save  = gap now + one more lap of this loop with the pallet left standing; if that stays > 0 I can keep it:
+    //           value = that lap + palletGreed x the pallet's distance held (worth having later).
+    // Drop when saving gets me caught, or the drop beats saving by 1 m; then stunSeek times it (wait for a stun vs early).
+    function palletDecision(obs, a, hp, h, me, dhm) {
+      const vH = routes.hunterSpeed(me.chased ? obs.t - chaseStartT : 0);
+      const gain = loops.palletGain(a.k);
+      const p = a.p, al = ctx.config.hunter.palletStunAlongM ?? 1, axisX = p.axis === 'x';
+      const hx = hp.x + (h ? h.vx * 0.3 : 0), hz = hp.z + (h ? h.vz * 0.3 : 0);
+      const inStun = axisX ? (hx >= p.x0 - al && hx <= p.x1 + al && hz >= p.z0 && hz <= p.z1) : (hz >= p.z0 - al && hz <= p.z1 + al && hx >= p.x0 && hx <= p.x1);
+      const dropV = gain + (inStun ? (ctx.config.hunter.palletStunS ?? 2) * vH : 0);
+      const g = dhm - 2.0;
+      const lapOpen = circ ? loops.evaluate(circ.seq, new Set([a.k])).lap : -Infinity;
+      const saveGap = g < 1 ? -1 : g + Math.min(0, lapOpen);
+      const saveV = saveGap > 0 ? lapOpen + P.palletGreed * gain : -Infinity;
+      if (!(saveGap <= 0 || dropV > saveV + 1)) return 'save';
+      if (inStun) return 'drop';
+      if (d2(hp, a.c) < 2.2 + (1 - P.stunSeek) * 4 || g < 1.5) return 'drop';
+      return 'wait';
+    }
+
     function chase(obs, api, me, h, depth = 0) {
       if (depth > 3) return null;
       const mates = P.chaseToMatesW !== 0 ? matesOnGens(obs) : [];
@@ -413,9 +436,14 @@ export function makeSurvivor(P) {
           const p = a.p;
           const near = rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= 1.1;
           const ms = d2(Pt, me) <= d2(Qt, me) ? 'P' : 'Q', hs = hP <= hQ ? 'P' : 'Q';
-          const dropAt = detourOf(a) < P.weakPalletM ? Math.max(P.palletDropDist, P.weakDropDist) : P.palletDropDist;   // weak pallet: drop early
-          if (near && ms === 'Q' && hs === 'P' && d2(hp, a.c) < dropAt) return { act: 'dropPallet', target: p.id };
-          if (near && dhm < P.palletDropDist * 0.6) return { act: 'dropPallet', target: p.id };
+          if (near && (hs === 'P' || dhm < 2.5) && dhm < 12) {
+            const dec = palletDecision(obs, a, hp, h, me, dhm);
+            if (dec === 'drop') return { act: 'dropPallet', target: p.id };
+            if (dec === 'save' && ms === 'Q') {               // keep the pallet standing and run the loop on
+              circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++;
+              return chase(obs, api, me, h, depth + 1);
+            }
+          }
           if (d2(me, Qt) > 0.8) return { moveTo: Qt };
           // through, pallet still up: wait on the far side for the hunter to come close, then drop
           circ.holdT += api.dt * (ctx.config.decisionEvery || 1);
