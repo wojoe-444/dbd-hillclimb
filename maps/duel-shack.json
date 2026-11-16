@@ -1,9 +1,9 @@
 {
  "id": "duel-shack",
  "name": "Duel: killer shack only (1v1 research map)",
- "notes": "Main field x 0..32, z 0..32 with the standard 'shack' tile (src/mapgen/tiles.js) placed with tile origin (8,8): shack outer box x 11..20, z 11..20. North door x 13-14 (z 11), east window (20,14) axis x, south pallet door x 17-18 (z 20) axis z length 2. A tall wall at x 32 seals off the pocket x 33..37 (unreachable from the field, never visible): it holds the 10 generator candidates, the exit gate and the survivor spawn anchor so 3 idle dummy survivors can park there (scripts/duel-shack.js). Intentionally fails the validator's single-region rule.",
+ "notes": "Main field x 0..32, z 0..32 with the standard shack tile (src/mapgen/tiles.js, tile origin (8,8)): outer box x 11..20, z 11..20; north door x 13-14 (z 11), east window (20,14) axis x, south pallet door x 17-18 (z 20) axis z length 2; tall 3 m walls. A 6 m thick tall block (x 32..37) seals off a 1-cell strip x = 38 (unreachable, never visible) holding the 10 generator candidates, the exit gate, the survivor spawn anchor and the 3 idle dummy survivors used by scripts/duel-shack.js (the engine always runs 4 survivors). The block is 6 m thick and the strip 1 cell wide so the hunter brain's 3 m belief grid (src/brains/belief.js) never treats the pocket as walkable. Intentionally fails the validator's single-region rule.",
  "size": {
-  "w": 38,
+  "w": 39,
   "h": 32
  },
  "outline": [
@@ -12,11 +12,11 @@
    0
   ],
   [
-   38,
+   39,
    0
   ],
   [
-   38,
+   39,
    32
   ],
   [
@@ -93,10 +93,10 @@
    "id": "pocket-wall",
    "x": 32,
    "z": 0,
-   "w": 1,
+   "w": 6,
    "d": 32,
    "height": 3.5,
-   "kind": "wall"
+   "kind": "building"
   }
  ],
  "windows": [
@@ -119,52 +119,52 @@
  "generators": [
   {
    "id": "g-pocket-1",
-   "x": 36.5,
+   "x": 38.5,
    "z": 1.5
   },
   {
    "id": "g-pocket-2",
-   "x": 36.5,
+   "x": 38.5,
    "z": 4.5
   },
   {
    "id": "g-pocket-3",
-   "x": 36.5,
+   "x": 38.5,
    "z": 7.5
   },
   {
    "id": "g-pocket-4",
-   "x": 36.5,
+   "x": 38.5,
    "z": 10.5
   },
   {
    "id": "g-pocket-5",
-   "x": 36.5,
+   "x": 38.5,
    "z": 13.5
   },
   {
    "id": "g-pocket-6",
-   "x": 36.5,
+   "x": 38.5,
    "z": 16.5
   },
   {
    "id": "g-pocket-7",
-   "x": 36.5,
+   "x": 38.5,
    "z": 19.5
   },
   {
    "id": "g-pocket-8",
-   "x": 36.5,
+   "x": 38.5,
    "z": 22.5
   },
   {
    "id": "g-pocket-9",
-   "x": 36.5,
+   "x": 38.5,
    "z": 25.5
   },
   {
    "id": "g-pocket-10",
-   "x": 36.5,
+   "x": 38.5,
    "z": 28.5
   }
  ],
@@ -179,12 +179,12 @@
   {
    "id": "gate-pocket",
    "lever": {
-    "x": 37.5,
-    "z": 17.5
+    "x": 38.5,
+    "z": 30.5
    },
    "exit": {
-    "x": 37.5,
-    "z": 18.5
+    "x": 38.5,
+    "z": 31.5
    }
   }
  ],
@@ -197,8 +197,8 @@
   ],
   "survivors": [
    {
-    "x": 34.5,
-    "z": 16.5
+    "x": 38.5,
+    "z": 15.5
    }
   ]
  },
@@ -209,8 +209,8 @@
    "z": 15.5
   },
   {
-   "text": "pocket (dummies)",
-   "x": 35,
+   "text": "pocket",
+   "x": 38,
    "z": 16
   }
  ]
