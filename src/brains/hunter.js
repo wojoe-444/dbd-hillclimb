@@ -17,7 +17,6 @@ export const hunterSpace = {
   slugDist:      [0, 20, 0],       // leave a downed survivor to chase a visible one within this
   progressW:     [0, 3, 1.5],      // patrol: weight on generator progress
   distW:         [0, 3, 1],        // patrol: weight on distance
-  notifyRange:   [0, 120, 50],     // react to fumble notifications within this distance
   followScratch: [0, 1, 0.7],      // >0.5: follow scratch marks / grunts
   hookGenBias:   [0, 1, 0.2],      // prefer hooks near the most-progressed unfinished gen
   lostSearchS:   [1, 12, 5],       // after losing sight, search last position for this long
@@ -33,8 +32,9 @@ export const hunterSpace = {
   noiseFollow:     [0, 1, 0.7],    // >0.5: investigate gens heard being repaired (10 m)
   loudReactRange:  [0, 120, 50],   // react to loud noises (fast vaults) within this distance
   // ---- searching without line of sight ----
-  lookSweepDeg:    [0, 90, 40],    // sweep the vision cone +-this around the walking direction while patrolling/searching
-  lookPeriodS:     [1, 8, 3],      // one full left-right sweep takes this long
+  lookSweepDeg:    [0, 120, 60],   // glance angle: look this far left/right of the walking direction during a glance
+  lookPeriodS:     [1, 10, 4],     // a glance every this many seconds (alternating sides) while patrolling/searching
+  glanceS:         [0.2, 1.5, 0.4],// how long each glance lasts; otherwise look where we walk
   staleGenW:       [0, 3, 0],      // patrol preference for gens not looked at for a while (we only know progress we've seen)
   // ---- belief map: per-survivor probability of where they are (see belief.js) ----
   beliefPatrol:    [0, 1, 0.7],    // >0.5: patrol toward the hottest part of the belief map instead of gen-by-gen
@@ -44,15 +44,18 @@ export const hunterSpace = {
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 
-// Walk toward `to` while sweeping the gaze +-sweepDeg around the walking direction (sinusoid with period periodS).
-function sweep(api, me, to, t, sweepDeg, periodS) {
+// Walk toward `to` looking where we walk, with a short glance (glanceS) to alternating sides every periodS seconds.
+function sweep(api, me, to, t, sweepDeg, periodS, glanceS = 0.4) {
   const action = { moveTo: to };
   if (sweepDeg < 1) return action;
+  const phase = t % periodS;
+  if (phase >= glanceS) return action;                      // not glancing: face the walking direction (engine default)
   const wp = api.nav.nextWaypoint(me, to);
   if (!wp) return action;
   const dx = wp.x - me.x, dz = wp.z - me.z, len = Math.hypot(dx, dz);
   if (len < 0.3) return action;
-  const a = Math.atan2(dz, dx) + (sweepDeg * Math.PI / 180) * Math.sin((2 * Math.PI * t) / periodS);
+  const side = Math.floor(t / periodS) % 2 === 0 ? 1 : -1;
+  const a = Math.atan2(dz, dx) + side * (sweepDeg * Math.PI / 180);
   action.face = { x: me.x + Math.cos(a) * 6, z: me.z + Math.sin(a) * 6 };
   return action;
 }
@@ -257,7 +260,7 @@ export function makeHunter(P) {
             const s = obs.scratches[obs.scratches.length - 1];
             lastPos = { x: s.x + s.dx * 3, z: s.z + s.dz * 3 }; lastPosT = obs.t;
           }
-          if (d2(lastPos, me) > 1.5) return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS);
+          if (d2(lastPos, me) > 1.5) return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS, P.glanceS);
           lastPos = null;   // arrived and nobody here: forget it (otherwise we dither between this and the next behaviour)
         }
         target = null;
@@ -268,7 +271,7 @@ export function makeHunter(P) {
           if (sc && !outsideLeash(sc)) {
             const s = sc;
             lastPos = { x: s.x + s.dx * 3, z: s.z + s.dz * 3 }; lastPosT = obs.t;
-            return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS);
+            return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS, P.glanceS);
           }
         }
 
@@ -291,7 +294,6 @@ export function makeHunter(P) {
 
         // ---- notifications ----
         for (const n of obs.newNotifications) {
-          if (n.type === 'fumble' && d2(n, me) < P.notifyRange && !outsideLeash(n)) goto = { x: n.x, z: n.z };
           if (n.type === 'loudNoise' && d2(n, me) < P.loudReactRange && !outsideLeash(n)) goto = { x: n.x, z: n.z };
         }
         if (goto && d2(goto, me) > 2.5 && !camp) return { moveTo: goto };
@@ -316,7 +318,7 @@ export function makeHunter(P) {
             beliefTgt = belief.bestTarget(me, nav, 9, P.distW);
             beliefT = obs.t;
           }
-          if (beliefTgt) return sweep(api, me, beliefTgt, obs.t, P.lookSweepDeg, P.lookPeriodS);
+          if (beliefTgt) return sweep(api, me, beliefTgt, obs.t, P.lookSweepDeg, P.lookPeriodS, P.glanceS);
         }
 
         if (patrolGen >= 0) {
@@ -339,7 +341,7 @@ export function makeHunter(P) {
           if (bi < 0) bi = patrolGen;
           patrolGen = bi; patrolT = obs.t;
         }
-        if (patrolGen >= 0) return sweep(api, me, gens[patrolGen], obs.t, P.lookSweepDeg, P.lookPeriodS);
+        if (patrolGen >= 0) return sweep(api, me, gens[patrolGen], obs.t, P.lookSweepDeg, P.lookPeriodS, P.glanceS);
         return {};
       },
     };
