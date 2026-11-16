@@ -12,7 +12,7 @@ export const gasHeavenLayout = {
   eyeHeight: 1.6,
 
   landmarks: [
-    { tile: 'main', x: 40, z: 8 },            // 4x4 tiles, "incredibly safe window + complementary pallets"
+    { tile: 'tl-wall', x: 48, z: 16 },        // user: T + L in place of the old main building (centred in its 32 m slot; the rest is rolled)
     { tile: 'shack', x: 24, z: 72 },          // S
     { pool: 'maze', x: 88, z: 8 },            // mazetile NE (between 1 and 2)
     { pool: 'maze', x: 8, z: 24 },            // mazetile W (10)
@@ -45,7 +45,7 @@ export const gasHeavenLayout = {
 
   pallets: { min: 14, max: 24 },
   gates: { minDistance: 75 },
-  gens: { count: [11, 12], minSpacing: 20, require: ['main'] },
+  gens: { count: [11, 12], minSpacing: 20, require: [] },
   hooks: { min: 16, max: 20, radius: 20, slotBonus: 25, jitter: 15 },
   // perimeter spawns: survivor anchors (engine scatters 4 survivors within 15 m) + hunter points
   spawns: { survivorAnchors: 10, hunter: 10, inset: [4, 8], anchorOpenRadius: 15, anchorOpenFraction: 0.75 },

@@ -1324,6 +1324,16 @@ export class Match {
     }
   }
 
+  // Turn the hunter's view toward `want` (radians), at most hunter.turnRateDegS per second (vaults set facing directly).
+  _turnHunter(want) {
+    const H = this.hunter, max = (this.cfg.hunter.turnRateDegS ?? Infinity) * DEG * this.dt;
+    let d = want - H.face;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    H.face = Math.abs(d) <= max ? want : H.face + Math.sign(d) * max;
+    if (H.face > Math.PI) H.face -= 2 * Math.PI; else if (H.face < -Math.PI) H.face += 2 * Math.PI;
+  }
+
   _hunterAct(A) {
     const H = this.hunter, hc = this.cfg.hunter, dt = this.dt, cfg = this.cfg;
     const prevAct = H.curAct, prevTgt = H.curTgt;
@@ -1334,10 +1344,13 @@ export class Match {
     const carrying = H.carrying >= 0;
     if (A.act === 'attack' && H.windT <= 0 && H.cdT <= 0) {   // (a carrying hunter may swing too, e.g. to clear a body block)
       H.windT = hc.windupS; H.prog = 0;
-      if (A.face) H.face = Math.atan2(A.face.z - H.z, A.face.x - H.x);
-      else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) H.face = Math.atan2(t.z - H.z, t.x - H.x); }
+      if (A.face) this._turnHunter(Math.atan2(A.face.z - H.z, A.face.x - H.x));
+      else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) this._turnHunter(Math.atan2(t.z - H.z, t.x - H.x)); }
     }
     if (H.windT > 0) {
+      // keep turning toward the attack target through the windup (turn-rate limited)
+      if (A.face) this._turnHunter(Math.atan2(A.face.z - H.z, A.face.x - H.x));
+      else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) this._turnHunter(Math.atan2(t.z - H.z, t.x - H.x)); }
       // lunge forward along the facing, but plant once a valid target is already inside range + arc (no overshoot)
       const lunge = carrying ? hc.carrySpeed : hc.speed * hc.lungeSpeedMult;   // no lunge while carrying
       if (!this._targetInReach()) this._applyMove(H, Math.cos(H.face), Math.sin(H.face), lunge * dt, true);
@@ -1350,9 +1363,9 @@ export class Match {
     const moving = this._steer(H, A, this._hunterSpeed());
     if (moving) {
       this._applyMove(H, this._sdx, this._sdz, this._sstep, true);
-      if (!A.face) H.face = Math.atan2(this._sdz, this._sdx);
+      if (!A.face) this._turnHunter(Math.atan2(this._sdz, this._sdx));
     } else { H.vx = H.vz = 0; H.bodyT = 0; }
-    if (A.face) H.face = Math.atan2(A.face.z - H.z, A.face.x - H.x);
+    if (A.face) this._turnHunter(Math.atan2(A.face.z - H.z, A.face.x - H.x));
     if (H.vault) { H.curAct = 'vault'; return; }
     if (!moving && A.act && H.cdT <= 0) {
       const same = (act, tgt) => { H.curAct = act; H.curTgt = tgt; if (prevAct === act && prevTgt === tgt) H.prog += dt; else H.prog = dt; return H.prog; };
@@ -1578,7 +1591,7 @@ export class Match {
       winner: kills > escapes ? 'hunter' : escapes > kills ? 'survivors' : 'draw',
       kills, escapes, timeouts, gensDone: this.gensDone, hooks: this.stats.hooks,
       durationS: Math.round(this.tick * this.dt * 100) / 100, ticks: this.tick,
-      survivors: this.survivors.map(s => ({ id: s.id, outcome: s.outcome, cause: s.cause, tOut: s.tOut < 0 ? null : r2(s.tOut), hooks: s.hookCount, repairS: r2(s.repairS), repairC: +s.repairC.toFixed(4), leverS: r2(s.leverS) })),
+      survivors: this.survivors.map(s => ({ id: s.id, outcome: s.outcome, cause: s.cause, tOut: s.tOut < 0 ? null : r2(s.tOut), hooks: s.hookCount, hookStages: s.hookStage, repairS: r2(s.repairS), repairC: +s.repairC.toFixed(4), leverS: r2(s.leverS) })),
       stats: { ...this.stats },
       gens: this.gens.map(g => g.id),
       events: this.events,

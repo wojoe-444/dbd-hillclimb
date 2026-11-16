@@ -1,6 +1,7 @@
 // Population evolution: a population of hunters and a population of survivor teams (each team = one parameter set
 // playing all four survivors). Every generation each hunter plays `--rounds` matches against randomly paired survivor
-// teams (and vice versa); fitness = mean own bloodpoints (bloodpoints.js, normalised to [0,1]). The top `--elite`
+// teams (and vice versa); fitness: survivors = mean own bloodpoints (bloodpoints.js, normalised to [0,1]),
+// hunter = mean of the user's outcome table (hunterscore.js, /100). The top `--elite`
 // fraction of each population survives unchanged; the rest is refilled with children of tournament-selected parents
 // (uniform crossover + gaussian mutation). Every generation logs the whole population's knob distributions, so a
 // knob like `tunnel` can be watched drifting, narrowing, or splitting into sub-populations.
@@ -117,7 +118,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
 
   const agg = (n) => Array.from({ length: n }, () => ({ fit: 0, bp: 0, n: 0, kills: 0, escapes: 0, gens: 0 }));
   const H = agg(hunters.length), S = agg(survivors.length);
-  const tot = { kills: 0, escapes: 0, gensDone: 0, genProgress: 0, hunterBP: 0, survivorBP: 0, durationS: 0, hooks: 0 };
+  const tot = { kills: 0, escapes: 0, gensDone: 0, genProgress: 0, hunterScore100: 0, hookStages: 0, hunterBP: 0, survivorBP: 0, durationS: 0, hooks: 0 };
   for (const r of results) {
     const h = H[r.h], s = S[r.s];
     h.fit += r.hunterFit; h.bp += r.hunterBP; h.n++; h.kills += r.kills;
@@ -144,7 +145,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
 
   const tk = knobStats('hunter', rh).tunnel;
   console.log(`gen ${String(gen).padStart(3)}  kills ${tot.kills.toFixed(2)} esc ${tot.escapes.toFixed(2)} gens ${tot.gensDone.toFixed(2)}  ` +
-    `BP H ${Math.round(tot.hunterBP)} S ${Math.round(tot.survivorBP)}  best H ${Math.round(rh[0].bp)} S ${Math.round(rs[0].bp)}  ` +
+    `H score ${tot.hunterScore100.toFixed(1)} (stages ${tot.hookStages.toFixed(1)})  S BP ${Math.round(tot.survivorBP)}  best H ${(100 * rh[0].fit).toFixed(1)} S ${Math.round(rs[0].bp)}  ` +
     (tk ? `tunnel med ${tk.med.toFixed(2)} [${tk.q25.toFixed(2)}..${tk.q75.toFixed(2)}]  ` : '') + `(${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 }
 pool.close();

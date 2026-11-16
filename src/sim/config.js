@@ -75,6 +75,7 @@ export const defaultConfig = {
   },
 
   hunter: {
+    turnRateDegS: 450,      // [user] max view turn rate (no instant 180-degree flicks)
     speed: 4.6,
     carrySpeed: 3.68,       // wiki: 92%
     windupS: 0.35,          // NOTE: timers elapse in whole ticks (rounded up): 0.35 s -> 4 ticks = 0.4 s
