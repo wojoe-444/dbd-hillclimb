@@ -91,6 +91,9 @@ function rectDist(x, z, x0, z0, x1, z1) {
   const dz = z < z0 ? z0 - z : (z > z1 ? z - z1 : 0);
   return hyp(dx, dz);
 }
+// "at" a pallet = within the engine's drop reach (config.reach.pallet, 1.2 m) of its footprint, minus a small epsilon so
+// float error never decides it (a loop side point sits 1.1 m from the footprint, which can come out as 1.1000000000000014)
+const atPallet = (me, p, reach) => rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= reach - 1e-6;
 
 export function makeSurvivor(P) {
   return (ctx) => {
@@ -593,7 +596,7 @@ export function makeSurvivor(P) {
         // crossing
         if (a.kind === 'p' && obs.pallets[a.i] === 'up') {
           const p = a.p;
-          const near = rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= 1.1;
+          const near = atPallet(me, p, ctx.config.reach.pallet ?? 1.2);
           const ms = d2(Pt, me) <= d2(Qt, me) ? 'P' : 'Q', hs = hP <= hQ ? 'P' : 'Q';
           if (near && (hs === 'P' || dhm < 2.5) && dhm < 12) {
             const dec = palletDecision(obs, a, hp, h, me, dhm);
