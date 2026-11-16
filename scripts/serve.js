@@ -17,7 +17,9 @@ createServer(async (req, res) => {
       for (const d of await readdir(join(root, 'runs'), { withFileTypes: true }).catch(() => [])) {
         if (!d.isDirectory()) continue;
         const s = await stat(join(root, 'runs', d.name, 'meta.jsonl')).catch(() => null);
-        if (s) runs.push({ name: d.name, mtime: s.mtimeMs });
+        const e = await stat(join(root, 'runs', d.name, 'evo.jsonl')).catch(() => null);
+        if (s) runs.push({ name: d.name, mtime: s.mtimeMs, kind: 'climb' });
+        else if (e) runs.push({ name: d.name, mtime: e.mtimeMs, kind: 'evolve' });
       }
       runs.sort((a, b) => b.mtime - a.mtime);
       res.writeHead(200, { 'content-type': 'application/json' });

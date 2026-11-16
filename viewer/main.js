@@ -256,18 +256,37 @@ function log() {
 
 // ---------------------------------------------------------------- meta runs
 let meta = [];
+let runKinds = {};
 let champ = { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
 async function loadRuns() {
   const runs = await (await fetch('/api/runs')).json().catch(() => []);
-  $('run').innerHTML = runs.length ? runs.map((r) => `<option>${r.name}</option>`).join('') : '<option value="">(no runs — defaults)</option>';
+  runKinds = Object.fromEntries(runs.map((r) => [r.name, r.kind]));
+  $('run').innerHTML = runs.length ? runs.map((r) => `<option value="${r.name}">${r.name}${r.kind === 'evolve' ? ' (population)' : ''}</option>`).join('') : '<option value="">(no runs — defaults)</option>';
   await loadMeta();
 }
 async function loadMeta() {
   const name = $('run').value;
   meta = [];
-  if (name) {
+  if (name && runKinds[name] === 'evolve') {
+    // population run: one record per generation; "champion" = the top-ranked individual of each population
+    const txt = await (await fetch(`../runs/${name}/evo.jsonl`)).text();
+    meta = txt.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((e) => ({
+      gen: e.gen, side: 'population', accepted: false, evo: e,
+      after: { kills: e.outcome.kills, escapes: e.outcome.escapes, gensDone: e.outcome.gensDone },
+      champ: { hunter: e.hunters.ranking[0].params, survivor: e.survivors.ranking[0].params },
+    }));
+  } else if (name) {
     const txt = await (await fetch(`../runs/${name}/meta.jsonl`)).text();
     meta = txt.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  }
+  // knob picker for population runs
+  const evo = meta.length && meta[0].evo;
+  $('knobBox').style.display = evo ? '' : 'none';
+  if (evo) {
+    const cur = $('knob').value;
+    const opts = [...Object.keys(evo.hunters.knobs).map((k) => 'hunter:' + k), ...Object.keys(evo.survivors.knobs).map((k) => 'survivor:' + k)];
+    $('knob').innerHTML = opts.map((o) => `<option>${o}</option>`).join('');
+    $('knob').value = opts.includes(cur) ? cur : 'hunter:tunnel';
   }
   $('gen').max = meta.length;
   $('gen').value = meta.length;
@@ -281,7 +300,7 @@ function pickGen() {
   } else {
     const r = meta[g - 1];
     champ = r.champ;
-    $('genInfo').textContent = `gen ${r.gen} · ${r.side} ${r.accepted ? 'ACCEPTED' : 'kept'} · kills ${r.after.kills.toFixed(2)} · escapes ${r.after.escapes.toFixed(2)} · gens ${r.after.gensDone.toFixed(2)}`;
+    $('genInfo').textContent = r.evo ? `gen ${r.gen} · population · best hunter ${r.evo.hunters.ranking[0].id} (${r.evo.hunters.ranking[0].bp} BP) vs best team ${r.evo.survivors.ranking[0].id} (${r.evo.survivors.ranking[0].bp} BP) · avg kills ${r.after.kills.toFixed(2)} · escapes ${r.after.escapes.toFixed(2)} · gens ${r.after.gensDone.toFixed(2)}` : `gen ${r.gen} · ${r.side} ${r.accepted ? 'ACCEPTED' : 'kept'} · kills ${r.after.kills.toFixed(2)} · escapes ${r.after.escapes.toFixed(2)} · gens ${r.after.gensDone.toFixed(2)}`;
   }
   const d = { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
   const fmt = (side) => Object.entries(champ[side]).map(([k, v]) => {
@@ -315,6 +334,41 @@ function drawChart() {
   const sel = +$('gen').value;
   if (sel > 0) { g.strokeStyle = '#fff8'; g.beginPath(); g.moveTo(X(sel - 1), pad); g.lineTo(X(sel - 1), H - pad); g.stroke(); }
   g.fillStyle = '#888'; g.font = '18px system-ui'; g.fillText('4', 2, Y(4, 4) + 5); g.fillText('0', 2, Y(0, 4) + 5);
+  drawKnobChart();
+}
+
+// population runs: how one knob is distributed across the population, generation by generation
+function drawKnobChart() {
+  const c = $('knobChart'), g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
+  if (!meta.length || !meta[0].evo) return;
+  const [side, key] = $('knob').value.split(':');
+  const space = (side === 'hunter' ? brains.hunter.space : brains.survivor.space)[key];
+  if (!space) return;
+  const [lo, hi] = space;
+  const n = meta.length, W = c.width, H = c.height, pad = 22;
+  const X = (i) => pad + (i / Math.max(1, n - 1)) * (W - 2 * pad);
+  const Y = (v) => H - pad - ((v - lo) / (hi - lo || 1)) * (H - 2 * pad);
+  const st = (r) => r.evo[side === 'hunter' ? 'hunters' : 'survivors'].knobs[key];
+  // individual values as faint dots
+  g.fillStyle = '#7aa7ff33';
+  meta.forEach((r, i) => { for (const v of st(r).values) { g.fillRect(X(i) - 1, Y(v) - 1, 2.5, 2.5); } });
+  // quartile band + median
+  g.fillStyle = '#7aa7ff40'; g.beginPath();
+  meta.forEach((r, i) => (i ? g.lineTo(X(i), Y(st(r).q75)) : g.moveTo(X(i), Y(st(r).q75))));
+  for (let i = n - 1; i >= 0; i--) g.lineTo(X(i), Y(st(meta[i]).q25));
+  g.closePath(); g.fill();
+  g.strokeStyle = '#9cf'; g.lineWidth = 2; g.beginPath();
+  meta.forEach((r, i) => (i ? g.lineTo(X(i), Y(st(r).med)) : g.moveTo(X(i), Y(st(r).med))));
+  g.stroke();
+  // best individual's value
+  g.fillStyle = '#ffd24a';
+  meta.forEach((r, i) => { const v = r.evo[side === 'hunter' ? 'hunters' : 'survivors'].ranking[0].params[key]; g.fillRect(X(i) - 1.5, Y(v) - 1.5, 3, 3); });
+  const sel = +$('gen').value;
+  if (sel > 0) { g.strokeStyle = '#fff8'; g.lineWidth = 1; g.beginPath(); g.moveTo(X(sel - 1), pad); g.lineTo(X(sel - 1), H - pad); g.stroke(); }
+  g.fillStyle = '#888'; g.font = '16px system-ui';
+  g.fillText(String(hi), 2, Y(hi) + 5); g.fillText(String(lo), 2, Y(lo) + 5);
+  g.fillText(`${side} ${key}: dots = individuals, band = middle 50%, line = median, yellow = best`, pad, 16);
 }
 
 // ---------------------------------------------------------------- loop
@@ -348,6 +402,7 @@ $('play').onclick = () => { paused = !paused; $('play').textContent = paused ? '
 $('restart').onclick = newMatch;
 $('random').onclick = () => { $('seed').value = Math.floor(Math.random() * 1e6); newMatch(); };
 $('run').onchange = loadMeta;
+$('knob').onchange = drawKnobChart;
 $('gen').oninput = () => { pickGen(); };
 $('gen').onchange = newMatch;
 $('useChamp').onchange = newMatch;
