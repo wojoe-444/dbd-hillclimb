@@ -29,6 +29,10 @@ export const BP = {
     safeRescueS: 10,
     // Boldness
     chasedPerSecond: 50,
+    // --- our deviations (chase splitting): reward taking a real chase, not dipping into someone else's ---
+    chaseRampS: 8,             // the first 8 s of any chase earn no 'chased' points
+    chaseEscapeMinS: 15,       // 'escaped the chase' bonus only for chases at least this long
+    chaseShare: 0.5,           // while chased, earn this share of the objective BP teammates make (Boldness)
     chaseEscapeFirst: 750,     // losing the hunter
     chaseEscapeLater: 375,
     vaultInChase: 100, vaultInChaseCap: 1500,
@@ -65,18 +69,22 @@ export function scoreBloodpoints(res) {
   const surv = [0, 1, 2, 3].map(() => ({ obj: 0, survival: 0, altruism: 0, boldness: 0, chaseEsc: 0, vaultBP: 0 }));
   const hun = { brutality: 0, deviousness: 0, hunter: 0, sacrifice: 0 };
 
+  // chase share: objective BP (repair + lever) teammates earned while survivor i was the chased one (from the worker)
+  if (res.chaseShareObj) res.chaseShareObj.forEach((v, i) => { surv[i].boldness += S.chaseShare * v; });
   res.survivors.forEach((s, i) => {
     surv[i].obj += (s.repairC ?? 0) * S.repairPerGen + (s.leverS ?? 0) * S.leverPerSecond;
     if (s.outcome === 'escaped') surv[i].survival += S.survived;
   });
 
   const chaseOpen = {};           // who -> start time
+  const lastLen = {};             // who -> length of their last closed chase
   let chases = 0;
   const firstHooked = new Set();
   const hits = ev.filter((e) => e.type === 'hit');
   const closeChase = (who, t) => {
     const len = Math.max(0, t - chaseOpen[who]);
-    surv[who].boldness += len * S.chasedPerSecond;
+    surv[who].boldness += Math.max(0, len - S.chaseRampS) * S.chasedPerSecond;
+    lastLen[who] = len;
     hun.hunter += Math.min(60, len) * K.chaseFirst60PerSecond + Math.max(0, len - 60) * K.chaseAfterPerSecond;
     delete chaseOpen[who];
   };
@@ -90,7 +98,7 @@ export function scoreBloodpoints(res) {
         break;
       case 'chaseEnd':
         if (chaseOpen[e.who] !== undefined) closeChase(e.who, e.t);
-        if (e.reason === 'lost') { surv[e.who].boldness += surv[e.who].chaseEsc ? S.chaseEscapeLater : S.chaseEscapeFirst; surv[e.who].chaseEsc++; }
+        if (e.reason === 'lost' && (lastLen[e.who] ?? 0) >= S.chaseEscapeMinS) { surv[e.who].boldness += surv[e.who].chaseEsc ? S.chaseEscapeLater : S.chaseEscapeFirst; surv[e.who].chaseEsc++; }
         break;
       case 'vault':
         if (e.chased && surv[e.who].vaultBP < S.vaultInChaseCap) { surv[e.who].vaultBP += S.vaultInChase; surv[e.who].boldness += S.vaultInChase; }

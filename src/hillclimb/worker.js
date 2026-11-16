@@ -3,7 +3,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { loadMapPool } from './maps.js';
 import { createMatch } from '../sim/index.js';
 import { getBrains } from '../brains/index.js';
-import { scoreBloodpoints } from './bloodpoints.js';
+import { scoreBloodpoints, BP } from './bloodpoints.js';
 
 const maps = loadMapPool(workerData.mapPath);
 const brains = getBrains(workerData.hunterBrain, workerData.survivorBrain);
@@ -23,8 +23,19 @@ export function playOne({ seed, hunterParams, survivorParams, config }) {
     hunter: brains.hunter.make(hunterParams),
     survivors: [0, 1, 2, 3].map(() => brains.survivor.make(survivorParams)),
   });
-  while (!m.over) m.step();
+  // chase share bookkeeping: objective BP made by the others while survivor k is the chased one
+  const objOf = (x) => x.repairC * BP.survivor.repairPerGen + x.leverS * BP.survivor.leverPerSecond;
+  const share = [0, 0, 0, 0];
+  let prevObj = m.survivors.map(objOf);
+  while (!m.over) {
+    m.step();
+    const now = m.survivors.map(objOf);
+    const k = m.chaseTgt;
+    if (k >= 0) for (let j = 0; j < 4; j++) if (j !== k) share[k] += now[j] - prevObj[j];
+    prevObj = now;
+  }
   const res = m.result();
+  res.chaseShareObj = share;
   // generator progress in gen-equivalents: finished gens count 1, unfinished ones their current fraction
   // (so every repair-second counts, net of the multi-repairer efficiency penalty, kicks/regression and fumbles)
   let genProgress = 0;
