@@ -13,16 +13,21 @@ export const survivorSpace = {
   altruism:      [0, 1, 0.6],    // willingness to rescue / heal
   rescueDelayS:  [0, 40, 8],     // wait after spotting a hooked teammate (anti-camp)
   campAvoidDist: [0, 20, 8],     // don't approach a hook while the hunter is seen within this of it
-  hookCheck:     [0, 1, 0.5],    // >threshold: go check hooks near where we saw the hunter carrying someone
   healDist:      [0, 40, 15],    // heal visible injured/downed teammates within this
   genDistW:      [0, 2, 1],
   genProgW:      [0, 2, 1],
-  spreadW:       [0, 2, 0.5],    // avoid gens with visible workers
+  spreadW:       [-1, 2, 0.5],   // per teammate already on a gen (HUD): >0 spread out, <0 group up
   hunterAvoidW:  [0, 2, 1],      // avoid gens near the last hunter sighting
   sneakMaxS:     [3, 60, 15],    // give up sneaking (go back to work despite terror) after this long
   protectHoldS:  [0, 10, 0],     // after unhook: hold off conspicuous actions (repair/heal/rescue/gate) for this many of the 10 protected seconds
   mendRiskDist:  [0, 40, 16],    // only mend Deep Wound if the hunter isn't seen within this
   holdMaxS:      [0, 20, 4],     // max time to hold at a loop anchor while the hunter isn't pressing us (seen + approaching)
+  // ---- HUD-driven teamwork (solo queue: no comms, but the HUD shows states / gens / chases / hooks / downed auras) ----
+  rescueSlack:   [0, 40, 10],    // go for a rescue if my distance <= the closest teammate's estimated distance + this
+  unknownDist:   [10, 80, 40],   // assumed distance to a hook for a teammate whose whereabouts the HUD doesn't reveal
+  rescueWhenChased: [0, 1, 0.6], // >0.5: skip the rescue delay while another survivor is being chased (hunter busy)
+  trustChase:    [0, 1, 0.6],    // >0.5: don't abandon my gen on terror while another survivor is being chased
+  healSeek:      [0, 1, 0.4],    // >0.5: go heal an injured teammate on a known gen (HUD) within healDist
 };
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -54,13 +59,11 @@ export function makeSurvivor(P) {
     let lastThreatT = -99;
     let anchor = null;
     let genTarget = -1;
-    let carrySeen = null;        // {x,z,t} last time we saw the hunter carrying someone
-    const hookSpotted = {};      // teammate id -> first time seen hooked
-    const checkedHooks = new Set();
-    const dismissed = [-1, -1, -1, -1]; // lastSeen.t values we already found stale
     let fleePoint = null, fleeT = -99;
     let sneakStart = -1;
     let idleHoldT = 0;            // time spent holding at an anchor without being pressed
+    const hookedAt = {};          // teammate id -> { hookId, x, z, t } from the HUD hook notifications
+    let notesRead = 0;
 
     const anchorUsable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] !== 'broken');
     const crossable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] === 'dropped');
@@ -127,12 +130,23 @@ export function makeSurvivor(P) {
           const hp = h ?? obs.lastHunter;
           return hp ? { moveDir: { x: me.x - hp.x, z: me.z - hp.z } } : {};
         }
-        if (h && h.carrying !== null && h.carrying !== undefined) carrySeen = { x: h.x, z: h.z, t: obs.t };
+
+        // ---- HUD bookkeeping ----
+        const hud = obs.hud || null;
+        const notes = obs.notifications || [];
+        for (; notesRead < notes.length; notesRead++) {
+          const n = notes[notesRead];
+          if (n.type === 'hooked') hookedAt[n.who] = { hookId: n.hookId, x: n.x, z: n.z, t: n.t };
+          else if (n.type === 'unhooked' || n.type === 'died') delete hookedAt[n.who];
+        }
+        if (hud) for (const k of Object.keys(hookedAt)) if (hud[k] && hud[k].state !== 'hooked') delete hookedAt[k];
+        const otherChased = !!hud && hud.some((x) => x.id !== me.id && x.chased);
+        const genPos = (id) => gens.find((g) => g.id === id);
 
         // ---- threat state ----
         const dh = h ? d2(h, me) : Infinity;
         if (h && dh < P.fleeSeenDist) { mode = 'chase'; lastThreatT = obs.t; }
-        else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
+        else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
           if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
           lastThreatT = obs.t;
         }
@@ -184,44 +198,41 @@ export function makeSurvivor(P) {
           }
         }
 
-        // ---- altruism: hooked teammates ----
-        for (const tm of obs.teammates) {
-          if (tm.state === 'hooked') { if (hookSpotted[tm.id] === undefined) hookSpotted[tm.id] = obs.t; }
-          else delete hookSpotted[tm.id];
-        }
+        // ---- altruism: rescue (the HUD announces every hook with its location) ----
         if (P.altruism > 0.25) {
-          for (let j = 0; j < 4; j++) {
-            const ls = obs.lastSeen[j];
-            if (!ls || ls.state !== 'hooked' || obs.t - ls.t > 120 || ls.t <= dismissed[j]) continue;
-            const first = hookSpotted[j] ?? ls.t;
-            if (obs.t - first < P.rescueDelayS * (1.2 - P.altruism)) continue;
-            let hk = null, bd = Infinity;
-            for (const k of M.hooks) { const d = d2(k, ls); if (d < bd) { bd = d; hk = k; } }
-            if (!hk) continue;
+          for (const k of Object.keys(hookedAt)) {
+            const j = +k, hk = hookedAt[k];
+            if (j === me.id) continue;
+            const waited = obs.t - hk.t;
+            const busy = otherChased && P.rescueWhenChased > 0.5;
+            if (waited < P.rescueDelayS * (1.2 - P.altruism) && !busy) continue;
             if (h && d2(h, hk) < P.campAvoidDist) continue;
-            const visibleNow = obs.teammates.some((t) => t.id === j && t.state === 'hooked');
-            if (!visibleNow && d2(me, hk) < 3) { dismissed[j] = ls.t; continue; } // stale memory: they're gone
-            if (d2(me, hk) <= 1.6 && !holdProtection) return { act: 'rescue', target: j };
-            return { moveTo: hk };
-          }
-          // saw a carry -> go look at nearby hooks
-          if (carrySeen && P.hookCheck > 0.3 && obs.t - carrySeen.t < 60 && obs.t - carrySeen.t > P.rescueDelayS * 0.5) {
-            let hk = null, bd = Infinity;
-            for (const k of M.hooks) {
-              if (checkedHooks.has(k.id)) continue;
-              const d = d2(k, carrySeen);
-              if (d < bd && d < 25) { bd = d; hk = k; }
+            // am I (roughly) the closest? teammates on a gen are "at" that gen; others unknown
+            const myD = nav.dist(me, hk);
+            let best = Infinity;
+            if (hud) for (const x of hud) {
+              if (x.id === me.id || x.id === j || x.state === 'dead' || x.state === 'escaped' || x.state === 'hooked' || x.state === 'carried' || x.state === 'downed') continue;
+              const g = x.repairing ? genPos(x.repairing) : null;
+              const ls = obs.lastSeen[x.id];
+              const est = g ? d2(g, hk) : (ls && obs.t - ls.t < 15 ? d2(ls, hk) : P.unknownDist);
+              if (est < best) best = est;
             }
-            if (hk) {
-              if (d2(me, hk) < 6) checkedHooks.add(hk.id);
-              else return { moveTo: hk };
-            } else { carrySeen = null; checkedHooks.clear(); }
+            if (myD > best + P.rescueSlack) continue;
+            if (d2(me, hk) <= 1.6 && !holdProtection) return { act: 'rescue', target: j };
+            return { moveTo: { x: hk.x, z: hk.z } };
           }
         }
 
         // ---- heal teammates ----
         if (me.state === 'healthy' && P.altruism > 0.15) {
-          for (const tm of obs.teammates) {
+          const cands = [...obs.teammates];
+          for (const a of obs.downedAuras || []) if (!cands.some((t) => t.id === a.id)) cands.push({ id: a.id, x: a.x, z: a.z, state: 'downed' });
+          if (hud && P.healSeek > 0.5) for (const x of hud) {
+            if (x.id === me.id || x.state !== 'injured' || !x.repairing || cands.some((t) => t.id === x.id)) continue;
+            const g = genPos(x.repairing); if (g) cands.push({ id: x.id, x: g.x, z: g.z, state: 'injured' });
+          }
+          for (const tm of cands) {
+            if (hud && hud[tm.id] && hud[tm.id].beingHealed && !(me.act === 'heal')) continue;   // someone's on it
             if ((tm.state === 'injured' || tm.state === 'downed') && d2(tm, me) < P.healDist) {
               if (d2(tm, me) <= 1.4 && !holdProtection) return { act: 'heal', target: tm.id };
               return { moveTo: { x: tm.x, z: tm.z } };
@@ -237,7 +248,8 @@ export function makeSurvivor(P) {
             const g = obs.gens[i];
             if (g.done || g.blocked) continue;
             let s = P.genDistW * nav.dist(me, gens[i]) / 20 - P.genProgW * g.progress * 3;
-            if (g.workers && g.workers.length) s += P.spreadW * g.workers.length;
+            const others = hud ? hud.filter((x) => x.id !== me.id && x.repairing === g.id).length : (g.workers ? g.workers.filter((w) => w !== me.id).length : 0);
+            s += P.spreadW * others;
             if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(gens[i], obs.lastHunter)) / 10;
             if (i === genTarget) s -= 0.5; // hysteresis
             if (s < bs) { bs = s; bi = i; }

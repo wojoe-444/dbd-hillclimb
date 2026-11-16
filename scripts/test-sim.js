@@ -136,7 +136,7 @@ test('perception: detection is cone-limited for the hunter, 360 for survivors, b
   ok((Math.hypot(sObs.lastHunter.x - 30.5, sObs.lastHunter.z - 26.5) < 12.5 || Math.hypot(sObs.lastHunter.x - 5.5, sObs.lastHunter.z - 12.5) < 0.5) && sObs.lastHunter.t < 2, 'lastHunter has last seen position/time');
 });
 
-test('solo queue: teammates only by sight; no HUD of states; gens progress only if seen; no teammate aura', () => {
+test('solo queue: teammate positions only by sight (HUD states only); gens progress only if seen', () => {
   const { m, ctl } = mk();
   const obs = [null, null, null, null];
   for (let i = 0; i < 4; i++) ctl.S[i] = (o) => (obs[i] = o, {});
@@ -150,13 +150,14 @@ test('solo queue: teammates only by sight; no HUD of states; gens progress only 
   ok(!obs[1].teammates.some(t => t.id === 0), 'and the survivor inside is invisible to the others');
   ok(obs[0].lastSeen.every(v => v === null), 'no lastSeen for never-seen teammates');
   const keys = Object.keys(obs[0]).sort().join();
-  const allowed = 'blockedWindows,endgame,gates,gatesPowered,gens,gensDone,gensNeeded,hunter,lastHunter,lastSeen,newNotifications,notifications,pallets,self,t,teammates,terror,tick';
-  ok(keys === allowed, 'survivor obs has exactly the perceived-info keys (no team HUD): ' + keys);
-  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,deepWoundS,facing,healProgress,hookCount,hookStage,hookTimerS,id,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
+  const allowed = 'blockedWindows,downedAuras,endgame,gates,gatesPowered,gens,gensDone,gensNeeded,hud,hunter,lastHunter,lastSeen,newNotifications,notifications,pallets,self,t,teammates,terror,tick';
+  ok(keys === allowed, 'survivor obs has exactly the perceived-info + HUD keys: ' + keys);
+  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,chased,deepWoundS,facing,healProgress,hookCount,hookStage,hookTimerS,id,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
   ok(!('hookCount' in (obs[0].gens[0])) && !obs[0].gens.some(g => 'hooked' in g), 'no hidden state in gens');
-  // survivor 1 is downed far away: survivor 0 learns nothing
+  // survivor 1 is downed far away: survivor 0 gets it only through the HUD + downed aura, not through sight memory
   m.survivors[1].st = DOWNED; m.survivors[1].bleedT = 100; run(m, 3);
-  ok(obs[0].teammates.length === 0 && obs[0].lastSeen.every(v => v === null), 'survivor 0 does not learn that survivor 1 is downed');
+  ok(obs[0].teammates.length === 0 && obs[0].lastSeen.every(v => v === null), 'downed teammate far away: not in teammates / lastSeen');
+  ok(obs[0].hud[1].state === 'downed' && obs[0].downedAuras.length === 1 && obs[0].downedAuras[0].id === 1, 'but the HUD shows downed and the aura reveals them');
   // gens: survivor 1 repairs a gen survivor 0 cannot see
   const g = m.gens.find(x => x.id !== 'g2');
   m.survivors[1].st = HEALTHY; place(m.survivors[1], freeNear(g).x, freeNear(g).z);
@@ -200,6 +201,154 @@ test('solo queue: gen completion is announced to everyone; scream radius is a kn
   place(u.m.survivors[0], 10.5, 30.5); place(u.m.survivors[1], 14.5, 30.5); place(u.m.survivors[2], 44.5, 3.5);
   u.m._hurt(u.m.survivors[0]); u.m._hurt(u.m.survivors[0]);
   ok(u.m.survivors[1].inbox.some(n => n.type === 'scream' && n.kind === 'down') && u.m.survivors[2].inbox.length === 0, 'screamRadius 20: near survivor hears the down scream, far one does not');
+});
+
+test('HUD: per-teammate state/hooks/healing/repairing for everyone, no positions', () => {
+  const { m, ctl } = mk({ config: { gens: { fumbleChancePerS: 0 } } });
+  const obs = [null, null, null, null];
+  const freeNear = (x0, z0) => { for (let r = 1; r < 4; r += 0.5) for (let a = 0; a < 16; a++) { const x = x0 + r * Math.cos(a * Math.PI / 8), z = z0 + r * Math.sin(a * Math.PI / 8); if (circleFree(m.coll, m.W, m.Hh, x, z, 0.4)) return { x, z }; } throw new Error('no free spot'); };
+  const g = gen(m), gp = freeNear(g.x, g.z);
+  place(m.survivors[1], gp.x, gp.z);
+  m.survivors[3].st = INJURED;
+  const hp = freeNear(m.survivors[2].x, m.survivors[2].z); place(m.survivors[3], hp.x, hp.z);
+  for (let i = 0; i < 4; i++) ctl.S[i] = (o) => (obs[i] = o, i === 1 ? { act: 'repair', target: g.id } : i === 2 ? { act: 'heal', target: 3 } : {});
+  run(m, 5);
+  ok(m.survivors[1].curAct === 'repair' && m.survivors[2].curAct === 'heal', 'setup: survivor 1 repairs, survivor 2 heals survivor 3');
+  const h = obs[0].hud;
+  ok(Array.isArray(h) && h.length === 4 && h.every((e, j) => e.id === j), 'hud: 4 entries indexed by survivor id (own entry included)');
+  ok(h.every(e => Object.keys(e).sort().join() === 'beingHealed,chased,healing,hookCount,hookStage,id,repairing,state'), 'hud entries have exactly the HUD keys (no x/z/position)');
+  ok(h[1].repairing === g.id && h[0].repairing === null && h[2].repairing === null, 'repairing = id of the gen being worked on');
+  ok(h[2].healing && !h[2].beingHealed && h[3].beingHealed && !h[3].healing && h[3].state === 'injured', 'healing / beingHealed / injured');
+  ok(h[0].state === 'healthy' && h[0].hookCount === 0 && h[0].hookStage === 0 && !h[0].chased, 'own entry: healthy, no hooks');
+  ok(obs[3].hud[3].beingHealed && obs[1].hud[1].repairing === g.id, 'every survivor gets the same HUD');
+  ok(obs[0].hud !== obs[1].hud && obs[0].hud[1] !== obs[1].hud[1], 'hud arrays/entries are per-survivor objects');
+  // carried
+  const s1 = m.survivors[1]; ctl.S[1] = (o) => (obs[1] = o, {});
+  s1.st = CARRIED; m.hunter.carrying = 1; run(m, 2);
+  ok(obs[0].hud[1].state === 'carried' && obs[0].hud[1].repairing === null, 'carried: state carried, no longer repairing');
+  // hooked: stage 1, hook notification with when/where to teammates only
+  const hk = m.hooks[0]; m._hookSurvivor(s1, hk); run(m, 2);
+  ok(obs[0].hud[1].state === 'hooked' && obs[0].hud[1].hookStage === 1 && obs[0].hud[1].hookCount === 1, 'hooked: state hooked, stage 1, hookCount 1');
+  for (const i of [0, 2, 3]) {
+    const n = obs[i].notifications.filter(x => x.type === 'hooked');
+    ok(n.length === 1 && n[0].who === 1 && n[0].hookId === hk.id && n[0].x === hk.x && n[0].z === hk.z && typeof n[0].t === 'number', `survivor ${i} gets one {type:'hooked', who, hookId, x, z, t}`);
+  }
+  ok(!s1.inbox.some(x => x.type === 'hooked'), 'the hooked survivor gets no notification about themself');
+  // stage 2 via the timer
+  s1.hookTimer = 0.05; run(m, 2);
+  ok(obs[0].hud[1].hookStage === 2, 'hud hookStage follows the stage change');
+  // rescue by survivor 2 -> unhooked by: 2
+  const rp = freeNear(hk.x, hk.z); place(m.survivors[2], rp.x, rp.z);
+  ctl.S[2] = (o) => (obs[2] = o, { act: 'rescue', target: 1 }); run(m, 15);
+  ok(s1.st === INJURED, 'rescued');
+  const un = obs[0].notifications.find(x => x.type === 'unhooked');
+  ok(un && un.who === 1 && un.by === 2 && typeof un.t === 'number', 'unhooked notification {who:1, by:2, t}');
+  ctl.S[2] = (o) => (obs[2] = o, {}); run(m, 2);
+  ok(obs[0].hud[1].state === 'injured' && obs[0].hud[1].hookStage === 0 && obs[0].hud[1].hookCount === 1, 'after rescue: injured, stage 0, hookCount kept');
+  // second hook starts in stage 2; self-unhook -> by: 'self'
+  s1.st = CARRIED; m.hunter.carrying = 1; m._hookSurvivor(s1, m.hooks[1]); run(m, 2);
+  ok(obs[0].hud[1].hookStage === 2 && obs[0].hud[1].hookCount === 2, 'second hook: stage 2, hookCount 2');
+  s1.selfT = 0; run(m, 20);
+  const un2 = obs[0].notifications.filter(x => x.type === 'unhooked');
+  ok(s1.st === INJURED && un2.length === 2 && un2[1].by === 'self', "self-unhook: unhooked notification by 'self'");
+  // death
+  m._kill(m.survivors[3], 'test'); run(m, 2);
+  const d = obs[0].notifications.find(x => x.type === 'died');
+  ok(d && d.who === 3 && typeof d.t === 'number' && obs[0].hud[3].state === 'dead' && !obs[0].hud[3].beingHealed, 'died notification {who:3, t}; hud state dead');
+  ok(obs[2].hud[2].healing === false, 'healer of a dead teammate is no longer healing');
+  // third hook: hooked + died
+  s1.st = CARRIED; m.hunter.carrying = 1; m._hookSurvivor(s1, m.hooks[2]); run(m, 2);
+  const tail = obs[0].notifications.slice(-2).map(x => x.type).join();
+  ok(tail === 'hooked,died' && obs[0].hud[1].state === 'dead', '3rd hook: hooked then died notifications, hud dead');
+  // hunter gets none of these
+  let ho = null; ctl.H = o => (ho = o, {}); run(m, 1);
+  ok(!ho.notifications.some(x => x.type === 'hooked' || x.type === 'unhooked' || x.type === 'died'), 'hunter does not get the HUD notifications');
+});
+
+test('HUD: downed auras = live positions of downed (not carried) teammates', () => {
+  const { m, ctl } = mk();
+  const obs = [null, null, null, null]; let seenAt = null;
+  for (let i = 0; i < 4; i++) ctl.S[i] = (o) => { obs[i] = o; if (i === 0) seenAt = { x: m.survivors[1].x, z: m.survivors[1].z }; return {}; };
+  run(m, 2);
+  ok(obs[0].downedAuras.length === 0, 'nobody downed: no auras');
+  const s1 = m.survivors[1]; s1.st = DOWNED; s1.bleedT = 200;
+  ctl.S[1] = (o) => (obs[1] = o, { moveDir: { x: -1, z: 0 } });   // crawl
+  run(m, 3);
+  const a = obs[0].downedAuras;
+  ok(a.length === 1 && a[0].id === 1 && Object.keys(a[0]).sort().join() === 'id,x,z', 'downed teammate far away shows as an aura {id,x,z}');
+  ok(a[0].x === seenAt.x && a[0].z === seenAt.z, 'aura position is live (tick of the observation)');
+  const x0 = a[0].x; run(m, 20);
+  ok(obs[0].downedAuras[0].x < x0 - 1, 'aura follows the crawling survivor');
+  ok(obs[1].downedAuras.length === 0, 'no aura of yourself');
+  ok(obs[2].downedAuras.length === 1 && obs[2].downedAuras !== obs[0].downedAuras, 'everyone sees it (own arrays)');
+  m.survivors[3].st = DOWNED; m.survivors[3].bleedT = 200; run(m, 2);
+  ok(obs[0].downedAuras.map(e => e.id).join() === '1,3', 'several downed: all listed');
+  s1.st = CARRIED; m.hunter.carrying = 1; run(m, 2);
+  ok(obs[0].downedAuras.map(e => e.id).join() === '3', 'carried survivors have no aura');
+  m.survivors[3].st = DEAD; run(m, 2);
+  ok(obs[0].downedAuras.length === 0, 'dead: no aura');
+});
+
+test('chase state: start (seen + approaching / swinging within 20 m), lose after 6 s, one at a time, ends when downed', () => {
+  const setup = (config) => {
+    const h = mk({ config }); const m = h.m;
+    const H = m.hunter;
+    let tgt = null;   // a spot ~12 m away with a clear straight run and line of sight
+    for (let a = 0; a < 64 && !tgt; a++) {
+      const t = a / 64 * 2 * Math.PI, x = H.x + 12 * Math.cos(t), z = H.z + 12 * Math.sin(t);
+      if (circleFree(m.coll, m.W, m.Hh, x, z, 0.4) && H.api.los(H, { x, z }) && H.api.walkClear(H, { x, z })) tgt = { x, z, a: t };
+    }
+    if (!tgt) throw new Error('no chase lane');
+    return { ...h, H, tgt };
+  };
+  const { m, ctl, H, tgt } = setup();
+  const obs = [null, null, null, null]; let ho = null;
+  for (let i = 0; i < 4; i++) ctl.S[i] = (o) => (obs[i] = o, {});
+  ctl.H = o => (ho = o, {});
+  const s0 = m.survivors[0]; place(s0, tgt.x, tgt.z); H.face = tgt.a;
+  run(m, 10);
+  ok(H.seen[0] && ho.chase.target === null && !obs[0].self.chased, 'seen but hunter standing still: no chase');
+  ctl.H = o => (ho = o, { moveDir: { x: Math.cos(tgt.a), z: Math.sin(tgt.a) } });
+  run(m, 4);
+  ok(m.chaseTgt === 0 && obs[0].self.chased && obs[1].hud[0].chased && obs[0].hud[0].chased, 'hunter runs at a seen survivor within 20 m: chased (self.chased + hud)');
+  run(m, 1);
+  ok(ho.chase && ho.chase.target === 0 && Object.keys(ho.chase).join() === 'target', 'hunter obs.chase.target');
+  ok(m.events.some(e => e.type === 'chaseStart' && e.who === 0), 'chaseStart event');
+  // break line of sight: turn away and stand
+  ctl.H = o => (ho = o, {}); H.face = tgt.a + Math.PI; run(m, 3);
+  ok(!H.seen[0] && m.chaseTgt === 0, 'out of sight: still chased');
+  run(m, 50);
+  ok(m.chaseTgt === 0 && obs[0].self.chased, 'still chased ~5 s after losing sight');
+  run(m, 12);
+  ok(m.chaseTgt === -1 && !obs[0].self.chased && !obs[1].hud[0].chased && ho.chase.target === null, 'chase lost after 6 s unseen');
+  ok(m.events.some(e => e.type === 'chaseEnd' && e.who === 0 && e.reason === 'lost'), 'chaseEnd event (lost)');
+  // start range
+  const f = setup({ chase: { startRange: 8 } });
+  place(f.m.survivors[0], f.tgt.x, f.tgt.z); f.H.face = f.tgt.a;
+  f.ctl.H = () => ({ moveDir: { x: Math.cos(f.tgt.a), z: Math.sin(f.tgt.a) } });
+  run(f.m, 4);
+  ok(f.m.hunter.seen[0] && f.m.chaseTgt === -1, 'beyond startRange (12 m > 8 m): no chase yet');
+  run(f.m, 14);
+  ok(f.m.chaseTgt === 0, 'chase starts once inside startRange');
+  // one at a time: chase 0, then run at survivor 1 (0 hidden) -> switches to 1
+  const g = setup(); const go = [null, null, null, null];
+  for (let i = 0; i < 4; i++) g.ctl.S[i] = (o) => (go[i] = o, {});
+  place(g.m.survivors[0], g.tgt.x, g.tgt.z); g.H.face = g.tgt.a;
+  g.ctl.H = () => ({ moveDir: { x: Math.cos(g.tgt.a), z: Math.sin(g.tgt.a) } });
+  run(g.m, 4); ok(g.m.chaseTgt === 0, 'chasing survivor 0');
+  place(g.H, 24.5, 18.5); place(g.m.survivors[0], 3.5, 33.5); place(g.m.survivors[1], g.tgt.x, g.tgt.z); g.H.face = g.tgt.a;
+  run(g.m, 4);
+  ok(g.m.chaseTgt === 1, 'new chase on survivor 1 replaces the old one (most recent)');
+  ok(go[2].hud.filter(e => e.chased).map(e => e.id).join() === '1' && !go[0].self.chased && go[1].self.chased, 'exactly one chased survivor in the HUD');
+  // downed ends it
+  g.ctl.H = () => ({}); g.m._hurt(g.m.survivors[1]); g.m._hurt(g.m.survivors[1]); run(g.m, 1);
+  ok(g.m.chaseTgt === -1 && go[2].hud.every(e => !e.chased), 'downed: chase ends at once');
+  ok(g.m.events.some(e => e.type === 'chaseEnd' && e.who === 1 && e.reason === 'downed'), 'chaseEnd event (downed)');
+  // swinging at a survivor in front starts a chase without approaching
+  const k = setup(); place(k.m.survivors[0], k.H.x + 1.5 * Math.cos(k.tgt.a), k.H.z + 1.5 * Math.sin(k.tgt.a)); k.H.face = k.tgt.a;
+  run(k.m, 3); ok(k.m.chaseTgt === -1, 'close but idle hunter: no chase');
+  k.ctl.H = () => ({ act: 'attack', target: 0 }); run(k.m, 2);
+  ok(k.m.chaseTgt === 0, 'winding up at a seen survivor: chase starts');
 });
 
 test('movement: speeds, collision, walk vs run, boost, crawl', () => {

@@ -39,6 +39,7 @@ const opts = {
   hunterBrain: args.hunter ?? 'param',
   survivorBrain: args.survivor ?? 'param',
   threads: +(args.threads ?? Math.max(1, cpus().length - 1)),
+  score: args.score ?? 'bp',   // 'bp' = each side maximises its own bloodpoints (bloodpoints.js); 'outcome' = zero-sum escape/gen/alive score
 };
 const outDir = resolve(args.out ?? `runs/${new Date().toISOString().replace(/[:.]/g, '-')}`);
 mkdirSync(outDir, { recursive: true });
@@ -83,20 +84,38 @@ function runJobs(jobs) {
 }
 
 // ---------- scoring ----------
-// Zero-sum score in [0,1] from the hunter's perspective. A survivor still in the match at the time cap counts as a
-// loss for the survivors (hiding until the cap isn't a win in the genre; otherwise the climb learns to stall).
+// Default (--score bp): each side maximises its own bloodpoint total (see bloodpoints.js) -- not zero-sum.
+// --score outcome: the zero-sum outcome score below.
+// Zero-sum: hunterScore = 1 - survivorScore. Survivors get partial credit so a good change shows up even in matches
+// where nobody escapes:
+//   survivorScore = 0.60 * escapes/4  +  0.25 * min(genProgress, 5)/5  +  0.15 * mean_i min(1, timeAlive_i / ALIVE_REF_S)
+// genProgress = finished gens + fractional progress of unfinished ones, so every repair-second earns credit.
+// Escaped survivors get full alive credit. Survivors still in the match at the time cap get no escape credit, and
+// alive credit saturates at ALIVE_REF_S, so hiding until the cap is worth no more than lasting 10 minutes.
+export const SCORE_W = { escape: 0.6, gens: 0.25, alive: 0.15 };
+export const ALIVE_REF_S = 600;
+export function survivorScore(r) {
+  const alive = r.alive ? r.alive.reduce((a, t) => a + Math.min(1, t / ALIVE_REF_S), 0) / r.alive.length : 0;
+  const gp = r.genProgress ?? r.gensDone;
+  return SCORE_W.escape * (r.escapes / 4) + SCORE_W.gens * (Math.min(5, gp) / 5) + SCORE_W.alive * alive;
+}
 export function hunterScore(r) {
-  return 0.85 * ((r.kills + (r.timeouts ?? 0)) / 4) + 0.15 * (1 - Math.min(5, r.gensDone) / 5);
+  return 1 - survivorScore(r);
 }
 function summarize(results) {
   const n = results.length;
-  const s = { n, hunterScore: 0, kills: 0, escapes: 0, timeouts: 0, gensDone: 0, hooks: 0, durationS: 0 };
+  const s = { n, hunterScore: 0, hunterBP: 0, survivorBP: 0, hunterFit: 0, survivorFit: 0, kills: 0, escapes: 0, timeouts: 0, gensDone: 0, genProgress: 0, hooks: 0, durationS: 0 };
+  const sc = { objectives: 0, survival: 0, altruism: 0, boldness: 0 }, hc = { brutality: 0, deviousness: 0, hunter: 0, sacrifice: 0 };
   for (const r of results) {
     s.hunterScore += hunterScore(r);
-    s.kills += r.kills; s.escapes += r.escapes; s.timeouts += r.timeouts ?? 0; s.gensDone += r.gensDone;
+    s.hunterBP += r.hunterBP; s.survivorBP += r.survivorBP; s.hunterFit += r.hunterFit; s.survivorFit += r.survivorFit;
+    for (const k in sc) sc[k] += r.survivorCats[k]; for (const k in hc) hc[k] += r.hunterCats[k];
+    s.kills += r.kills; s.escapes += r.escapes; s.timeouts += r.timeouts ?? 0; s.gensDone += r.gensDone; s.genProgress += r.genProgress ?? r.gensDone;
     s.hooks += r.hooks; s.durationS += r.durationS;
   }
   for (const k of Object.keys(s)) if (k !== 'n') s[k] = +(s[k] / n).toFixed(4);
+  for (const k in sc) sc[k] = Math.round(sc[k] / n); for (const k in hc) hc[k] = Math.round(hc[k] / n);
+  s.survivorCats = sc; s.hunterCats = hc;
   return s;
 }
 async function evaluate(hunterParams, survivorParams, seeds) {
@@ -125,7 +144,8 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
   const t0 = Date.now();
   const side = gen % 2 === 1 ? 'survivor' : 'hunter';
   const space = brains[side].space;
-  const sign = side === 'hunter' ? 1 : -1; // maximize sign * hunterScore
+  // fitness of an evaluation summary for the side being climbed
+  const fit = (x) => (opts.score === 'bp' ? (side === 'hunter' ? x.hunterFit : x.survivorFit) : (side === 'hunter' ? x.hunterScore : 1 - x.hunterScore));
   const seeds = freshSeeds(opts.n);
 
   const base = await evaluate(champ.hunter, champ.survivor, seeds);
@@ -134,19 +154,19 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
     const pair = { ...champ, [side]: m };
     return { m, s: await evaluate(pair.hunter, pair.survivor, seeds) };
   }));
-  scored.sort((a, b) => sign * (b.s.hunterScore - a.s.hunterScore));
+  scored.sort((a, b) => fit(b.s) - fit(a.s));
   const best = scored[0];
   let accepted = false;
   let confirm = null;
-  if (sign * (best.s.hunterScore - base.hunterScore) > opts.margin) {
+  if (fit(best.s) - fit(base) > opts.margin) {
     const cSeeds = freshSeeds(opts.n);
     const pair = { ...champ, [side]: best.m };
     const [cBase, cBest] = await Promise.all([
       evaluate(champ.hunter, champ.survivor, cSeeds),
       evaluate(pair.hunter, pair.survivor, cSeeds),
     ]);
-    confirm = { base: cBase.hunterScore, best: cBest.hunterScore };
-    if (sign * (cBest.hunterScore - cBase.hunterScore) > 0) {
+    confirm = { base: fit(cBase), best: fit(cBest) };
+    if (fit(cBest) - fit(cBase) > 0) {
       champ = { ...champ, [side]: best.m };
       accepted = true;
     }
@@ -161,7 +181,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
   console.log(
     `gen ${String(gen).padStart(3)} ${side.padEnd(8)} ${accepted ? 'ACCEPT' : 'keep  '} ` +
     `kills ${after.kills.toFixed(2)} esc ${after.escapes.toFixed(2)} gens ${after.gensDone.toFixed(2)} ` +
-    `hScore ${after.hunterScore.toFixed(3)}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`
+    `BP H ${Math.round(after.hunterBP)} S ${Math.round(after.survivorBP)}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`
   );
 }
 for (const w of workers) w.terminate();

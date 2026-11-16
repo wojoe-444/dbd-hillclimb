@@ -81,7 +81,7 @@ export const defaultConfig = {
     placed: 7,              // generator candidates chosen per match (seeded)
     needed: 5,
     repairS: 90,            // seconds of work for ONE survivor at efficiency 1 (90 charges since 2022)
-    efficiency: [1.0, 0.85, 0.7], // per-worker efficiency with 1/2/3(+) workers on the gen
+    efficiency: [1.0, 0.85, 0.7, 0.55], // per-worker efficiency with 1/2/3/4 workers (-15% each per extra repairer; wiki Efficiency Penalty)
     fumbleChancePerS: 0.01, // per worker per repair-second
     fumbleLoss: 0.1,        // fraction of repairS lost on a fumble
     kickLoss: 0.05,         // hunter kick: fraction of repairS lost immediately
@@ -111,8 +111,14 @@ export const defaultConfig = {
     selfUnhookS: 1.5,       // [S] full meter => guaranteed self-unhook after this (hook timer paused); normal unhook result
   },
 
+  chase: {                  // [A] engine-level chase state (survivor HUD `chased`, self.chased, hunter obs.chase)
+    startRange: 20,         // m: starts when the hunter sees the survivor within this AND moves toward them (> 1 m/s) or swings at them
+    loseS: 6,               // ends after the hunter hasn't seen the target for this long (or the target is downed/hooked)
+    approachSpeed: 1,       // m/s: hunter velocity component toward the survivor needed to start a chase
+  },
+
   spawn: {
-    groupRadius: 15,        // m: the 4 survivors spawn within this (pairwise and path distance from the anchor)
+    groupRadius: 15,       // m: the 4 survivors spawn within this (pairwise and path distance from the anchor)
     hunterMinFrac: 0.8,     // hunter candidates eligible if path dist from the anchor >= this x farthest inset walkable cell
     edgeInset: 4,           // m: fallback hunter spawn must be at least this far inside the outline
   },

@@ -14,11 +14,12 @@ Files: `match.js` (rules, perception, observations), `nav.js` (distance fields /
 `sight.js` (grid DDA), `mapdata.js` (map rasterisation, cached per map object), `config.js`, `rng.js`, `testbrains.js`.
 Checks: `node scripts/test-sim.js` · benchmark: `node scripts/bench.js [--n 200] [--map …] [--decide-every 3]`.
 
-## Brains must not communicate (solo-queue model)
+## Solo queue + HUD: brains must not communicate
 
-Survivors share a goal but have **zero information about each other** and no comms. The engine enforces what it can
-(each agent gets its own `ctx`, `rng`, `api`, `nav`, `obs`, notification copies; `config` and static map info are
-deep-frozen) — the rest is **convention**:
+Survivors share a goal but have **no comms**: no brain may pass information to another. What a survivor knows about
+its teammates comes only from the **game HUD** (and auras / notifications the game itself shows) plus its **own sight**.
+The engine enforces what it can (each agent gets its own `ctx`, `rng`, `api`, `nav`, `obs`, notification copies;
+`config` and static map info are deep-frozen) — the rest is **convention**:
 
 * **No module-level mutable state in brain files** (no top-level `let`/arrays/Maps that brain instances touch, no
   `globalThis`, no shared singletons, no caches shared between instances). Everything a brain remembers lives in the
@@ -30,13 +31,32 @@ What a survivor can learn (everything else is hidden):
 
 | info | rule |
 |---|---|
-| teammates | only if seen by the same sight model used for the hunter (360°, range 48 m, semi-transparency); position + visible state (`healthy/injured/downed/hooked/carried`). No HUD, no knowledge of who is hooked/dead unless seen. `obs.lastSeen[j]` is the survivor's own memory of the last sighting. |
-| generators | progress, *who is working* and `regressing` only for gens currently seen (or within `sight.adjacentReach` = 2 m); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `seenT`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. |
+| **HUD** (`obs.hud`, every tick) | one entry per survivor, index = id, own entry included: `state` (`healthy/injured/downed/carried/hooked/dead/escaped`), `hookCount`, `hookStage` (0 unless hooked, else 1/2), `beingHealed`, `healing` (healing someone), `repairing` (gen id or `null` — gens have known positions, so this reveals the location implicitly; intended), `chased`. **No positions.** Actions reflect the previous tick (what the teammate did last). |
+| **hook notifications** | `{type:'hooked', who, hookId, x, z, t}` when a teammate is hooked (when + where; a 3rd-hook sacrifice also sends it, followed by `died`), `{type:'unhooked', who, by: id\|'self', t}`, `{type:'died', who, t}` (any cause). Sent to every other survivor still in the game, not to the subject, not to the hunter. |
+| **downed auras** (`obs.downedAuras`) | `[{id, x, z}]` live positions of all downed teammates (not carried, not yourself). |
+| **chase** | `hud[j].chased` and `self.chased` (chase music) from the engine chase state (below). |
+| teammate positions | otherwise only if seen by the same sight model used for the hunter (360°, range 48 m, semi-transparency): `teammates` = position + visible state. `obs.lastSeen[j]` is the survivor's own memory of the last sighting (HUD/aura info does not update it). |
+| generators | progress, *who is working* and `regressing` only for gens currently seen (or within `sight.adjacentReach` = 2 m); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `seenT`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. (The HUD's `repairing` tells you *that* a gen is being worked on, not its progress.) |
 | exit gates | `powered`/`open` are public; lever `progress` only while you perceive the lever (same sight rule, or within 2 m); open gates report `progress: 1`. |
 | pallets | state (`up/dropped/broken`) only for pallets currently seen/adjacent, else last-seen (initially `up`). |
 | hunter | position/facing/state only if seen; `lastHunter` = last sighting; `terror` = `{layer, approx}` — which third of the 32 m radius you *hear* (no direction, no exact distance); entering/leaving noticed after 0.5 s, layer changes only after persisting 2.5 s. |
 | global announcements | generator completed (notification with gen id + position; `gensDone`), gates powered, gate opened (`gateOpen` notification), endgame countdown (starts at the first opening). |
 | screams | a teammate being downed/hooked within `senses.screamRadius` (default **0 = off**) arrives as a `scream` notification `{kind:'down'\|'hook', x, z, t}`. |
+
+Not on the HUD: teammates' positions (except downed auras), generator progress, the anti-camp Resolve meter, Deep Wound / protection timers.
+
+### Chase state (`config.chase`, all rules **assumed**)
+
+Engine-level, at most **one** chased survivor at a time. Updated once per tick (after perception, before brains decide).
+
+* **Start**: the hunter currently sees the survivor (hunter perception: cone, range, visibility), the survivor is
+  healthy/injured and within `startRange` (20 m), and the hunter is either moving toward them (velocity component toward the
+  survivor > `approachSpeed` = 1 m/s) or winding up / swinging with them inside the ±45° attack arc.
+* **End**: the hunter hasn't seen the target for `loseS` (6 s), or the target is downed / carried / hooked / dead / escaped.
+* **One at a time**: a different survivor meeting the start rule takes over (most recent chase) unless the current target meets it
+  too; several new candidates in the same tick → the nearest. A carrying hunter can also start a chase (not excluded).
+* Exposed as `hud[j].chased`, `self.chased` (survivors) and `obs.chase = { target: id|null }` (hunter). Events `chaseStart {who}`,
+  `chaseEnd {who, reason: 'lost'|'switch'|<state>}`.
 
 Hunter knowledge: visible survivors in the 100° cone, all generator progress + `regressing` (but *workers* only for visible gens),
 generators being repaired within `senses.repairNoiseRadius` (10 m, `noisyGens`, no identity/count), lever progress of gates in its
@@ -68,7 +88,7 @@ is readable: `hunter`, `survivors[i]` (`x z face st …`), `gens`, `hooks`, `gat
   stats: { hits, downs, hooks, pickups, stuns, palletsDropped, palletsBroken, vaults, wiggles, rescues, heals, fumbles, missed },
   gens: [ids chosen], events: [{ t, type, … }], record? }
 ```
-Event types: `start hit miss pickup hook hookStage rescue resolveFull selfUnhook protect heal mend deepWoundDown palletDrop palletBreak dropped wiggle fumble genDone genKick genRegressStop gatesPowered gateOpen endgame loudNoise windowBlocked escape death end`
+Event types: `start hit miss pickup hook hookStage rescue resolveFull selfUnhook protect heal mend deepWoundDown palletDrop palletBreak dropped wiggle fumble genDone genKick genRegressStop gatesPowered gateOpen endgame loudNoise windowBlocked chaseStart chaseEnd escape death end`
 (`hit` with `endurance: true` = absorbed by unhook Endurance)
 (`death.cause`: `bleedout | hookDeath | hook3 | endgame`).
 
@@ -117,7 +137,7 @@ progress, gate lever progress, heal progress on the patient, mend progress).
 
 | act | who | range / time |
 |---|---|---|
-| `repair` | survivor | within 1.1 m of the generator cell; 90 s solo; per-worker efficiency 1.0 / 0.85 / 0.7 for 1 / 2 / 3+ workers; fumble 1 %/repair-second: −10 % progress + loud hunter notification. Any repair progress stops a kick regression. Nothing happens once the gates are powered (remaining gens blocked) |
+| `repair` | survivor | within 1.1 m of the generator cell; 90 s solo; per-worker efficiency 1.0 / 0.85 / 0.7 / 0.55 for 1 / 2 / 3 / 4 workers; fumble 1 %/repair-second: −10 % progress + loud hunter notification. Any repair progress stops a kick regression. Nothing happens once the gates are powered (remaining gens blocked) |
 | `heal` | survivor→other | 1.6 m centre-to-centre; 16 s, progress persists on the target; injured→healthy, downed→injured; never self; not while the target has Deep Wound |
 | `rescue` | survivor | within 1.8 m of the hook; 1 s; victim → injured + unhook protections (below) |
 | `mend` | survivor (self) | only with Deep Wound; 12 s, progress persists; clears Deep Wound; Deep Wound timer paused while mending |
@@ -142,12 +162,14 @@ Survivor `obs`:
 ```js
 { t, tick,
   self: { id,x,z,vx,vz,facing,state,hookCount,hookStage,hookTimerS,boosted,vaulting,act,progress,bleedS,healProgress,wiggle,
-          deepWoundS /* null if none */, protectedS /* remaining unhook protection, null if none */ },
+          deepWoundS /* null if none */, protectedS /* remaining unhook protection, null if none */, chased /* chase music */ },
   hunter: { x,z,vx,vz,facing,fx,fz,carrying,windup,cooldown,stunned } | null,       // only if visible now
   lastHunter: { x,z,vx,vz,facing,t } | null,
   terror: { layer: 1|2|3, approx } | null,   // heard terror-radius layer (thirds of 32 m, 1 = outermost), lagged; approx = band midpoint m
   teammates: [{ id,x,z,vx,vz,facing,state }],                                       // visible now
   lastSeen: [ {x,z,state,t} | null ×4 ],                                            // own memory, index = survivor id
+  hud: [{ id, state, hookCount, hookStage /*0|1|2*/, beingHealed, healing, repairing /*gen id|null*/, chased } ×4],  // game HUD, index = id, no positions
+  downedAuras: [{ id,x,z }],                                                        // live positions of downed (not carried) teammates
   gens: [{ id,x,z,progress(0..1),done,blocked,regressing|null,visible,workers:[ids]|null,seenT }],   // order = ctx.map.generators
   gensDone, gensNeeded, pallets: ['up'|'dropped'|'broken'…],
   gates: [{ id, powered, open, progress? }],   // progress 0..1 only if the lever is perceived (always 1 when open)
@@ -165,11 +187,13 @@ Hunter `obs`:
   gens: [{ id,x,z,progress,done,blocked,regressing,visible,workers:[ids]|null }], gensDone, gensNeeded,
   noisyGens: [{ id,x,z }],      // gens with >= 1 worker within senses.repairNoiseRadius (10 m)
   hooked: [{ id,hookId,stage,timerS,hookCount }], status: ['alive'|'dead'|'escaped' ×4],
+  chase: { target: id|null },   // engine chase state (see "Chase state")
   pallets: [...], gates /* progress only for levers in the cone */, gatesPowered, endgame, notifications, newNotifications }
 ```
 Notification objects: `{type:'genDone', gen,x,z,t,gensDone}` (everyone), `{type:'fumble', gen,x,z,t}` (hunter only),
 `{type:'gatesPowered', t}` (everyone), `{type:'gateOpen', gate, t}` (everyone), `{type:'loudNoise', cause:'vault', x,z,t}` (hunter only),
-`{type:'scream', kind,x,z,t}` (survivors, if enabled).
+`{type:'scream', kind,x,z,t}` (survivors, if enabled), HUD (survivors except the subject): `{type:'hooked', who,hookId,x,z,t}`,
+`{type:'unhooked', who, by: id|'self', t}`, `{type:'died', who,t}`.
 Obs objects are freshly allocated every call and owned by the receiving brain.
 
 ## Rules summary / sight model
@@ -199,7 +223,7 @@ Obs objects are freshly allocated every call and owned by the receiving brain.
 ## Anti-camp "Resolve" self-unhook (`config.antiCamp`)
 
 A hooked survivor has a hidden 0..1 meter. Neither the hunter nor teammates see it (the game shows the bar to others as a HUD
-feature; skipped under the solo-queue rule). When it is full, a **guaranteed self-unhook** starts automatically (hooked brains are
+feature; not part of our `hud`). When it is full, a **guaranteed self-unhook** starts automatically (hooked brains are
 not called), takes 1.5 s with the hook timer paused, and gives the normal unhook result (injured + 10 s unhook protections).
 Events: `resolveFull`, then `selfUnhook`.
 
