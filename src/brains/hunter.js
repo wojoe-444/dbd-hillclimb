@@ -68,6 +68,7 @@ export function makeHunter(P) {
     let patrolGen = -1, patrolT = -99;
     let ratioT = -99, ratio = 1;
     let prevHooks = 0;
+    let stillT = 0, lastX = null, lastZ = null;   // stall guard
     const belief = new SurvivorBelief(ctx, { spread: P.beliefSpread, genPull: P.beliefGenPull });
     let beliefTgt = null, beliefT = -99;
     const downedChecked = [-1, -1, -1, -1]; // lastSeen.t of downed sightings we already went back to
@@ -113,6 +114,10 @@ export function makeHunter(P) {
       decide(obs, api) {
         const me = obs.self, nav = api.nav;
         belief.update(obs, api);
+        // stall guard: standing still without acting for 3 s (unreachable moveTo) -> drop the current goals
+        if (lastX !== null && Math.hypot(me.x - lastX, me.z - lastZ) < 0.05 && !me.act && !me.vaulting && !(me.stunS > 0) && !(me.cooldownS > 0)) stillT += api.dt; else stillT = 0;
+        lastX = me.x; lastZ = me.z;
+        if (stillT > 3) { stillT = 0; goto = null; lastPos = null; beliefTgt = null; patrolGen = -1; camp = null; }
         updateCluster(obs);
         const gensLeft = obs.gensNeeded - obs.gensDone;
         const clusterOn = cluster && gensLeft <= P.clusterActivate;
@@ -275,7 +280,7 @@ export function makeHunter(P) {
           const g = obs.gens[patrolGen];
           const gx = Math.floor(gens[patrolGen].x), gz = Math.floor(gens[patrolGen].z);
           const near = Math.max(Math.abs(me.x - (gx + 0.5)), Math.abs(me.z - (gz + 0.5))) <= 1.5;
-          if (near && !g.done && !g.blocked && !g.regressing && g.progress > 0 && g.progress >= P.kickMinProgress && !obs.gatesPowered) {
+          if (near && !g.done && !g.blocked && !g.regressing && g.progress > 0 && g.progress >= P.kickMinProgress && !obs.gatesPowered && (g.kicksLeft ?? 1) > 0) {
             return { act: 'kickGen', target: gens[patrolGen].id };
           }
         }

@@ -27,7 +27,9 @@ export const survivorSpace = {
   unknownDist:   [10, 80, 40],   // assumed distance to a hook for a teammate whose whereabouts the HUD doesn't reveal
   rescueWhenChased: [0, 1, 0.6], // >0.5: skip the rescue delay while another survivor is being chased (hunter busy)
   trustChase:    [0, 1, 0.6],    // >0.5: don't abandon my gen on terror while another survivor is being chased
-  healSeek:      [0, 1, 0.4],    // INERT: used to locate injured teammates via hud.repairing gen ids (the HUD no longer names gens)
+  downedStillDist: [0, 40, 12],  // downed: lie still (auto-recover to 95%) unless the hunter is seen within this; then crawl away
+  seekHeal:      [0, 1, 0.4],    // >0.5: when injured, walk to a visible healthy teammate and stand still to be healed
+  trustIntent:   [0, 1, 0.6],    // >0.5: skip a rescue if a teammate just said "going for unhook" (unless I'm right there)
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -67,6 +69,9 @@ export function makeSurvivor(P) {
     let idleHoldT = 0;            // time spent holding at an anchor without being pressed
     const hookedAt = {};          // teammate id -> { hookId, x, z, t } from the HUD hook notifications
     let notesRead = 0;
+    let unhookIntentT = -99;      // last time a teammate said "going for unhook"
+    const sentUnhookFor = {};     // hooked teammate id -> hook time we announced for
+    let helpSentT = -99, chaseSentT = -99;
 
     const anchorUsable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] !== 'broken');
     const crossable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] === 'dropped');
@@ -134,9 +139,18 @@ export function makeSurvivor(P) {
         if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
         if (me.state === 'carried') return { act: 'wiggle' };
         if (me.state === 'downed') {
-          const hp = h ?? obs.lastHunter;
-          return hp ? { moveDir: { x: me.x - hp.x, z: me.z - hp.z } } : {};
+          // crawl out through an open gate if one is close
+          if (obs.gates) for (const g of obs.gates) {
+            if (!g.open) continue;
+            const gd = M.exitGates.find((x) => x.id === g.id);
+            if (gd && nav.dist(me, gd.exit) < 30) return { moveTo: gd.exit };
+          }
+          // otherwise lie still to recover (to 95%) unless the hunter is close
+          if (h && d2(h, me) < P.downedStillDist) return { moveDir: { x: me.x - h.x, z: me.z - h.z } };
+          return {};
         }
+        const canSay = !(me.intentCooldownS > 0);
+        const say = (a, msg) => (canSay ? { ...a, intent: msg } : a);
 
         // ---- HUD bookkeeping ----
         const hud = obs.hud || null;
@@ -145,12 +159,15 @@ export function makeSurvivor(P) {
           const n = notes[notesRead];
           if (n.type === 'hooked') hookedAt[n.who] = { hookId: n.hookId, x: n.x, z: n.z, t: n.t };
           else if (n.type === 'unhooked' || n.type === 'died') delete hookedAt[n.who];
+          else if (n.type === 'intent' && n.intent === 'goingForUnhook') unhookIntentT = n.t;
         }
         if (hud) for (const k of Object.keys(hookedAt)) if (hud[k] && hud[k].state !== 'hooked') delete hookedAt[k];
         const otherChased = !!hud && hud.some((x) => x.id !== me.id && x.chased);
 
         // ---- threat state ----
         const dh = h ? d2(h, me) : Infinity;
+        // a teammate is healing me: stand still (healing needs an idle patient) unless the hunter is close
+        if (hud && hud[me.id] && hud[me.id].beingHealed && !(h && dh < 10)) return {};
         if (h && dh < P.fleeSeenDist) { mode = 'chase'; lastThreatT = obs.t; }
         else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
           if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
@@ -161,7 +178,7 @@ export function makeSurvivor(P) {
 
         if (mode === 'chase') {
           const a = chase(obs, api, me, h);
-          if (a) return a;
+          if (a) { if (me.chased && obs.t - chaseSentT > 30) { chaseSentT = obs.t; return say(a, 'chasingMe'); } return a; }
           mode = 'sneak'; sneakStart = obs.t;
         }
         const walk = P.walkWhenTR > 0.5 && obs.terror !== null;
@@ -220,8 +237,20 @@ export function makeSurvivor(P) {
               if (est < best) best = est;
             }
             if (myD > best + P.rescueSlack) continue;
+            const claimedByOther = P.trustIntent > 0.5 && obs.t - unhookIntentT < 20 && sentUnhookFor[j] !== hk.t && myD > 12;
+            if (claimedByOther) continue;
             if (d2(me, hk) <= 1.6 && !holdProtection) return { act: 'rescue', target: j };
+            if (sentUnhookFor[j] !== hk.t) { sentUnhookFor[j] = hk.t; return say({ moveTo: { x: hk.x, z: hk.z } }, 'goingForUnhook'); }
             return { moveTo: { x: hk.x, z: hk.z } };
+          }
+        }
+
+        // ---- injured: go get healed by a visible healthy teammate ----
+        if (me.state === 'injured' && P.seekHeal > 0.5 && !h) {
+          const mate = obs.teammates.filter((t) => t.state === 'healthy').sort((a, b) => d2(a, me) - d2(b, me))[0];
+          if (mate && d2(mate, me) < P.healDist) {
+            if (d2(mate, me) <= 1.4) return obs.t - helpSentT > 20 ? (helpSentT = obs.t, say({}, 'help')) : {};
+            return { moveTo: { x: mate.x, z: mate.z } };
           }
         }
 
@@ -229,7 +258,6 @@ export function makeSurvivor(P) {
         if (me.state === 'healthy' && P.altruism > 0.15) {
           const cands = [...obs.teammates];
           for (const a of obs.downedAuras || []) if (!cands.some((t) => t.id === a.id)) cands.push({ id: a.id, x: a.x, z: a.z, state: 'downed' });
-          // (healSeek used to locate injured teammates via hud.repairing gen ids; the HUD no longer names generators)
           for (const tm of cands) {
             if (hud && hud[tm.id] && hud[tm.id].beingHealed && !(me.act === 'heal')) continue;   // someone's on it
             if ((tm.state === 'injured' || tm.state === 'downed') && d2(tm, me) < P.healDist) {
