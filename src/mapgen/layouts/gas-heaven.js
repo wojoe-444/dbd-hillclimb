@@ -13,7 +13,7 @@ export const gasHeavenLayout = {
 
   landmarks: [
     { tile: 'tl-wall', x: 48, z: 16 },        // user: T + L in place of the old main building (centred in its 32 m slot; the rest is rolled)
-    { tile: 'shack', x: 24, z: 72 },          // S
+    { tile: 'shack', x: 0, z: 72, mirror: false },   // S: user-fixed spot (bottom-left between 8 and 7); any of 4 rotations, never mirrored
     { pool: 'maze', x: 88, z: 8 },            // mazetile NE (between 1 and 2)
     { pool: 'maze', x: 8, z: 24 },            // mazetile W (10)
     { pool: 'maze', x: 72, z: 72 },           // mazetile S (5)
@@ -56,6 +56,6 @@ export const gasHeavenLayout = {
     { text: '1', x: 91, z: 8 }, { text: '2', x: 106, z: 20 }, { text: '3', x: 107, z: 42 }, { text: '4', x: 91, z: 62 },
     { text: '5', x: 78, z: 92 }, { text: '6', x: 50, z: 92 }, { text: '7', x: 22, z: 92 }, { text: '8', x: 5, z: 74 },
     { text: '9', x: 5, z: 52 }, { text: '10', x: 6, z: 21 }, { text: '11', x: 36, z: 10 }, { text: '12', x: 62, z: 7 },
-    { text: 'M', x: 56, z: 22 }, { text: 'S', x: 32, z: 81 }, { text: 'MID', x: 56, z: 54 }, { text: 'BITIC', x: 19, z: 41 },
+    { text: 'M', x: 56, z: 22 }, { text: 'S', x: 8, z: 81 }, { text: 'MID', x: 56, z: 54 }, { text: 'BITIC', x: 19, z: 41 },
   ],
 };
