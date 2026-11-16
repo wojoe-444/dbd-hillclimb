@@ -49,13 +49,14 @@ for (let i = 0; i < n; i++) {
   } });
   const r = { seed, map: maps[seed % maps.length].id, standingS: 0, bins: {}, first120: {}, runModes: {}, idleModes: {}, healFailedReasons: {}, chaseBins: [0, 0, 0, 0], chaseAllFourBins: [0, 0, 0, 0],
     chaseStandingS: 0, nonchasedStandingS: 0, nonchasedRepairS: 0, seen20OtherChaseS: 0, seen20OtherChaseRepairS: 0,
-    repairWithOthersS: 0, repairRequestedNoWorkS: 0, healRequestedNoWorkS: 0, knownAt60: [], downedWithInjuredOnlyS: 0,
+    repairWithOthersS: 0, hitsWhileRepairing: 0, hitsAfterOtherChaseExposure: 0, chasesAfterOtherChaseExposure: 0, repairRequestedNoWorkS: 0, healRequestedNoWorkS: 0, knownAt60: [], downedWithInjuredOnlyS: 0,
     chaseLengths: [], chaseEnd: {}, downNearResource: 0, downsTotal: 0, downsNearEdge: 0, fast: 0, medium: 0, slow: 0,
     hitsMidVault: 0, hitBoostDistance: [], rescues: 0, trades: 0, endReason: null, deaths: {}, stats: null };
-  let ei = 0; const active = new Map(), vaults = [], boost = [], rescueTimes = [];
+  let ei = 0; const active = new Map(), vaults = [], boost = [], rescueTimes = [], exposedT = [-99, -99, -99, -99];
   while (!m.over) {
-    const prev = m.survivors.map(s => ({ x: s.x, z: s.z, st: s.st }));
+    const prev = m.survivors.map(s => ({ x: s.x, z: s.z, st: s.st, act: s.curAct }));
     const oldStats = brains.map(b => ({ hide: b.stats.hideTicks, peek: b.stats.peekTicks }));
+    const prevActs = prev.map(p => p.act);
     m.step();
     const dt = m.dt, repairing = m.survivors.filter(s => s.curAct === 'repair').length;
     const allFour = m.survivors.every(s => s.st <= 1);
@@ -85,7 +86,7 @@ for (let i = 0; i < n; i++) {
       else {
         r.nonchasedStandingS += dt;
         if (s.curAct === 'repair') r.nonchasedRepairS += dt;
-        if (info.otherChased && info.hDist < 20) { r.seen20OtherChaseS += dt; if (s.curAct === 'repair') r.seen20OtherChaseRepairS += dt; }
+        if (info.otherChased && info.hDist < 20) { exposedT[k] = m.t; r.seen20OtherChaseS += dt; if (s.curAct === 'repair') r.seen20OtherChaseRepairS += dt; }
       }
       if (s.curAct === 'repair' && repairing > 1 && m.survivors.some(o => o.id !== k && o.curAct === 'repair' && o.curTgt === s.curTgt)) r.repairWithOthersS += dt;
       if (A.act === 'repair' && s.curAct !== 'repair') r.repairRequestedNoWorkS += dt;
@@ -99,11 +100,14 @@ for (let i = 0; i < n; i++) {
     }
     for (; ei < m.events.length; ei++) {
       const e = m.events[ei];
-      if (e.type === 'chaseStart') active.set(e.who, e.t);
+      if (e.type === 'chaseStart') { active.set(e.who, e.t); if (e.t - exposedT[e.who] <= 5) r.chasesAfterOtherChaseExposure++; }
       if (e.type === 'chaseEnd') { if (active.has(e.who)) r.chaseLengths.push(e.t - active.get(e.who)); active.delete(e.who); r.chaseEnd[e.reason] = (r.chaseEnd[e.reason] ?? 0) + 1; }
       if (e.type === 'rescue') { r.rescues++; rescueTimes.push({ ...e }); }
       if (e.type === 'hit') {
         const s = m.survivors[e.who];
+        // safety of working near a hunter that chases someone else: hits mid-repair / within 5 s of that exposure
+        if (prevActs[e.who] === 'repair') r.hitsWhileRepairing++;
+        if (e.t - exposedT[e.who] <= 5) r.hitsAfterOtherChaseExposure++;
         if (s.vault) r.hitsMidVault++;
         if (e.state === 'injured' && !e.endurance) boost[e.who] = { until: m.t + 1.8, dist: 0 };
         if (e.state === 'downed') {

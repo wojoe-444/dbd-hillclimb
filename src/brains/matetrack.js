@@ -68,6 +68,13 @@ export class MateTracker {
     }
   }
 
+  // teammates I last saw repairing whose HUD still shows that same repair (anchored fix): [{ j, x, z }]
+  repairFixes() {
+    const out = [];
+    for (let j = 0; j < 4; j++) { const f = this.fix[j]; if (j !== this.me && f.coldT === null && f.act === 'repair') out.push({ j, x: f.x, z: f.z }); }
+    return out;
+  }
+
   // estimated whereabouts of teammate j: { x, z, r (uncertainty radius, m), conf (0..1), age (s since the trail went cold) }
   est(j, t) {
     const f = this.fix[j];

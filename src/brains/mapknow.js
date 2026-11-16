@@ -7,6 +7,11 @@
 //   anchors : windows / pallets count as "known" (usable for loops) once seen (in line of sight within `anchorR` m).
 //             Static geometry is otherwise available for navigation; this only gates the brain's loop choice.
 //   gens    : the engine already withholds unfound generators (obs.gens[i].known).
+//   cands   : the public generator candidates (ctx.map.generatorCandidates: the wrecks are visible static geometry).
+//             A candidate is resolved once it matches a found gen (obs.gens[i].known at its position), or once I've
+//             had it in view (within candSeeR, camera + line of sight) on candConfirm separate updates without it
+//             turning out to be a gen: then it's a wreck. candP() = P(an unresolved candidate is a gen) =
+//             unfound gens / unresolved candidates. Nothing here reads which candidates were chosen.
 //
 // Queries: explored(x,z), unexploredNear(x,z,r) (fraction), pickTarget(me, prefR) (an unexplored spot worth walking to).
 
@@ -44,6 +49,43 @@ export class MapKnowledge {
     this.anchorKnown = new Uint8Array(anchors.length);
     this.lastT = -99;
     this.camCfg = ctx.config.survivor && ctx.config.survivor.camera && ctx.config.survivor.camera.enabled ? ctx.config.survivor.camera : null;
+    this.cands = (M.generatorCandidates || []).map((g) => ({ x: g.x, z: g.z }));
+    this.candRes = new Int8Array(this.cands.length);     // 0 unresolved, 1 = a gen (found), -1 = a wreck
+    this.candHits = new Uint8Array(this.cands.length);
+    this.candSeeR = opts.candSeeR ?? 22;
+    this.candConfirm = opts.candConfirm ?? 2;
+    this.nUnres = this.cands.length;
+    this.unfound = 0;
+  }
+
+  // candidates: match found gens, count in-view sightings of the rest (called from update with the same view test)
+  updateCands(obs, sees) {
+    const gens = obs.gens || [];
+    let known = 0;
+    for (const g of gens) if (g.known) known++;
+    this.unfound = gens.length - known;
+    const me = obs.self, r2 = this.candSeeR * this.candSeeR;
+    for (let k = 0; k < this.cands.length; k++) {
+      if (this.candRes[k]) continue;
+      const c = this.cands[k];
+      if (gens.some((g) => g.known && Math.abs(g.x - c.x) < 1 && Math.abs(g.z - c.z) < 1)) { this.candRes[k] = 1; this.nUnres--; continue; }
+      if (this.unfound === 0) { this.candRes[k] = -1; this.nUnres--; continue; }
+      if (sees && (c.x - me.x) ** 2 + (c.z - me.z) ** 2 <= r2 && sees(c.x, c.z)) {
+        if (++this.candHits[k] >= this.candConfirm) { this.candRes[k] = -1; this.nUnres--; }
+      }
+    }
+  }
+  candP() { return this.nUnres > 0 ? Math.min(1, this.unfound / this.nUnres) : 0; }
+  // the best unresolved candidate to walk toward: P(gen) x weight - distance / prefR (+ caller's bonus); null if none
+  pickCand(me, prefR, bonus = null) {
+    let best = null, bs = -Infinity;
+    for (let k = 0; k < this.cands.length; k++) {
+      if (this.candRes[k]) continue;
+      const c = this.cands[k], d = Math.hypot(c.x - me.x, c.z - me.z);
+      const s = -d / prefR + (bonus ? bonus(k) : 0);
+      if (s > bs) { bs = s; best = k; }
+    }
+    return best;
   }
 
   cellAt(x, z) {
@@ -68,6 +110,7 @@ export class MapKnowledge {
     }
     cand.sort((a, b) => a[0] - b[0]);
     const sees = viewOf(obs, api, this.camCfg, this.seeR + 4);   // camera FOV + body awareness (or 360 without camera)
+    this.updateCands(obs, sees);
     for (let k = 0; k < cand.length && k < this.raysPer; k++) {
       const c = cand[k][1];
       if (sees(this.cx[c], this.cz[c])) { this.seen[c] = 1; this.nSeen++; }

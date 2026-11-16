@@ -12,6 +12,7 @@ import { defaults } from '../src/hillclimb/params.js';
 import { slotReport, allMapFiles } from './check-gen-slots.js';
 import { LoopModel } from '../src/brains/loops.js';
 import { MapKnowledge } from '../src/brains/mapknow.js';
+import { MateTracker } from '../src/brains/matetrack.js';
 import { RouteEval } from '../src/brains/routes.js';
 import { RouteLookahead } from '../src/brains/lookahead.js';
 
@@ -1801,6 +1802,90 @@ test('determinism with the new hunter knobs (endgame / pallet respect / hook cho
   for (let i = 0; i < seeds.length; i++) ok(fwd[i].key === rev[i].key, 'seed ' + seeds[i] + ' identical forward vs reverse order');
   ok(go(seeds[0]).key === fwd[0].key, 'same seed run again: identical');
   ok(fwd.some(x => x.powered), 'at least one of these matches reaches the endgame (gates powered)');
+});
+
+// ---------------------------------------------------------------- repair productivity (work-mode knobs)
+const RP_KNOBS = { otherChaseTrustDist: 40, candidateSearchW: 0, taskGlanceS: 0, genCommitS: 0, repairAbandonMarginS: 0, repairersTargetW: 0, remainingClusterW: 0, finishRiskW: 0 };
+test('repair productivity knobs: in survivorSpace, ranges include the off value', () => {
+  const B = getBrains();
+  for (const [k, off] of Object.entries(RP_KNOBS)) {
+    const r = B.survivor.space[k];
+    ok(Array.isArray(r) && r[0] <= off && r[1] >= off && r[2] >= r[0] && r[2] <= r[1], `${k} in survivorSpace, range ${JSON.stringify(r)} includes off (${off})`);
+  }
+});
+
+test('MapKnowledge candidates: public candidate wrecks resolve to gens / wrecks from own perception only; never a chosen gen marked a wreck', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  const sp = { ...defaults(B.survivor.space), candidateSearchW: 1.5, taskGlanceS: 3 };
+  let wrecks = 0, falseW = 0, genMatch = 0, glances = 0, candEx = 0;
+  for (const seed of [4101, 4102]) {
+    const brains = [], f = B.survivor.make(sp);
+    const m = createMatch({ map: gh, seed, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: (ctx) => (brains[ctx.id] = f(ctx)) });
+    const isGen = (c) => m.gens.some((g) => Math.abs(g.x - c.x) < 1 && Math.abs(g.z - c.z) < 1);
+    run(m, 1200);
+    for (const b of brains) {
+      const K = b.know;
+      ok(K.cands.length === gh.generators.length, 'every public candidate is tracked');
+      K.cands.forEach((c, k) => { if (K.candRes[k] === -1) { wrecks++; if (isGen(c)) falseW++; } if (K.candRes[k] === 1) genMatch++; });
+      const unres = [...K.candRes].filter((x) => x === 0).length;
+      ok(K.nUnres === unres, 'nUnres matches the unresolved count');
+      near(K.candP(), unres ? Math.min(1, K.unfound / unres) : 0, 1e-9, 'candP = unfound gens / unresolved candidates');
+      glances += b.stats.taskGlances; candEx += b.stats.candExplores;
+    }
+  }
+  ok(wrecks > 10, `candidates get resolved as wrecks by sight (${wrecks})`);
+  ok(falseW === 0, `no chosen generator marked as a wreck (${falseW} of ${wrecks})`);
+  ok(genMatch > 0, `found gens are matched to their candidates (${genMatch})`);
+  ok(glances > 0 && candEx > 0, `taskGlanceS glances at candidates (${glances}), candidateSearchW explores toward them (${candEx})`);
+});
+
+test('MateTracker.repairFixes: a teammate seen repairing stays "at that gen" while the HUD shows the same repair, not after', () => {
+  const T = new MateTracker({ id: 0, config: { survivor: { runSpeed: 4 } }, spawn: { x: 0, z: 0 }, nav: null });
+  const hud = (act, prog) => [0, 1, 2, 3].map((j) => ({ id: j, state: 'healthy', activity: j === 1 ? act : null, activityProgress: j === 1 ? prog : 0, chased: false }));
+  T.update({ t: 1, hud: hud('repair', 0.2), teammates: [{ id: 1, x: 10, z: 12 }], notifications: [] });
+  ok(T.repairFixes().length === 1 && T.repairFixes()[0].j === 1 && T.repairFixes()[0].x === 10, 'seen repairing: anchored fix');
+  T.update({ t: 5, hud: hud('repair', 0.35), teammates: [], notifications: [] });
+  ok(T.repairFixes().length === 1, 'out of sight, HUD still repairing with rising progress: still there');
+  T.update({ t: 6, hud: hud(null, 0), teammates: [], notifications: [] });
+  ok(T.repairFixes().length === 0, 'HUD activity changed: no longer counted');
+});
+
+test('otherChaseTrustDist: the seen hunter chasing a teammate (HUD) and not coming at me -> keep repairing; 40 (off) -> chase mode', () => {
+  const B = getBrains();
+  const go = (trust) => {
+    let m = null, br = null;
+    const f = B.survivor.make({ ...defaults(B.survivor.space), otherChaseTrustDist: trust, hunterAvoidW: 0, farFromHunterW: 0, genThreatW: 0 });   // (no gen switch away from the hunter: isolate the chase-mode decision)
+    m = createMatch({ map: smallMap, seed: 5, config: { survivor: { camera: { enabled: false } } },
+      hunter: () => ({ decide: () => ({ moveTo: { x: m.survivors[1].x, z: m.survivors[1].z } }) }),
+      // survivor 0's brain starts once the engine chase on survivor 1 is on (so its first look sees the HUD chase)
+      survivors: [(ctx) => { br = f(ctx); return { decide: (o, a) => (m.chaseTgt === 1 ? br.decide(o, a) : {}) }; },
+        () => ({ decide: () => ({ moveTo: { x: 26, z: 3 } }) }), () => ({ decide: () => ({}) }), () => ({ decide: () => ({}) })] });
+    const g = m.gens.find((x) => x.id === 'g5');
+    place(m.survivors[0], g.x - 1.2, g.z); place(m.survivors[2], 3.5, 3.5); place(m.survivors[3], 3.5, 33.5);
+    place(m.hunter, 42, 6); m.hunter.face = Math.PI; place(m.survivors[1], 37, 4);
+    let rep = 0, minH = 99;
+    for (let i = 0; i < 30; i++) { m.step(); const s = m.survivors[0]; if (s.curAct === 'repair') rep++; minH = Math.min(minH, Math.hypot(s.x - m.hunter.x, s.z - m.hunter.z)); }
+    return { rep, minH, trust: br.stats.trustTicks, chase: m.chaseTgt };
+  };
+  const on = go(8), off = go(40);
+  ok(on.chase === 1 && off.chase === 1, 'the hunter chases survivor 1 throughout');
+  ok(on.minH < 20, `survivor 0 sees the hunter within fleeSeenDist (${on.minH.toFixed(1)} m)`);
+  ok(on.trust > 0 && on.rep >= 10, `trust 8: keeps working (${on.rep} repair ticks, ${on.trust} trusting decisions)`);
+  ok(off.trust === 0 && off.rep === 0, `trust off: leaves the gen (chase mode) (${off.rep} repair ticks)`);
+});
+
+test('determinism with the repair-productivity knobs on: same seed, same result (any order)', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  const sp = { ...defaults(B.survivor.space), otherChaseTrustDist: 8, candidateSearchW: 1.5, taskGlanceS: 3, genCommitS: 10, repairAbandonMarginS: 10, repairersTargetW: 1, remainingClusterW: 1, finishRiskW: 1 };
+  const go = (seed) => JSON.stringify(runMatch({ map: gh, seed, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(sp) }).events);
+  const seeds = [4201, 4202, 4203];
+  const fwd = seeds.map(go), rev = [...seeds].reverse().map(go).reverse();
+  for (let i = 0; i < seeds.length; i++) ok(fwd[i] === rev[i], 'seed ' + seeds[i] + ' identical forward vs reverse order');
+  ok(go(seeds[0]) === fwd[0], 'same seed run again: identical');
+  const offSp = { ...defaults(B.survivor.space), ...RP_KNOBS };
+  ok(JSON.stringify(runMatch({ map: gh, seed: seeds[0], hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(offSp) }).events) !== fwd[0], 'knobs on vs off: a different match');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -71,6 +71,15 @@ export const survivorSpace = {
   // ---- exploration (survivors only know the generators / loop anchors they have found) ----
   exploresMap:   [0, 1, 0.5],      // propensity to explore unexplored areas instead of working a known gen (0 = only when no gen is known)
   exploreRadM:   [10, 80, 35],     // preferred distance of exploration targets (score = unexplored share - distance / this)
+  // ---- repair productivity (work mode) ----
+  otherChaseTrustDist: [0, 40, 5],  // hunter seen while the HUD shows it chasing someone else and it isn't coming at me: keep working (no chase mode / hide) if it's farther than this (40 = off)
+  candidateSearchW: [0, 3, 1],      // exploring: value of unresolved public generator-candidate wrecks (x P(gen) = unfound gens / unresolved candidates); 0 = generic area exploration only
+  taskGlanceS:   [0, 10, 3],        // work mode, hunter not seen lately: every this many s glance ~1 s at an unresolved candidate wreck in view (0 = off)
+  genCommitS:    [0, 30, 0],        // after committing to a gen, don't switch to exploring for this long
+  repairAbandonMarginS: [0, 30, 10], // repairing: another option must beat staying by this many seconds of travel (~4 m/s) to pull me off
+  repairersTargetW: [-1, 2, 1],     // gen choice: per teammate I last saw repairing it and the HUD still shows repairing (MateTracker), like spreadW
+  remainingClusterW: [0, 3, 1],     // gen choice: prefer the gen whose completion leaves the most spread-out remaining known gens (min 3-gen tour among the ones I've found, per 30 m)
+  finishRiskW:   [0, 3, 0],         // gen choice: a partial gen's hunter-danger penalty shrinks by min(1, this x progress) while the hunter isn't on me / seen coming
   // ---- route lookahead: open flee destinations scored by the next resource reachable from there (lookahead.js) ----
   ...lookaheadSpace,
 };
@@ -134,7 +143,7 @@ export function makeSurvivor(P) {
     let circ = null;            // running loop: { seq, i, phase: 'toP' | 'cross', lockT, holdT }
     let cutSeenT = -1, cutLastT = -99;   // loopReverseDist: since when / last time the hunter was seen coming round the loop the other way
     let genTarget = -1;         // >= 0 gen index, -2 = exploring
-    let exploreTo = null, exploreT = -99;
+    let exploreTo = null, exploreT = -99, genCommitT = -99;
     const vaultCount = new Map(); let wasVaulting = false, lastChasedT = -99;   // window vaults in the current chase (entity blocker)
     let myVault = null;           // my vault in progress: { c (crossing), t }
     const occupiedUntil = new Map();   // anchor k -> time: the hunter is in / just cleared it (visible vault)
@@ -233,7 +242,7 @@ export function makeSurvivor(P) {
     let peek = null;              // current peek: { spot, look, since }
     let hide = null;              // { start, lastTrig, spot, spotT }
     let hideCooldownUntil = -99;
-    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0 };   // diagnostics (read by scripts via brain.stats)
+    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0, trustTicks: 0, taskGlances: 0, candExplores: 0 };   // diagnostics (read by scripts via brain.stats)
     let wasChased = false, lastHideTickT = -99, lastPeekT = -99, wasChasedV = false;
     const genCover = M.generators.map(() => null);   // per known gen: mean cover of its repair slots (lazy)
     const genCoverOf = (g, i) => {
@@ -698,11 +707,61 @@ export function makeSurvivor(P) {
       return { moveDir: { x: me.x - hp.x, z: me.z - hp.z } };
     }
 
+    // shortest closed tour through 3 of the generators I've found that are still unfinished, leaving out gen `skip`
+    // (Infinity with fewer than 3): how compact a three-gen the remaining known gens make. Known positions only.
+    function knownTriTour(gens, skip) {
+      const k = [];
+      for (let i = 0; i < gens.length; i++) { const g = gens[i]; if (i !== skip && g.known && !g.done && !g.blocked) k.push(g); }
+      let best = Infinity;
+      for (let a = 0; a < k.length; a++) for (let b = a + 1; b < k.length; b++) for (let c = b + 1; c < k.length; c++)
+        best = Math.min(best, d2(k[a], k[b]) + d2(k[b], k[c]) + d2(k[a], k[c]));
+      return best;
+    }
+
+    // ---- exploring toward public generator-candidate wrecks (candidateSearchW): the best unresolved candidate by
+    // P(gen) - distance (+ jitter, - a teammate nearer to it), as a walkable point ~2 m short of the wreck on my side
+    // (the wreck itself is solid; within 2.5 m body awareness resolves it whatever the camera does)
+    // own taste per candidate: a hash of (my id, candidate) - no extra rng draws, so knobs at 0 replay the old streams
+    const candJit = (k) => (((k + 1) * 2654435761 + (ctx.id + 1) * 40503) >>> 0) % 1000 / 1000;
+    function candTarget(obs, api, me) {
+      if (know.nUnres <= 0) return null;
+      const near = (c) => obs.teammates.some((t) => Math.hypot(c.x - t.x, c.z - t.z) < Math.hypot(c.x - me.x, c.z - me.z) - 2);
+      const k = know.pickCand(me, P.exploreRadM, (k) => 0.3 * candJit(k) - (near(know.cands[k]) ? 0.5 : 0));
+      if (k === null) return null;
+      const c = know.cands[k];
+      for (const r of [2, 1.6, 2.4]) for (let s = 0; s < 8; s++) {
+        const a = Math.atan2(me.z - c.z, me.x - c.x) + (s % 2 ? 1 : -1) * Math.ceil(s / 2) * (Math.PI / 4);
+        const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+        if (isFinite(api.nav.dist(me, { x, z })) && !loops.solid[Math.floor(z) * M.w + Math.floor(x)]) return { x, z, cand: k };
+      }
+      return null;
+    }
+
     // ---- where the camera looks (if the action didn't say): the hunter if seen (slightly ahead), where it should be if
     // just lost, the belief's guess when it's close / the terror radius is heard; otherwise along my path (default) with
     // glances (glanceRate) toward the likeliest hunter cells or sweeping around
     let glanceUntil = -99, nextGlance = 0, glanceLook = null, sweepYaw = ctx.rng.next() * 6.283;
-    function withLook(obs, a) {
+    // taskGlanceS: in work mode (not chased, hunter not seen for 5 s) every taskGlanceS s look ~1.2 s at the nearest
+    // unresolved candidate wreck in line of sight within MapKnowledge's candSeeR: that's how unfound gens get found
+    let taskUntil = -99, nextTask = 0, taskLook = null;
+    function taskGlance(obs, api) {
+      const me = obs.self;
+      if (P.taskGlanceS <= 0 || mode !== 'work' || me.chased || !api || know.nUnres <= 0) return null;
+      if (obs.t < taskUntil && taskLook && know.candRes[taskLook.k] === 0) return taskLook;
+      if (obs.t < nextTask) return null;
+      nextTask = obs.t + 0.5;                               // nothing in view: try again shortly
+      let best = null, bd = know.candSeeR;
+      for (let k = 0; k < know.cands.length; k++) {
+        if (know.candRes[k]) continue;
+        const c = know.cands[k], d = Math.hypot(c.x - me.x, c.z - me.z);
+        if (d < 2.5 || d >= bd || !api.los(me, c)) continue;   // (within 2.5 m body awareness sees it anyway)
+        bd = d; best = { x: c.x, z: c.z, k };
+      }
+      if (!best) return null;
+      taskLook = best; taskUntil = obs.t + 1.2; nextTask = obs.t + P.taskGlanceS; stats.taskGlances++;
+      return best;
+    }
+    function withLook(obs, a, api) {
       if (!CAM.enabled || !a || a.look) return a;
       const me = obs.self, h = obs.hunter;
       const L = (x, z) => ({ ...a, look: { x, z } });
@@ -710,6 +769,8 @@ export function makeSurvivor(P) {
       const lh = obs.lastHunter;
       if (lh && obs.t - lh.t < 5) { const k = Math.min(2, obs.t - lh.t); return L(lh.x + (lh.vx || 0) * k, lh.z + (lh.vz || 0) * k); }
       if (me.state === 'downed' || me.state === 'carried' || me.state === 'hooked') return a;
+      const tg = taskGlance(obs, api);
+      if (tg) return L(tg.x, tg.z);
       if (beliefOn && (obs.terror || myThreat(me) > 0.3)) { const e = belief.expectedPos(); if (e) return L(e.x, e.z); }
       if (obs.t < glanceUntil && glanceLook) return L(glanceLook.x, glanceLook.z);
       if (obs.t >= nextGlance) {
@@ -752,7 +813,7 @@ export function makeSurvivor(P) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
         if (st === 'healthy' || st === 'injured') a = unblock(obs, a);
-        return withLook(obs, a);
+        return withLook(obs, a, api);
       },
       decideInner(obs, api) {
         const me = obs.self, h = obs.hunter, nav = api.nav;
@@ -825,6 +886,12 @@ export function makeSurvivor(P) {
 
         // ---- threat state ----
         const dh = h ? d2(h, me) : Infinity;
+        // otherChaseTrustDist: the HUD shows the hunter chasing a teammate, I'm not chased, I can see it, it's farther than
+        // the trust distance and not closing on me (velocity toward me < 1.5 m/s): it's busy - keep working. Already in chase
+        // mode: only past trust + 4 m (hysteresis: no chase/work flip-flop at the threshold)
+        const busyElsewhere = !!h && !me.chased && otherChased && P.otherChaseTrustDist < 40 && dh > P.otherChaseTrustDist + (mode === 'chase' ? 4 : 0) &&
+          ((h.vx || 0) * (me.x - h.x) + (h.vz || 0) * (me.z - h.z)) < 1.5 * Math.max(dh, 1e-6) && !(h.carrying);
+        if (busyElsewhere) stats.trustTicks++;
         // a teammate is healing me: stand still (healing needs an idle patient) unless the hunter is close
         if (hud && hud[me.id] && hud[me.id].beingHealed && !(h && dh < 10)) return {};
         // hiding / holding out of view and the hunter appears but can't see me (and isn't close): don't bolt (running is what starts a chase)
@@ -834,7 +901,8 @@ export function makeSurvivor(P) {
           return { look: { x: h.x + (h.vx || 0) * 0.5, z: h.z + (h.vz || 0) * 0.5 } };   // frozen, watching it
         }
         if (me.chased) { mode = 'chase'; lastThreatT = obs.t; }      // chase music: the hunter is on me even if I can't see it
-        else if (h && dh < P.fleeSeenDist) { mode = 'chase'; lastThreatT = obs.t; }
+        else if (h && dh < P.fleeSeenDist && !busyElsewhere) { mode = 'chase'; lastThreatT = obs.t; }
+        else if (busyElsewhere && mode === 'chase' && obs.t - lastChasedT > P.calmS) { mode = 'work'; circ = null; }   // it's busy with a teammate: back to work now
         else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
           if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
           lastThreatT = obs.t;
@@ -843,7 +911,7 @@ export function makeSurvivor(P) {
         else if (obs.t - lastThreatT > P.calmS) { mode = 'work'; circ = null; }
 
         // ---- stealth: the hunter is around but not on me -> get out of its view (and back to work once it's gone) ----
-        if (mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
+        if (mode !== 'chase' && h && dh < P.hideDist && !me.chased && !busyElsewhere) {
           if (hunterCouldSee(api, h, me)) {
             const spot = findHide(obs, api, me, h);
             if (spot) { hiddenUntil = obs.t + P.hideHoldS; return { moveTo: spot, walk: P.hideWalk > 0.5, look: h }; }
@@ -953,10 +1021,17 @@ export function makeSurvivor(P) {
         if (genTarget >= 0 && (gens[genTarget].done || gens[genTarget].blocked || !gens[genTarget].known)) genTarget = -1;
         const unknownGens = gens.reduce((n, g) => n + (g.known ? 0 : 1), 0);
         const exploreLeft = unknownGens > 0 && know.fraction() < 0.98;
-        if (exploreTo && (d2(me, exploreTo) < 3 || obs.t - exploreT > 25 || know.explored(exploreTo.x, exploreTo.z))) exploreTo = null;
+        if (exploreTo && (d2(me, exploreTo) < 3 || obs.t - exploreT > 25 || (exploreTo.cand >= 0 ? know.candRes[exploreTo.cand] !== 0 : know.explored(exploreTo.x, exploreTo.z)))) exploreTo = null;
         if (genTarget === -2 && !exploreTo) genTarget = -1;
         if (genTarget === -1 || obs.tick % 50 === 0) {
           let bs = Infinity, bi = -1;
+          // repairersTargetW: teammates I last saw repairing a gen, still repairing per the HUD (anchored MateTracker fix)
+          const anch = P.repairersTargetW !== 0 ? rescue.tracker.repairFixes() : null;
+          const repairingCur = me.act === 'repair' && genTarget >= 0;
+          // remainingClusterW: min closed 3-gen tour over the known unfinished gens, with and without each candidate gen
+          const triBase = P.remainingClusterW > 0 ? knownTriTour(gens, -1) : Infinity;
+          // finishRiskW: only while nobody's on me and the hunter isn't seen coming at me (else safety first)
+          const finishOK = P.finishRiskW > 0 && !me.chased && (!h || busyElsewhere || dh > P.fleeSeenDist);
           for (let i = 0; i < gens.length; i++) {
             const g = gens[i];
             if (!g.known || g.done || g.blocked) continue;
@@ -970,26 +1045,40 @@ export function makeSurvivor(P) {
               if (dg < 4 || (dg < 40 && v > 1 && (t.vx * dx + t.vz * dz) > 0.9 * v * dg && dg < d2(g, me) + 6)) headed++;
             }
             s += P.spreadW * (others + headed);
+            if (anch && !g.workers) { let n = 0; for (const f of anch) if (Math.abs(f.x - g.x) < 2.5 && Math.abs(f.z - g.z) < 2.5) n++; s += P.repairersTargetW * n; }
             const hpos = h ?? (obs.lastHunter && obs.t - obs.lastHunter.t < 90 ? obs.lastHunter : null);
             if (hpos) s -= P.farFromHunterW * Math.min(60, d2(g, hpos)) / 20;
             s += P.genJitter * jitter[i];
             if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(g, obs.lastHunter)) / 10;
             if (P.genCoverW !== 0) s -= P.genCoverW * 3 * genCoverOf(g, i);
             if (P.genThreatW > 0 && beliefOn) s += P.genThreatW * 3 * belief.pHunterWithin(g, 24);
-            if (i === genTarget) s -= 0.5; // hysteresis
+            if (finishOK && g.progress > 0) {
+              let danger = 0;
+              if (hpos) danger += P.farFromHunterW * (3 - Math.min(60, d2(g, hpos)) / 20);
+              if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) danger += P.hunterAvoidW * Math.max(0, 25 - d2(g, obs.lastHunter)) / 10;
+              if (P.genThreatW > 0 && beliefOn) danger += P.genThreatW * 3 * belief.pHunterWithin(g, 24);
+              s -= Math.min(1, P.finishRiskW * g.progress) * danger;
+            }
+            if (isFinite(triBase)) { const tr = knownTriTour(gens, i); if (isFinite(tr)) s -= P.remainingClusterW * (Math.min(150, tr) - Math.min(150, triBase)) / 30; }
+            if (i === genTarget) s -= 0.5 + (repairingCur ? P.repairAbandonMarginS / 5 : 0); // hysteresis (+ abandon cost: 1 unit ~ 20 m ~ 5 s of running)
             if (s < bs) { bs = s; bi = i; }
           }
           // explore option: always when no gen is known; otherwise a propensity that grows with the gens still unfound
-          if (exploreLeft && (bi < 0 || P.exploresMap > 0)) {
+          const committed = bi >= 0 && genTarget >= 0 && obs.t - genCommitT < P.genCommitS;
+          if (exploreLeft && (bi < 0 || (P.exploresMap > 0 && !committed))) {
+            if (!exploreTo && P.candidateSearchW > 0) { exploreTo = candTarget(obs, api, me); exploreT = obs.t; }
             if (!exploreTo) { exploreTo = know.pickTarget(me, P.exploreRadM, (c) => exploreJit[c] + scoutBonus(c) - (obs.teammates.some((t) => Math.hypot(know.cx[c] - t.x, know.cz[c] - t.z) < Math.hypot(know.cx[c] - me.x, know.cz[c] - me.z) - 2) ? 0.3 : 0)); exploreT = obs.t; }
             if (exploreTo) {
               let se = P.genDistW * d2(me, exploreTo) / 20 + 1.5 - P.exploresMap * (1 + 3 * unknownGens / gens.length);
+              if (exploreTo.cand >= 0) se -= P.candidateSearchW * know.candP();   // a likely gen spot is worth more than a generic area
               if (genTarget === -2) se -= 0.5;
-              if (me.act === 'repair' && bi >= 0) se += 1;      // don't walk off a gen I'm repairing on a whim
+              if (me.act === 'repair' && bi >= 0) se += 1 + P.repairAbandonMarginS / 5;      // don't walk off a gen I'm repairing on a whim
               if (bi < 0 || se < bs) { bs = se; bi = -2; }
             }
           }
           if (bi !== -2) exploreTo = genTarget === -2 && bi >= 0 ? null : exploreTo;
+          if (bi >= 0 && bi !== genTarget) genCommitT = obs.t;
+          if (bi === -2 && genTarget !== -2 && exploreTo && exploreTo.cand >= 0) stats.candExplores++;
           genTarget = bi;
         }
         if (genTarget >= 0) return slots.act(obs, genTarget, gens[genTarget], { walk, hold: holdProtection });
