@@ -39,7 +39,8 @@ export const survivorSpace = {
   hideHoldS:     [0, 8, 2],      // once out of view, stay put this long while the hunter is still around
   // ---- chase: loops scored by "equivalent distance held" (loops.js) ----
   loopTravelMaxM:[5, 50, 25],    // max path distance I'll run to reach a loop's entry
-  holdW:         [0, 3, 1],      // loop score = holdW * expected distance held per chase (m) - path distance to its entry (m)
+  holdW:         [0, 3, 1],      // loop route value = min gap to its entry + holdW * the circuit's distance held per lap (m)
+  holdHorizonS:  [2, 12, 8],     // open-field fleeing: routes scored by the min survivor-hunter path gap over this horizon (s)
   avoidHeading:  [0, 1, 0.6],    // >0.5: skip loop entries the hunter is heading toward (it would cut us off)
   chaseToMatesW: [-1, 1, 0],     // in a chase: >0 run toward teammates known to be repairing, <0 lead the hunter away from them
   edgeAvoidW:    [-1, 1, 0],     // in a chase: >0 avoid loops / flee points within 16 m of the map's outer wall, <0 prefer them
@@ -73,6 +74,7 @@ import { makeSlotPicker } from '../sim/slotpick.js';
 import { HunterBelief } from './hunterbelief.js';
 import { LoopModel } from './loops.js';
 import { MapKnowledge } from './mapknow.js';
+import { RouteEval } from './routes.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
@@ -89,6 +91,8 @@ export function makeSurvivor(P) {
     const loops = new LoopModel(ctx);            // anchors + distance-held circuits (static parts lazily, once per match)
     const anchors = loops.anchors;
     const know = new MapKnowledge(ctx, anchors);  // explored area + anchors seen
+    const routes = new RouteEval(loops, ctx);     // short-horizon distance held for open-field routes
+    let routeT = -99, chaseStartT = -99, wasChasedR = false;
     const exploreJit = Float32Array.from({ length: know.seen.length }, () => 0.15 * ctx.rng.next());   // own taste per area
     const detourOf = (a) => Math.max(0, loops.detour(a.k) - 3.2);
     const jitter = M.generators.map(() => ctx.rng.next());   // this survivor's own taste per gen (own seeded stream)
@@ -302,14 +306,52 @@ export function makeSurvivor(P) {
         }
       }
       cands.sort((x, y) => y.s - x.s);
-      let pick = null, bs = -Infinity;
-      for (const c of cands.slice(0, 4)) {               // path distances only for the best few
-        const dm = api.nav.dist(me, c.Pt);
-        if (!(dm <= R * 1.2) || !(dm < P.loopRace * c.dhP + 1)) continue;
-        const s = c.s + d2(me, c.Pt) - dm;
-        if (s > bs) { bs = s; pick = c; }
+      return cands.slice(0, 4);
+    }
+    const newCirc = (c, obs) => ({ seq: c.o.seq.slice(), i: 0, phase: 'toP', lockT: obs.t + 1, holdT: 0, chosenT: obs.t, lap: c.o.lap, crossed: 0 });
+    // ~1.3 Hz: where to run. Open points in 12 directions (at run speed x horizon) vs known loop entries, each scored by
+    // the min survivor-hunter path gap (routes.js); loops add holdW x their distance held per lap if reached in time.
+    function chooseRoute(obs, api, me, hp, h, extra) {
+      const chaseS = me.chased ? obs.t - chaseStartT : 0;
+      if (!routes.prepare(obs, me, hp, chaseS)) return false;
+      const Hz = P.holdHorizonS, r0 = Math.min(30, Math.max(6, routes.vS * Hz * 0.5));   // first leg ~ half the horizon
+      let best = null, bs = -Infinity;
+      for (let k = 0; k < 12; k++) {
+        const ang = (k / 12) * 2 * Math.PI, ux = Math.cos(ang), uz = Math.sin(ang);
+        let T = null;
+        // farthest point along the ray that I can reach by a near-straight path (path <= 1.3 x straight): a wall or
+        // corner ahead shortens the run, and the rollout then shows the gap collapsing there
+        for (let r = 2; r <= r0; r += 2) {
+          const x = me.x + ux * r, z = me.z + uz * r;
+          if (!routes.reachable(x, z) || routes.sDist(x, z) > 1.3 * r + 2) break;
+          T = { x: Math.floor(x) + 0.5, z: Math.floor(z) + 0.5 };
+        }
+        if (!T) continue;
+        const ro = routes.rollout(T.x, T.z, Hz, false, true, me);
+        if (!ro) continue;
+        let v = ro.gap + extra(T);
+        if (!circ && fleePoint && d2(T, fleePoint) < 6) v += 2;           // hysteresis
+        if (circ) v -= 2;                                                  // leaving a loop for open ground: needs a clear win
+        if (v > bs) { bs = v; best = { kind: 'open', T }; }
       }
-      return pick ? { seq: pick.o.seq.slice(), i: 0, phase: 'toP', lockT: obs.t + 1, holdT: 0, chosenT: obs.t, ex: pick.ex } : null;
+      // loops: roll out to the far side of the first crossing (my field includes the vault, the hunter's its vault /
+      // break / detour), so the crossing's own gain counts
+      for (const c of chooseCircuit(obs, api, me, hp, h, extra)) {
+        const Qt = loops.sidePt[c.o.seq[0] ^ 1];
+        const ro = routes.rollout(Qt.x, Qt.z, 15, true);
+        if (!ro || ro.arrive * routes.vS > P.loopTravelMaxM * 1.3) continue;
+        let v = ro.gap + (ro.gap > 0 ? P.holdW * c.o.lap : 0) + extra(c.Pt);
+        if (circ && circ.seq[circ.i] === c.o.seq[0]) v += 1;               // hysteresis
+        if (v > bs) { bs = v; best = { kind: 'loop', c }; }
+      }
+      if (circ && circ.phase === 'toP') {                                  // the loop I'm already running to
+        const Qt = loops.sidePt[circ.seq[circ.i] ^ 1], ro = routes.rollout(Qt.x, Qt.z, 15, true);
+        if (ro) { const v = ro.gap + (ro.gap > 0 ? P.holdW * circ.lap : 0) + extra(Qt) + 1.5; if (v > bs) { bs = v; best = { kind: 'keep' }; } }
+      }
+      if (!best) return false;
+      if (best.kind === 'open') { circ = null; fleePoint = best.T; fleeT = obs.t; }
+      else if (best.kind === 'loop' && !(circ && circ.seq[circ.i] === best.c.o.seq[0])) { circ = newCirc(best.c, obs); fleePoint = null; }
+      return true;
     }
     function reverseCirc(obs) {
       const k = circ.seq.length, prevIdx = (circ.i - 1 + k) % k;
@@ -330,7 +372,12 @@ export function makeSurvivor(P) {
       const dhm = d2(hp, me);
       if (circ && !circ.seq.every((x) => crossOK(anchors[x >> 1], obs))) circ = null;
       if (circ && circ.phase === 'toP' && d2(me, loops.sidePt[circ.seq[circ.i]]) > P.loopTravelMaxM + 8) circ = null;
-      if (!circ || (obs.t - circ.chosenT > 4 && circ.phase === 'toP' && d2(me, loops.sidePt[circ.seq[circ.i]]) > 6)) circ = chooseCircuit(obs, api, me, hp, h, extra) ?? (circ && circ.phase === 'toP' ? null : circ);
+      // re-plan at ~1.3 Hz (hunter in sight) unless I'm at / in a loop crossing (commit to it)
+      // once I'm in a loop (made a crossing, at / in a crossing, or the hunter is close) the loop runner decides;
+      // route evaluation picks how to start: which loop to run to, or open ground
+      const committed = circ && (circ.crossed > 0 || circ.phase === 'cross' || d2(me, loops.sidePt[circ.seq[circ.i]]) <= 3 || dhm < 8);
+      if (circ && circ.crossed > 0 && loops.expected({ seq: circ.seq, lap: circ.lap, lapNP: circ.lap }, vaultsLeft(obs), palletState(obs)) <= 0) circ = null;   // loop used up
+      if (!committed && ((h && obs.t - routeT >= 0.75) || (!circ && !fleePoint))) { routeT = obs.t; chooseRoute(obs, api, me, hp, h, extra); }   // ~1.3 Hz while the hunter is in sight
       if (circ) {
         const c = circ.seq[circ.i], a = anchors[c >> 1], Pt = loops.sidePt[c], Qt = loops.sidePt[c ^ 1];
         // hunter mid-vault through this anchor: it's blocked for it; use the head start and run
@@ -376,11 +423,12 @@ export function makeSurvivor(P) {
           return { moveTo: Qt, face: hp };
         }
         if (d2(me, Qt) > 0.8) return { moveTo: Qt };
-        circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0;
+        circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++;
         return chase(obs, api, me, h, depth + 1);
       }
-      // open flee: pick a far, reachable point; refresh every 1 s
-      if (!fleePoint || obs.t - fleeT > 1 || d2(me, fleePoint) < 2) {
+      // open flee (route chosen above); fallback when the route fields are unusable: a far, reachable point
+      if (fleePoint && d2(me, fleePoint) < 1.5) fleePoint = null;
+      if (!fleePoint && obs.t - fleeT > 1) {
         fleeT = obs.t;
         let bs = -Infinity;
         const cands = [...obs.gens.filter((g) => g.known), ...M.hooks, ...anchors.filter((a) => know.anchorKnown[a.k] && anchorUsable(a, obs) && d2(a.c, me) < 30).map((a) => ({ x: a.c.x, z: a.c.z, q: detourOf(a) }))];
@@ -409,6 +457,8 @@ export function makeSurvivor(P) {
         if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; }   // chase on me began within 5 s of hiding
         wasChased = !!me.chased;
         know.update(obs, api, 1.0);
+        if (me.chased && !wasChasedR) chaseStartT = obs.t;
+        wasChasedR = !!me.chased;
         // window vaults in the current chase (entity blocker: 3 vaults of one window per chase per survivor)
         if (me.chased) lastChasedT = obs.t;
         else if (obs.t - lastChasedT > 3 && vaultCount.size) vaultCount.clear();

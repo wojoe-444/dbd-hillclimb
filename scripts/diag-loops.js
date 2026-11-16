@@ -4,7 +4,8 @@
 //    chase incl. the window blocker budget, and per lap), marking anchors inside the infinite-loop probe tile (*).
 // 2) chases with default knobs (normal exploration): chases that start inside / near the infinite-loop tile
 //    (BITIC slot x 24-40, z 40-56, +4 m margin) vs elsewhere: count, mean duration, share ending in a down,
-//    time from the chase start to that survivor's next down (cap 60 s), and window vaults made inside the tile.
+//    time from the chase start to that survivor's next down (cap 60 s), and window vaults made inside the tile;
+//    plus, over all chases: mean duration and the share ending within 16 m of the map's outer wall.
 // 3) duel (--duel 8): one survivor with full anchor knowledge starts at the tile's north-west window with the hunter
 //    10 m behind, vs the same at the best circuit entry NOT in the tile; mean time to down (cap 60 s).
 //
@@ -43,6 +44,8 @@ for (const vi of (a.variants ?? '0,7,19').split(',').map(Number)) {
 // ---- 2) chases with default knobs ----
 const n = +(a.n ?? 32);
 const st = { tile: { n: 0, dur: 0, downs: 0, ttd: 0 }, other: { n: 0, dur: 0, downs: 0, ttd: 0 } };
+let wallEnds = 0, allEnds = 0, allDur = 0;
+const edgeDist = (map, pt) => { let best = Infinity; const o = map.outline; for (let i = 0, j = o.length - 1; i < o.length; j = i++) { const ax = o[j][0], az = o[j][1], ex = o[i][0] - ax, ez = o[i][1] - az, L = ex * ex + ez * ez; const u = L > 0 ? Math.max(0, Math.min(1, ((pt.x - ax) * ex + (pt.z - az) * ez) / L)) : 0; best = Math.min(best, Math.hypot(ax + u * ex - pt.x, az + u * ez - pt.z)); } return best; };
 let tileVaults = 0, chaseVaults = 0, explored = 0, nb = 0, tileKnown = 0, tileAnch = 0;
 const t0 = performance.now();
 for (let i = 0; i < n; i++) {
@@ -61,7 +64,7 @@ for (let i = 0; i < n; i++) {
         const r = lastRec[e.who]; if (r && r.ttd === null && m.t - r.t <= 60) r.ttd = m.t - r.t;
       }
       else if (e.type === 'vault' && e.chased) { chaseVaults++; if (inTile(m.survivors[e.who])) tileVaults++; }
-      else if (e.type === 'chaseEnd' && cur) { const b = cur.tile ? st.tile : st.other; b.n++; b.dur += m.t - cur.t; if (cur.down) b.downs++; cur = null; }
+      else if (e.type === 'chaseEnd' && cur) { allEnds++; allDur += m.t - cur.t; if (edgeDist(maps[seed % maps.length], m.survivors[cur.who]) < 16) wallEnds++; const b = cur.tile ? st.tile : st.other; b.n++; b.dur += m.t - cur.t; if (cur.down) b.downs++; cur = null; }
     }
   }
   for (const r of recs) (r.tile ? st.tile : st.other).ttd += r.ttd ?? Math.min(60, m.t - r.t);
@@ -75,6 +78,7 @@ const f = (b) => `${b.n} chases, mean ${(b.dur / Math.max(1, b.n)).toFixed(1)} s
 console.log(`\n${n} matches (default knobs, normal exploration) in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 console.log(`  chases starting in/near the infinite-loop tile: ${f(st.tile)}`);
 console.log(`  chases elsewhere:                             ${f(st.other)}`);
+console.log(`  all chases: ${allEnds}, mean duration ${(allDur / Math.max(1, allEnds)).toFixed(1)} s, ending within 16 m of the outer wall: ${(100 * wallEnds / Math.max(1, allEnds)).toFixed(1)}%`);
 console.log(`  window vaults during chases: ${chaseVaults}, of which inside the tile: ${tileVaults} (${(100 * tileVaults / Math.max(1, chaseVaults)).toFixed(1)}%)`);
 console.log(`  survivors' map knowledge at match end: ${(100 * explored / Math.max(1, nb)).toFixed(0)}% of the map explored, tile windows known ${(100 * tileKnown / Math.max(1, tileAnch)).toFixed(0)}%`);
 
