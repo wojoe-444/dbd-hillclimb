@@ -33,6 +33,7 @@ export class HunterBelief {
     this.semi = (cfg.sight && cfg.sight.semiTransparency) || 0.6;
     this.visT = (cfg.sight && cfg.sight.visThreshold) || 0.5;
     this.coverR = opts.coverR ?? 24;
+    this.camCfg = cfg.survivor && cfg.survivor.camera && cfg.survivor.camera.enabled ? cfg.survivor.camera : null;
     this.M = M;
     const cs = this.cs, W = M.w, H = M.h;
 
@@ -278,13 +279,12 @@ export class HunterBelief {
   }
 
   negative(obs, api) {
-    const me = obs.self, p = this.p, r2 = this.range * this.range;
+    const me = obs.self, p = this.p;
+    const sees = viewOf(obs, api, this.camCfg, this.range);   // what I can see right now (camera FOV + body awareness)
     let hit = 0;
     for (const c of this.hot) {
       if (p[c] < 3e-4) continue;          // not worth a ray
-      const dx = this.cx[c] - me.x, dz = this.cz[c] - me.z;
-      if (dx * dx + dz * dz > r2) continue;
-      if (api.los(me, { x: this.cx[c], z: this.cz[c] })) { p[c] *= this.residual; hit++; }
+      if (sees(this.cx[c], this.cz[c])) { p[c] *= this.residual; hit++; }
     }
     if (hit && !this.normalize()) this.resetRing(me, this.lastLayer);
   }
@@ -385,4 +385,20 @@ function inPoly(x, z, poly) {
     if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
   }
   return c;
+}
+
+// What a survivor can see right now, as a test (x, z) -> bool: with the camera (obs.self.cam) = inside its FOV cone,
+// within range of the camera and in line of sight from it, or within bodyAwareM of the body in line of sight; without
+// the camera = 360 degrees from the body. Same rule as the engine.
+export function viewOf(obs, api, cam, range = 75) {
+  const me = obs.self, c = me.cam, r2 = range * range;
+  if (!cam || !c) return (x, z) => (x - me.x) ** 2 + (z - me.z) ** 2 <= r2 && api.los(me, { x, z });
+  const cosF = Math.cos((cam.fovDeg / 2) * Math.PI / 180), fx = Math.cos(c.yaw), fz = Math.sin(c.yaw), aw2 = cam.bodyAwareM * cam.bodyAwareM;
+  return (x, z) => {
+    const bx = x - me.x, bz = z - me.z;
+    if (bx * bx + bz * bz <= aw2 && api.los(me, { x, z })) return true;
+    const dx = x - c.x, dz = z - c.z, d2 = dx * dx + dz * dz;
+    if (d2 > r2 || (d2 > 1e-6 && dx * fx + dz * fz < Math.sqrt(d2) * cosF)) return false;
+    return api.los(c, { x, z });
+  };
 }

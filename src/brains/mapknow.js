@@ -10,6 +10,8 @@
 //
 // Queries: explored(x,z), unexploredNear(x,z,r) (fraction), pickTarget(me, prefR) (an unexplored spot worth walking to).
 
+import { viewOf } from './hunterbelief.js';
+
 export class MapKnowledge {
   constructor(ctx, anchors, opts = {}) {
     const M = ctx.map;
@@ -41,6 +43,7 @@ export class MapKnowledge {
     this.anchors = anchors;
     this.anchorKnown = new Uint8Array(anchors.length);
     this.lastT = -99;
+    this.camCfg = ctx.config.survivor && ctx.config.survivor.camera && ctx.config.survivor.camera.enabled ? ctx.config.survivor.camera : null;
   }
 
   cellAt(x, z) {
@@ -64,9 +67,10 @@ export class MapKnowledge {
       if (d <= r2) cand.push([d, c]);
     }
     cand.sort((a, b) => a[0] - b[0]);
+    const sees = viewOf(obs, api, this.camCfg, this.seeR + 4);   // camera FOV + body awareness (or 360 without camera)
     for (let k = 0; k < cand.length && k < this.raysPer; k++) {
       const c = cand[k][1];
-      if (api.los(me, { x: this.cx[c], z: this.cz[c] })) { this.seen[c] = 1; this.nSeen++; }
+      if (sees(this.cx[c], this.cz[c])) { this.seen[c] = 1; this.nSeen++; }
     }
     // anchors
     const a2 = this.anchorR * this.anchorR;
@@ -74,7 +78,7 @@ export class MapKnowledge {
       if (this.anchorKnown[k]) continue;
       const a = this.anchors[k];
       if ((a.c.x - me.x) ** 2 + (a.c.z - me.z) ** 2 > a2) continue;
-      if (api.los(me, a.s[0]) || api.los(me, a.s[1])) this.anchorKnown[k] = 1;
+      if (sees(a.s[0].x, a.s[0].z) || sees(a.s[1].x, a.s[1].z)) this.anchorKnown[k] = 1;
     }
   }
 
