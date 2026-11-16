@@ -39,6 +39,8 @@ export const survivorSpace = {
   holdW:         [0, 3, 1],      // loop route value = min gap to its entry + holdW * the circuit's distance held per lap (m)
   holdHorizonS:  [2, 12, 8],     // open-field fleeing: routes scored by the min survivor-hunter path gap over this horizon (s)
   avoidHeading:  [0, 1, 0.6],    // >0.5: skip loop entries the hunter is heading toward (it would cut us off)
+  loopReverseDist: [0, 20, 0],   // running a loop: the visible hunter comes round the other way (heading for my next crossing, nearer to it than to me) within this path distance of it -> reverse (0 = off)
+  loopReactS:    [0, 1.5, 0.4],  // ...after seeing that for this long (reaction time; also filters a hunter's fake turn)
   vaultSafetyMarginM: [0, 3, 0.8], // vault only if the hunter's swing (range + windup lunge) misses by this margin in a 1D replay
   vaultClearanceS: [0, 3, 1],    // don't vault a window the hunter is in / cleared less than this long ago
   loopScoutW:    [0, 2, 0.5],    // exploring: pull toward unseen windows / pallets that would complete a strong known loop
@@ -125,6 +127,7 @@ export function makeSurvivor(P) {
     let mode = 'work';          // work | chase | sneak
     let lastThreatT = -99;
     let circ = null;            // running loop: { seq, i, phase: 'toP' | 'cross', lockT, holdT }
+    let cutSeenT = -1, cutLastT = -99;   // loopReverseDist: since when / last time the hunter was seen coming round the loop the other way
     let genTarget = -1;         // >= 0 gen index, -2 = exploring
     let exploreTo = null, exploreT = -99;
     const vaultCount = new Map(); let wasVaulting = false, lastChasedT = -99;   // window vaults in the current chase (entity blocker)
@@ -225,7 +228,7 @@ export function makeSurvivor(P) {
     let peek = null;              // current peek: { spot, look, since }
     let hide = null;              // { start, lastTrig, spot, spotT }
     let hideCooldownUntil = -99;
-    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0 };   // diagnostics (read by scripts via brain.stats)
+    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0 };   // diagnostics (read by scripts via brain.stats)
     let wasChased = false, lastHideTickT = -99, lastPeekT = -99, wasChasedV = false;
     const genCover = M.generators.map(() => null);   // per known gen: mean cover of its repair slots (lazy)
     const genCoverOf = (g, i) => {
@@ -576,6 +579,28 @@ export function makeSurvivor(P) {
         // the hunter is nearer my next entry than I am (it cut ahead / is on the far side): run the loop the other way
         const hP = api.nav.dist(hp, Pt), hQ = api.nav.dist(hp, Qt);   // path distances (fields to fixed points get cached)
         if (circ.phase === 'toP' && obs.t >= circ.lockT && hP + 0.5 < api.nav.dist(me, Pt) && hQ > hP && circ.seq.length > 1) { reverseCirc(obs); if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; } return chase(obs, api, me, h, depth + 1); }
+        // mind game: the hunter (seen now) commits to the other way round -- moving toward my next crossing (either
+        // side), nearer to it than to me (so it is not just following me) and within loopReverseDist of it: after
+        // loopReactS of seeing that, reverse
+        // (not for a hold crossing -- back over the anchor I just crossed: a hunter following me there heads for it too)
+        const nk = circ.seq.length, prevC = circ.seq[(circ.i - 1 + nk) % nk];
+        if (P.loopReverseDist > 0) {
+          let cutting = false;
+          if (circ.phase === 'toP' && nk > 1 && (prevC >> 1) !== (c >> 1) && h && !h.vaulting) {
+            const X = hP <= hQ ? Pt : Qt, hX = Math.min(hP, hQ), tx = X.x - h.x, tz = X.z - h.z, tl = Math.hypot(tx, tz);
+            const toward = tl < 1 || ((h.vx || 0) * tx + (h.vz || 0) * tz) / tl > 1.0;
+            cutting = toward && hX < P.loopReverseDist && hX + 1 < api.nav.dist(hp, me);
+          }
+          // the seen-for clock restarts whenever the sighting breaks (unseen, other phase / crossing, not cutting)
+          if (!cutting || (cutSeenT >= 0 && obs.t - cutLastT > 0.25)) cutSeenT = cutting ? obs.t : -1;
+          else if (cutSeenT < 0) cutSeenT = obs.t;
+          if (cutting) cutLastT = obs.t;
+          if (cutting && obs.t - cutSeenT >= P.loopReactS - 1e-9 && obs.t >= circ.lockT) {
+            cutSeenT = -1; stats.loopReversals++; reverseCirc(obs);
+            if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; }
+            return chase(obs, api, me, h, depth + 1);
+          }
+        }
         if (circ.phase === 'toP') {
           // running crossing (a real leg leads into it): keep the momentum for a fast vault while the hunter is on us;
           // hold crossing (zero leg: mind-game at one anchor): wait at the entry until the hunter is close

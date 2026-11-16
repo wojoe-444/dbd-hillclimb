@@ -8,6 +8,7 @@
 //
 // node scripts/duel-shack.js [--n 64] [--cap 120] [--champ runs/evo-v13/champions.json] [--compare]
 //        [--sp knob=v,knob=v]                       (survivor knob overrides, e.g. --sp stunSeek=0,holdMaxS=0)
+//        [--hp knob=v,knob=v]                       (hunter knob overrides, e.g. --hp reverseChance=0.5,predictLeadS=0.5)
 //        [--mix]                                    (2x2: default/champ hunter x default/champ survivor)
 //        [--seed0 1000] [--spot inside|northDoor|palletDoor|window|outside] [--health healthy|injured]
 //        [--hunter strong|assist|brain] [--assistAfter 3]   (default strong = assist + breaks the dropped pallet; see duel())
@@ -66,7 +67,9 @@ const B = getBrains('param', 'param');
 // Duel neutralisation of generator-driven hunter knobs: the gens sit in the unreachable pocket, and with
 // clusterActivate >= 5 (default 5) the hunter's cluster leash sees an Infinity path distance to the gen cluster and
 // abandons every chase where the survivor is farther from the pocket than itself (ignored for 15 s). --noNeutralize keeps it.
-const HUNTER_OVERRIDES = a.noNeutralize ? {} : { clusterActivate: 0 };
+// --hp key=val,key=val: hunter knob overrides (on top of the neutralisation), e.g. --hp reverseChance=0.5,predictLeadS=0.5
+const HP_OVERRIDES = Object.fromEntries((a.hp ? String(a.hp).split(',') : []).map((kv) => { const [k, v] = kv.split('='); if (!(k in B.hunter.space)) throw new Error('unknown hunter knob ' + k); return [k, +v]; }));
+const HUNTER_OVERRIDES = { ...(a.noNeutralize ? {} : { clusterActivate: 0 }), ...HP_OVERRIDES };
 // --sp key=val,key=val: survivor knob overrides on top of default / champion knobs (sensitivity checks)
 const SP_OVERRIDES = Object.fromEntries((a.sp ? String(a.sp).split(',') : []).map((kv) => { const [k, v] = kv.split('='); if (!(k in B.survivor.space)) throw new Error('unknown survivor knob ' + k); return [k, +v]; }));
 const loadParams = (champ) => {

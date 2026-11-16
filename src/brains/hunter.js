@@ -1,5 +1,6 @@
 // Parametric hunter. Knobs are hill-climbed; `space` = { name: [min, max, default] }.
 import { SurvivorBelief } from './belief.js';
+import { makeLoopMind } from './loopmind.js';
 
 export const hunterSpace = {
   lungeDist:     [1.2, 4.5, 2.5],  // start the attack when target is this close (and reachable)
@@ -40,6 +41,11 @@ export const hunterSpace = {
   beliefPatrol:    [0, 1, 0.7],    // >0.5: patrol toward the hottest part of the belief map instead of gen-by-gen
   beliefSpread:    [0.2, 1, 0.6],  // how fast a survivor's possible area grows (fraction of running speed)
   beliefGenPull:   [0, 2, 0.5],    // how strongly unseen survivors are assumed to drift back to unfinished gens
+  // ---- loop mind games (loopmind.js; all 0 = always path straight at the survivor, the old behaviour) ----
+  reverseChance:   [0, 1, 0],      // per loop pass: run the tile the other way round to meet the survivor head-on
+  standOffChance:  [0, 1, 0],      // per loop pass (if not reversing): stop and wait, baiting a reversal / a vault back
+  standOffMaxS:    [0.5, 4, 1.5],  // ...for at most this long
+  predictLeadS:    [0, 1.5, 0],    // chase: aim at the survivor's position this far ahead (velocity, slid along walls)
 };
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -120,6 +126,7 @@ export function makeHunter(P) {
     const posHist = [];                            // stall guard: recent positions (one per decision)
     let leadsOffUntil = -99;                       // after a stall: ignore sound/scratch leads for a bit
     const belief = new SurvivorBelief(ctx, { spread: P.beliefSpread, genPull: P.beliefGenPull });
+    const mind = makeLoopMind(ctx, P);   // loop mind games (reverse / stand off / lead); inert with the knobs at 0
     let beliefTgt = null, beliefT = -99;
     const downedChecked = [-1, -1, -1, -1]; // lastSeen.t of downed sightings we already went back to
     // cluster state: recomputed whenever a generator completes
@@ -161,13 +168,14 @@ export function makeHunter(P) {
 
     return {
       belief,   // exposed for the viewer's heat-map overlay (read-only)
+      mind,     // loop mind-game state + counters (diagnostics / tests; read-only)
       decide(obs, api) {
         const me = obs.self, nav = api.nav;
         belief.update(obs, api);
         // stall guard: barely moved over the last 2 s while free to move (not acting / cooling down / vaulting / stunned /
         // carrying) -> the current goal is unreachable or sits behind an obstacle (e.g. a lead on a dropped pallet): drop it
         const free = !me.act && !me.vaulting && !(me.stunS > 0) && !(me.cooldownS > 0) && !(me.windupS > 0) && me.carrying === null;
-        if (free) posHist.push([me.x, me.z]); else posHist.length = 0;
+        if (free && !(mind.mode && mind.mode.kind === 'stand')) posHist.push([me.x, me.z]); else posHist.length = 0;   // (a loop stand-off stands still on purpose)
         if (posHist.length > 20) posHist.shift();
         if (posHist.length === 20 && Math.hypot(me.x - posHist[0][0], me.z - posHist[0][1]) < 1.0) {
           posHist.length = 0; goto = null; lastPos = null; beliefTgt = null; patrolGen = -1; camp = null; leadsOffUntil = obs.t + 4;
@@ -245,7 +253,7 @@ export function makeHunter(P) {
             if (d <= P.lungeDist && (best.vaulting || api.walkClear(me, best) || nav.dist(me, best) <= P.lungeDist + 1)) {
               return { act: 'attack', target: best.id, face: { x: best.x, z: best.z } };
             }
-            return { moveTo: { x: best.x, z: best.z } };
+            return mind.step(obs, api, me, best, d) || { moveTo: mind.aim(api, best) };
           }
         }
 
@@ -267,6 +275,8 @@ export function makeHunter(P) {
           }
         }
 
+        // ---- lost sight mid mind game (a reversal runs out of view by design): keep it going a little (loopmind.js) ----
+        if (target !== null) { const mg = mind.unseen(obs, api, me); if (mg) return mg; }
         // ---- lost sight: search ----
         if (lastPos && obs.t - lastPosT < P.lostSearchS && !outsideLeash(lastPos)) {
           if (P.followScratch > 0.5 && obs.scratches.length) {

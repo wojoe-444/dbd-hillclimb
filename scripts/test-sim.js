@@ -7,6 +7,7 @@ import { createMatch, runMatch } from '../src/sim/index.js';
 import { survivorBrain, hunterBrain } from '../src/sim/testbrains.js';
 import { circleFree } from '../src/sim/nav.js';
 import { getBrains } from '../src/brains/index.js';
+import { makeLoopMind } from '../src/brains/loopmind.js';
 import { defaults } from '../src/hillclimb/params.js';
 import { slotReport, allMapFiles } from './check-gen-slots.js';
 
@@ -1450,6 +1451,52 @@ test('determinism with the param brains: same seed, same result regardless of ca
   const fwd = seeds.map(go);
   const rev = [...seeds].reverse().map(go).reverse();
   for (let i = 0; i < seeds.length; i++) ok(fwd[i] === rev[i], 'seed ' + seeds[i] + ' identical forward vs reverse order');
+});
+
+test('loop mind games: knobs at 0 are inert; turned on they fire and stay deterministic', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  const MG_H = { reverseChance: 0.6, standOffChance: 0.5, standOffMaxS: 1.5, predictLeadS: 0.5 };
+  const MG_S = { loopReverseDist: 15, loopReactS: 0.2 };
+  for (const k of Object.keys(MG_H)) ok(k in B.hunter.space, 'hunter knob ' + k);
+  for (const k of Object.keys(MG_S)) ok(k in B.survivor.space, 'survivor knob ' + k);
+  ok(B.hunter.space.reverseChance[2] === 0 && B.hunter.space.standOffChance[2] === 0 && B.hunter.space.predictLeadS[2] === 0 && B.survivor.space.loopReverseDist[2] === 0,
+    'mind games default off (old behaviour)');
+  const go = (seed, on) => {
+    let hb = null; const sbs = [];
+    const hf = B.hunter.make({ ...defaults(B.hunter.space), ...(on ? MG_H : {}) });
+    const sf = B.survivor.make({ ...defaults(B.survivor.space), ...(on ? MG_S : {}) });
+    const r = runMatch({ map: gh, seed, hunter: (c) => (hb = hf(c)), survivors: (c) => { const b = sf(c); sbs.push(b); return b; } });
+    return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), st: { ...hb.mind.stats }, srev: sbs.reduce((s, b) => s + b.stats.loopReversals, 0) };
+  };
+  const off = go(1012, false);
+  ok(off.st.loopTicks === 0 && off.st.passes === 0 && off.srev === 0, 'knobs at 0: no loop mind-game activity (' + JSON.stringify(off.st) + ', survivor reversals ' + off.srev + ')');
+  const seeds = [1000, 1001, 1002];
+  const fwd = seeds.map((s) => go(s, true));
+  const rev = [...seeds].reverse().map((s) => go(s, true)).reverse();
+  for (let i = 0; i < seeds.length; i++) ok(fwd[i].key === rev[i].key, 'mind games on: seed ' + seeds[i] + ' identical forward vs reverse order');
+  const sum = (k) => fwd.reduce((s, x) => s + (x.st[k] || 0), 0);
+  ok(sum('reversals') > 0 && sum('revTicks') > 0, 'hunter reversals happen (' + sum('reversals') + ' in ' + seeds.length + ' matches)');
+  ok(sum('standOffs') > 0 && sum('standTicks') > 0, 'hunter stand-offs happen (' + sum('standOffs') + ')');
+  ok(fwd.reduce((s, x) => s + x.srev, 0) > 0, 'survivors reverse on a hunter coming round the other way (' + fwd.reduce((s, x) => s + x.srev, 0) + ')');
+  ok(fwd.some((x, i) => x.key !== go(seeds[i], false).key), 'the knobs change play');
+});
+
+test('loop mind games: predictLeadS extrapolates the survivor along walkable space (slides along walls, never through)', () => {
+  const { m } = mk();
+  const api = m.hunter.api;
+  const mind = makeLoopMind({ map: smallMap, config: m.cfg, rng: null }, { reverseChance: 0, standOffChance: 0, predictLeadS: 1 });
+  const s0 = { x: 24.5, z: 18.5, vx: 0, vz: 0 };
+  const p0 = mind.aim(api, s0);
+  ok(p0.x === 24.5 && p0.z === 18.5, 'standing survivor: aim at it');
+  const s1 = { x: 24.5, z: 18.5, vx: 4, vz: 0 };
+  const p1 = mind.predict(api, s1, 1);
+  ok(api.walkClear(s1, p1), 'prediction reachable in a straight line from the survivor (' + p1.x.toFixed(2) + ',' + p1.z.toFixed(2) + ')');
+  ok(p1.x > s1.x && p1.x <= s1.x + 4 + 1e-9, 'prediction ahead along the velocity, at most v*dt');
+  // a survivor running straight into the map edge: the prediction stops / slides at the wall
+  const s2 = { x: 1.5, z: 18.5, vx: -4, vz: 0.5 };
+  const p2 = mind.predict(api, s2, 1);
+  ok(p2.x > 0.4 && api.walkClear(s2, p2), 'running into a wall: prediction stays on walkable ground (' + p2.x.toFixed(2) + ',' + p2.z.toFixed(2) + ')');
 });
 
 test('nav.dist from a point inside a solid cell is Infinity whether the target field is cached or not', () => {
