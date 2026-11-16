@@ -380,6 +380,7 @@ export function generateFromLayout(layout, seed) {
     x: inst.x, z: inst.z, size: inst.size, rot: inst.rot, mirror: inst.mirror,
     pallets: perInst[k].pallets, windows: perInst[k].windows,
     rating: TILES[inst.tile].rate(perInst[k]),
+    palletSafety: perInst[k].pallets ? TILES[inst.tile].palletSafety : null,
   }));
   const playableCells8 = tiles.reduce((s, t) => s + (t.size / C) ** 2, 0);
   const deadCells8 = tiles.filter(t => t.rating === 'none').reduce((s, t) => s + (t.size / C) ** 2, 0);
@@ -394,6 +395,9 @@ export function generateFromLayout(layout, seed) {
     windows: windows.length,
     strongLoops: tiles.filter(t => t.rating === 'strong').length,
     weakLoops: tiles.filter(t => t.rating === 'weak').length,
+    safePallets: tiles.filter(t => t.palletSafety === 'safe').reduce((s, t) => s + t.pallets, 0),
+    unsafePallets: tiles.filter(t => t.palletSafety === 'unsafe').reduce((s, t) => s + t.pallets, 0),
+    godPallets: tiles.filter(t => t.palletSafety === 'god').reduce((s, t) => s + t.pallets, 0),
     deadTileFraction: +(deadCells8 / playableCells8).toFixed(3),
     deadZoneFraction: +(far12 / walkCells.length).toFixed(3),
     generators: generators.length,

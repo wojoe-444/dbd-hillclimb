@@ -1,0 +1,678 @@
+{
+  "baselineCommit": "a9dd0d0dc43667a4c4332fdd319cadf04955e472",
+  "matchSeeds": [
+    1000,
+    1063
+  ],
+  "brains": "param/param, default parameters, no champions",
+  "note": "Retrospective safety is a qualitative tile-family judgment, not a BHVR label. Unverified old maze/car/window-L shapes are unclassified rather than presented as real loops; see tile-accuracy.md.",
+  "baselineSafetyOverrides": {
+    "shack": "god",
+    "jgv1": "safe",
+    "jgv2": "safe",
+    "filler-windowl": "unclassified",
+    "maze-a": "unclassified",
+    "maze-b": "unclassified",
+    "maze-c": "unclassified",
+    "carpile-a": "unclassified",
+    "carpile-b": "unclassified"
+  },
+  "baselineSafetyDefault": "unsafe",
+  "baselineSafety": [
+    {
+      "file": "v000.json",
+      "safePallets": 3,
+      "unsafePallets": 5,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    },
+    {
+      "file": "v001.json",
+      "safePallets": 5,
+      "unsafePallets": 3,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    },
+    {
+      "file": "v002.json",
+      "safePallets": 5,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v003.json",
+      "safePallets": 2,
+      "unsafePallets": 8,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    },
+    {
+      "file": "v004.json",
+      "safePallets": 2,
+      "unsafePallets": 9,
+      "godPallets": 1,
+      "unclassifiedPallets": 5
+    },
+    {
+      "file": "v005.json",
+      "safePallets": 5,
+      "unsafePallets": 9,
+      "godPallets": 1,
+      "unclassifiedPallets": 5
+    },
+    {
+      "file": "v006.json",
+      "safePallets": 3,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v007.json",
+      "safePallets": 4,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v008.json",
+      "safePallets": 3,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 5
+    },
+    {
+      "file": "v009.json",
+      "safePallets": 3,
+      "unsafePallets": 8,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v010.json",
+      "safePallets": 2,
+      "unsafePallets": 4,
+      "godPallets": 1,
+      "unclassifiedPallets": 9
+    },
+    {
+      "file": "v011.json",
+      "safePallets": 2,
+      "unsafePallets": 6,
+      "godPallets": 1,
+      "unclassifiedPallets": 7
+    },
+    {
+      "file": "v012.json",
+      "safePallets": 4,
+      "unsafePallets": 8,
+      "godPallets": 1,
+      "unclassifiedPallets": 3
+    },
+    {
+      "file": "v013.json",
+      "safePallets": 5,
+      "unsafePallets": 5,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v014.json",
+      "safePallets": 3,
+      "unsafePallets": 3,
+      "godPallets": 1,
+      "unclassifiedPallets": 7
+    },
+    {
+      "file": "v015.json",
+      "safePallets": 2,
+      "unsafePallets": 6,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    },
+    {
+      "file": "v016.json",
+      "safePallets": 5,
+      "unsafePallets": 4,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v017.json",
+      "safePallets": 5,
+      "unsafePallets": 4,
+      "godPallets": 1,
+      "unclassifiedPallets": 5
+    },
+    {
+      "file": "v018.json",
+      "safePallets": 4,
+      "unsafePallets": 10,
+      "godPallets": 1,
+      "unclassifiedPallets": 3
+    },
+    {
+      "file": "v019.json",
+      "safePallets": 3,
+      "unsafePallets": 8,
+      "godPallets": 1,
+      "unclassifiedPallets": 8
+    },
+    {
+      "file": "v020.json",
+      "safePallets": 4,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 5
+    },
+    {
+      "file": "v021.json",
+      "safePallets": 2,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    },
+    {
+      "file": "v022.json",
+      "safePallets": 3,
+      "unsafePallets": 9,
+      "godPallets": 1,
+      "unclassifiedPallets": 5
+    },
+    {
+      "file": "v023.json",
+      "safePallets": 3,
+      "unsafePallets": 3,
+      "godPallets": 1,
+      "unclassifiedPallets": 8
+    },
+    {
+      "file": "v024.json",
+      "safePallets": 3,
+      "unsafePallets": 6,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v025.json",
+      "safePallets": 4,
+      "unsafePallets": 6,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    },
+    {
+      "file": "v026.json",
+      "safePallets": 3,
+      "unsafePallets": 8,
+      "godPallets": 1,
+      "unclassifiedPallets": 3
+    },
+    {
+      "file": "v027.json",
+      "safePallets": 3,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    },
+    {
+      "file": "v028.json",
+      "safePallets": 3,
+      "unsafePallets": 10,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v029.json",
+      "safePallets": 2,
+      "unsafePallets": 11,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v030.json",
+      "safePallets": 5,
+      "unsafePallets": 7,
+      "godPallets": 1,
+      "unclassifiedPallets": 4
+    },
+    {
+      "file": "v031.json",
+      "safePallets": 6,
+      "unsafePallets": 9,
+      "godPallets": 1,
+      "unclassifiedPallets": 6
+    }
+  ],
+  "baseline": {
+    "map": "gas-heaven",
+    "generator": "mapgen/gas-heaven@1",
+    "baseSeed": 1,
+    "count": 32,
+    "note": "Tile-based Gas Heaven variants from scripts/gen-maps.js. Regenerate: node scripts/gen-maps.js --count 32 --seed 1",
+    "variants": [
+      {
+        "file": "v000.json",
+        "id": "gas-heaven-v000",
+        "seed": 2779660694,
+        "pallets": 15,
+        "windows": 25,
+        "strongLoops": 11,
+        "weakLoops": 12,
+        "deadTileFraction": 0.468,
+        "deadZoneFraction": 0.338,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v001.json",
+        "id": "gas-heaven-v001",
+        "seed": 2916466869,
+        "pallets": 15,
+        "windows": 24,
+        "strongLoops": 11,
+        "weakLoops": 10,
+        "deadTileFraction": 0.462,
+        "deadZoneFraction": 0.34,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v002.json",
+        "id": "gas-heaven-v002",
+        "seed": 1457899036,
+        "pallets": 17,
+        "windows": 17,
+        "strongLoops": 9,
+        "weakLoops": 12,
+        "deadTileFraction": 0.538,
+        "deadZoneFraction": 0.383,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v003.json",
+        "id": "gas-heaven-v003",
+        "seed": 214008203,
+        "pallets": 17,
+        "windows": 20,
+        "strongLoops": 9,
+        "weakLoops": 13,
+        "deadTileFraction": 0.532,
+        "deadZoneFraction": 0.383,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v004.json",
+        "id": "gas-heaven-v004",
+        "seed": 817407985,
+        "pallets": 17,
+        "windows": 16,
+        "strongLoops": 8,
+        "weakLoops": 13,
+        "deadTileFraction": 0.596,
+        "deadZoneFraction": 0.408,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v005.json",
+        "id": "gas-heaven-v005",
+        "seed": 585385045,
+        "pallets": 20,
+        "windows": 15,
+        "strongLoops": 9,
+        "weakLoops": 12,
+        "deadTileFraction": 0.538,
+        "deadZoneFraction": 0.348,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v006.json",
+        "id": "gas-heaven-v006",
+        "seed": 4118939518,
+        "pallets": 15,
+        "windows": 21,
+        "strongLoops": 7,
+        "weakLoops": 14,
+        "deadTileFraction": 0.538,
+        "deadZoneFraction": 0.39,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v007.json",
+        "id": "gas-heaven-v007",
+        "seed": 1151624183,
+        "pallets": 16,
+        "windows": 16,
+        "strongLoops": 8,
+        "weakLoops": 12,
+        "deadTileFraction": 0.545,
+        "deadZoneFraction": 0.426,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v008.json",
+        "id": "gas-heaven-v008",
+        "seed": 2853696797,
+        "pallets": 16,
+        "windows": 18,
+        "strongLoops": 8,
+        "weakLoops": 12,
+        "deadTileFraction": 0.545,
+        "deadZoneFraction": 0.387,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v009.json",
+        "id": "gas-heaven-v009",
+        "seed": 2827038473,
+        "pallets": 16,
+        "windows": 17,
+        "strongLoops": 8,
+        "weakLoops": 14,
+        "deadTileFraction": 0.59,
+        "deadZoneFraction": 0.39,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v010.json",
+        "id": "gas-heaven-v010",
+        "seed": 2673986630,
+        "pallets": 16,
+        "windows": 21,
+        "strongLoops": 11,
+        "weakLoops": 8,
+        "deadTileFraction": 0.571,
+        "deadZoneFraction": 0.371,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v011.json",
+        "id": "gas-heaven-v011",
+        "seed": 1917275735,
+        "pallets": 16,
+        "windows": 17,
+        "strongLoops": 8,
+        "weakLoops": 11,
+        "deadTileFraction": 0.59,
+        "deadZoneFraction": 0.403,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v012.json",
+        "id": "gas-heaven-v012",
+        "seed": 1061907610,
+        "pallets": 16,
+        "windows": 21,
+        "strongLoops": 10,
+        "weakLoops": 14,
+        "deadTileFraction": 0.5,
+        "deadZoneFraction": 0.391,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v013.json",
+        "id": "gas-heaven-v013",
+        "seed": 2893501921,
+        "pallets": 15,
+        "windows": 19,
+        "strongLoops": 8,
+        "weakLoops": 11,
+        "deadTileFraction": 0.59,
+        "deadZoneFraction": 0.396,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v014.json",
+        "id": "gas-heaven-v014",
+        "seed": 1988852357,
+        "pallets": 14,
+        "windows": 19,
+        "strongLoops": 8,
+        "weakLoops": 10,
+        "deadTileFraction": 0.577,
+        "deadZoneFraction": 0.397,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v015.json",
+        "id": "gas-heaven-v015",
+        "seed": 3984899701,
+        "pallets": 15,
+        "windows": 17,
+        "strongLoops": 7,
+        "weakLoops": 11,
+        "deadTileFraction": 0.615,
+        "deadZoneFraction": 0.419,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v016.json",
+        "id": "gas-heaven-v016",
+        "seed": 3439127401,
+        "pallets": 14,
+        "windows": 17,
+        "strongLoops": 8,
+        "weakLoops": 10,
+        "deadTileFraction": 0.577,
+        "deadZoneFraction": 0.424,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v017.json",
+        "id": "gas-heaven-v017",
+        "seed": 1464815035,
+        "pallets": 15,
+        "windows": 24,
+        "strongLoops": 9,
+        "weakLoops": 12,
+        "deadTileFraction": 0.481,
+        "deadZoneFraction": 0.344,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v018.json",
+        "id": "gas-heaven-v018",
+        "seed": 2902227611,
+        "pallets": 18,
+        "windows": 20,
+        "strongLoops": 9,
+        "weakLoops": 16,
+        "deadTileFraction": 0.494,
+        "deadZoneFraction": 0.334,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v019.json",
+        "id": "gas-heaven-v019",
+        "seed": 4083660752,
+        "pallets": 20,
+        "windows": 24,
+        "strongLoops": 11,
+        "weakLoops": 14,
+        "deadTileFraction": 0.436,
+        "deadZoneFraction": 0.266,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v020.json",
+        "id": "gas-heaven-v020",
+        "seed": 166431906,
+        "pallets": 17,
+        "windows": 20,
+        "strongLoops": 8,
+        "weakLoops": 14,
+        "deadTileFraction": 0.494,
+        "deadZoneFraction": 0.38,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v021.json",
+        "id": "gas-heaven-v021",
+        "seed": 886682864,
+        "pallets": 16,
+        "windows": 16,
+        "strongLoops": 8,
+        "weakLoops": 11,
+        "deadTileFraction": 0.628,
+        "deadZoneFraction": 0.415,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v022.json",
+        "id": "gas-heaven-v022",
+        "seed": 66182528,
+        "pallets": 18,
+        "windows": 21,
+        "strongLoops": 9,
+        "weakLoops": 14,
+        "deadTileFraction": 0.506,
+        "deadZoneFraction": 0.329,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v023.json",
+        "id": "gas-heaven-v023",
+        "seed": 2406040084,
+        "pallets": 15,
+        "windows": 19,
+        "strongLoops": 11,
+        "weakLoops": 6,
+        "deadTileFraction": 0.603,
+        "deadZoneFraction": 0.394,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v024.json",
+        "id": "gas-heaven-v024",
+        "seed": 4255957182,
+        "pallets": 14,
+        "windows": 20,
+        "strongLoops": 9,
+        "weakLoops": 11,
+        "deadTileFraction": 0.526,
+        "deadZoneFraction": 0.438,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v025.json",
+        "id": "gas-heaven-v025",
+        "seed": 467967353,
+        "pallets": 17,
+        "windows": 19,
+        "strongLoops": 9,
+        "weakLoops": 11,
+        "deadTileFraction": 0.545,
+        "deadZoneFraction": 0.358,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v026.json",
+        "id": "gas-heaven-v026",
+        "seed": 2859836342,
+        "pallets": 15,
+        "windows": 16,
+        "strongLoops": 7,
+        "weakLoops": 13,
+        "deadTileFraction": 0.622,
+        "deadZoneFraction": 0.414,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v027.json",
+        "id": "gas-heaven-v027",
+        "seed": 879584977,
+        "pallets": 17,
+        "windows": 19,
+        "strongLoops": 9,
+        "weakLoops": 11,
+        "deadTileFraction": 0.622,
+        "deadZoneFraction": 0.389,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v028.json",
+        "id": "gas-heaven-v028",
+        "seed": 2490331419,
+        "pallets": 18,
+        "windows": 18,
+        "strongLoops": 7,
+        "weakLoops": 17,
+        "deadTileFraction": 0.519,
+        "deadZoneFraction": 0.34,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v029.json",
+        "id": "gas-heaven-v029",
+        "seed": 336764605,
+        "pallets": 18,
+        "windows": 19,
+        "strongLoops": 6,
+        "weakLoops": 18,
+        "deadTileFraction": 0.519,
+        "deadZoneFraction": 0.36,
+        "generators": 12,
+        "hooks": 20
+      },
+      {
+        "file": "v030.json",
+        "id": "gas-heaven-v030",
+        "seed": 9483659,
+        "pallets": 17,
+        "windows": 17,
+        "strongLoops": 8,
+        "weakLoops": 12,
+        "deadTileFraction": 0.603,
+        "deadZoneFraction": 0.408,
+        "generators": 11,
+        "hooks": 20
+      },
+      {
+        "file": "v031.json",
+        "id": "gas-heaven-v031",
+        "seed": 1095870012,
+        "pallets": 22,
+        "windows": 19,
+        "strongLoops": 11,
+        "weakLoops": 13,
+        "deadTileFraction": 0.5,
+        "deadZoneFraction": 0.331,
+        "generators": 12,
+        "hooks": 20
+      }
+    ]
+  },
+  "matchups": {
+    "baseline-legacy": "��6\u00004\u0000 \u0000m\u0000a\u0000t\u0000c\u0000h\u0000e\u0000s\u0000 \u0000i\u0000n\u0000 \u00005\u00008\u0000.\u00003\u0000s\u0000\u0000\n\u0000k\u0000i\u0000l\u0000l\u0000s\u0000 \u00003\u0000.\u00009\u00008\u0000 \u0000 \u0000e\u0000s\u0000c\u0000a\u0000p\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00002\u0000 \u0000 \u0000g\u0000e\u0000n\u0000s\u0000 \u00002\u0000.\u00002\u00008\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00004\u00008\u0000 \u0000 \u0000d\u0000u\u0000r\u0000 \u00003\u00008\u00000\u0000.\u00000\u00001\u0000s\u0000\u0000\n\u0000h\u0000i\u0000t\u0000s\u0000 \u00001\u00002\u0000.\u00007\u00003\u0000 \u0000 \u0000d\u0000o\u0000w\u0000n\u0000s\u0000 \u00008\u0000.\u00004\u00001\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00004\u00008\u0000 \u0000 \u0000p\u0000i\u0000c\u0000k\u0000u\u0000p\u0000s\u0000 \u00007\u0000.\u00005\u00000\u0000 \u0000 \u0000s\u0000t\u0000u\u0000n\u0000s\u0000 \u00004\u0000.\u00008\u00004\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000D\u0000r\u0000o\u0000p\u0000p\u0000e\u0000d\u0000 \u00005\u0000.\u00008\u00008\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000B\u0000r\u0000o\u0000k\u0000e\u0000n\u0000 \u00003\u0000.\u00003\u00001\u0000 \u0000 \u0000v\u0000a\u0000u\u0000l\u0000t\u0000s\u0000 \u00003\u00002\u0000.\u00009\u00008\u0000 \u0000 \u0000w\u0000i\u0000g\u0000g\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000r\u0000e\u0000s\u0000c\u0000u\u0000e\u0000s\u0000 \u00004\u0000.\u00005\u00006\u0000 \u0000 \u0000h\u0000e\u0000a\u0000l\u0000s\u0000 \u00000\u0000.\u00003\u00003\u0000 \u0000 \u0000f\u0000u\u0000m\u0000b\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000i\u0000s\u0000s\u0000e\u0000d\u0000 \u00001\u0000.\u00000\u00003\u0000 \u0000 \u0000d\u0000r\u0000o\u0000p\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000e\u0000n\u0000d\u0000s\u0000 \u00000\u0000.\u00000\u00002\u0000 \u0000 \u0000i\u0000n\u0000t\u0000e\u0000n\u0000t\u0000s\u0000 \u00002\u00003\u0000.\u00006\u00009\u0000\u0000\n\u0000",
+    "baseline-pool": "��6\u00004\u0000 \u0000m\u0000a\u0000t\u0000c\u0000h\u0000e\u0000s\u0000 \u0000i\u0000n\u0000 \u00007\u00002\u0000.\u00005\u0000s\u0000\u0000\n\u0000k\u0000i\u0000l\u0000l\u0000s\u0000 \u00003\u0000.\u00007\u00003\u0000 \u0000 \u0000e\u0000s\u0000c\u0000a\u0000p\u0000e\u0000s\u0000 \u00000\u0000.\u00002\u00007\u0000 \u0000 \u0000g\u0000e\u0000n\u0000s\u0000 \u00003\u0000.\u00001\u00001\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00008\u00003\u0000 \u0000 \u0000d\u0000u\u0000r\u0000 \u00004\u00000\u00005\u0000.\u00004\u00008\u0000s\u0000\u0000\n\u0000h\u0000i\u0000t\u0000s\u0000 \u00001\u00003\u0000.\u00000\u00008\u0000 \u0000 \u0000d\u0000o\u0000w\u0000n\u0000s\u0000 \u00008\u0000.\u00006\u00006\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00008\u00003\u0000 \u0000 \u0000p\u0000i\u0000c\u0000k\u0000u\u0000p\u0000s\u0000 \u00007\u0000.\u00008\u00006\u0000 \u0000 \u0000s\u0000t\u0000u\u0000n\u0000s\u0000 \u00003\u0000.\u00006\u00003\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000D\u0000r\u0000o\u0000p\u0000p\u0000e\u0000d\u0000 \u00004\u0000.\u00007\u00007\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000B\u0000r\u0000o\u0000k\u0000e\u0000n\u0000 \u00001\u0000.\u00001\u00006\u0000 \u0000 \u0000v\u0000a\u0000u\u0000l\u0000t\u0000s\u0000 \u00007\u00004\u0000.\u00007\u00000\u0000 \u0000 \u0000w\u0000i\u0000g\u0000g\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000r\u0000e\u0000s\u0000c\u0000u\u0000e\u0000s\u0000 \u00005\u0000.\u00001\u00003\u0000 \u0000 \u0000h\u0000e\u0000a\u0000l\u0000s\u0000 \u00000\u0000.\u00003\u00001\u0000 \u0000 \u0000f\u0000u\u0000m\u0000b\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000i\u0000s\u0000s\u0000e\u0000d\u0000 \u00001\u0000.\u00008\u00001\u0000 \u0000 \u0000d\u0000r\u0000o\u0000p\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000e\u0000n\u0000d\u0000s\u0000 \u00000\u0000.\u00000\u00008\u0000 \u0000 \u0000i\u0000n\u0000t\u0000e\u0000n\u0000t\u0000s\u0000 \u00002\u00004\u0000.\u00001\u00003\u0000\u0000\n\u0000",
+    "after-legacy": "��6\u00004\u0000 \u0000m\u0000a\u0000t\u0000c\u0000h\u0000e\u0000s\u0000 \u0000i\u0000n\u0000 \u00006\u00003\u0000.\u00005\u0000s\u0000\u0000\n\u0000k\u0000i\u0000l\u0000l\u0000s\u0000 \u00003\u0000.\u00009\u00008\u0000 \u0000 \u0000e\u0000s\u0000c\u0000a\u0000p\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00002\u0000 \u0000 \u0000g\u0000e\u0000n\u0000s\u0000 \u00002\u0000.\u00002\u00008\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00004\u00008\u0000 \u0000 \u0000d\u0000u\u0000r\u0000 \u00003\u00008\u00000\u0000.\u00000\u00001\u0000s\u0000\u0000\n\u0000h\u0000i\u0000t\u0000s\u0000 \u00001\u00002\u0000.\u00007\u00003\u0000 \u0000 \u0000d\u0000o\u0000w\u0000n\u0000s\u0000 \u00008\u0000.\u00004\u00001\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00004\u00008\u0000 \u0000 \u0000p\u0000i\u0000c\u0000k\u0000u\u0000p\u0000s\u0000 \u00007\u0000.\u00005\u00000\u0000 \u0000 \u0000s\u0000t\u0000u\u0000n\u0000s\u0000 \u00004\u0000.\u00008\u00004\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000D\u0000r\u0000o\u0000p\u0000p\u0000e\u0000d\u0000 \u00005\u0000.\u00008\u00008\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000B\u0000r\u0000o\u0000k\u0000e\u0000n\u0000 \u00003\u0000.\u00003\u00001\u0000 \u0000 \u0000v\u0000a\u0000u\u0000l\u0000t\u0000s\u0000 \u00003\u00002\u0000.\u00009\u00008\u0000 \u0000 \u0000w\u0000i\u0000g\u0000g\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000r\u0000e\u0000s\u0000c\u0000u\u0000e\u0000s\u0000 \u00004\u0000.\u00005\u00006\u0000 \u0000 \u0000h\u0000e\u0000a\u0000l\u0000s\u0000 \u00000\u0000.\u00003\u00003\u0000 \u0000 \u0000f\u0000u\u0000m\u0000b\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000i\u0000s\u0000s\u0000e\u0000d\u0000 \u00001\u0000.\u00000\u00003\u0000 \u0000 \u0000d\u0000r\u0000o\u0000p\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000e\u0000n\u0000d\u0000s\u0000 \u00000\u0000.\u00000\u00002\u0000 \u0000 \u0000i\u0000n\u0000t\u0000e\u0000n\u0000t\u0000s\u0000 \u00002\u00003\u0000.\u00006\u00009\u0000\u0000\n\u0000",
+    "after-pool": "��6\u00004\u0000 \u0000m\u0000a\u0000t\u0000c\u0000h\u0000e\u0000s\u0000 \u0000i\u0000n\u0000 \u00007\u00007\u0000.\u00004\u0000s\u0000\u0000\n\u0000k\u0000i\u0000l\u0000l\u0000s\u0000 \u00003\u0000.\u00007\u00000\u0000 \u0000 \u0000e\u0000s\u0000c\u0000a\u0000p\u0000e\u0000s\u0000 \u00000\u0000.\u00003\u00000\u0000 \u0000 \u0000g\u0000e\u0000n\u0000s\u0000 \u00002\u0000.\u00009\u00007\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00006\u00003\u0000 \u0000 \u0000d\u0000u\u0000r\u0000 \u00004\u00000\u00007\u0000.\u00000\u00009\u0000s\u0000\u0000\n\u0000h\u0000i\u0000t\u0000s\u0000 \u00001\u00002\u0000.\u00009\u00001\u0000 \u0000 \u0000d\u0000o\u0000w\u0000n\u0000s\u0000 \u00008\u0000.\u00004\u00005\u0000 \u0000 \u0000h\u0000o\u0000o\u0000k\u0000s\u0000 \u00007\u0000.\u00006\u00003\u0000 \u0000 \u0000p\u0000i\u0000c\u0000k\u0000u\u0000p\u0000s\u0000 \u00007\u0000.\u00006\u00006\u0000 \u0000 \u0000s\u0000t\u0000u\u0000n\u0000s\u0000 \u00004\u0000.\u00008\u00009\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000D\u0000r\u0000o\u0000p\u0000p\u0000e\u0000d\u0000 \u00005\u0000.\u00008\u00000\u0000 \u0000 \u0000p\u0000a\u0000l\u0000l\u0000e\u0000t\u0000s\u0000B\u0000r\u0000o\u0000k\u0000e\u0000n\u0000 \u00001\u0000.\u00008\u00001\u0000 \u0000 \u0000v\u0000a\u0000u\u0000l\u0000t\u0000s\u0000 \u00007\u00001\u0000.\u00008\u00009\u0000 \u0000 \u0000w\u0000i\u0000g\u0000g\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000r\u0000e\u0000s\u0000c\u0000u\u0000e\u0000s\u0000 \u00004\u0000.\u00008\u00009\u0000 \u0000 \u0000h\u0000e\u0000a\u0000l\u0000s\u0000 \u00000\u0000.\u00003\u00000\u0000 \u0000 \u0000f\u0000u\u0000m\u0000b\u0000l\u0000e\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000i\u0000s\u0000s\u0000e\u0000d\u0000 \u00001\u0000.\u00007\u00003\u0000 \u0000 \u0000d\u0000r\u0000o\u0000p\u0000s\u0000 \u00000\u0000.\u00000\u00000\u0000 \u0000 \u0000m\u0000e\u0000n\u0000d\u0000s\u0000 \u00000\u0000.\u00000\u00006\u0000 \u0000 \u0000i\u0000n\u0000t\u0000e\u0000n\u0000t\u0000s\u0000 \u00002\u00004\u0000.\u00003\u00008\u0000\u0000\n\u0000"
+  }
+}

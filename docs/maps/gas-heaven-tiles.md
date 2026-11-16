@@ -6,99 +6,101 @@ Generator: `src/mapgen/` (tile library `tiles.js`, layout spec `layouts/gas-heav
 ## How a variant is built
 
 1. 112 × 96 m outline on an 8 m grid (156 cells). Cells touching the outline form the outer **ring**; the rest is the **inner** area.
-2. Fixed landmark slots (positions read off the reference overview): main building (x40–72, z8–40), shack (x24–40, z72–88), 3 mazetiles (88,8) (8,24) (72,72), 4 car piles (24,40) (56,56) (88,40) (8,56). Maze/car-pile *type* is rolled per slot. Every tile gets a random 90° rotation and mirror.
+2. Owner-fixed T+L at (48,16), shack at (8,72) (rotated, never mirrored), probe at (24,40), one each of jungle gyms v1/v2 at (56,56) and (88,40), plus unchanged MID wall overlays. Three maze slots at (88,8), (8,24), (72,72) roll pallet/four-lane gyms; (8,56) rolls a navigable car pile. Other tiles rotate and mirror.
 3. Two exit gates on ring cells along different outline edges ≥ 75 m apart.
 4. Free inner 2×2 blocks get a 16 m loop tile with p=0.55 (jungle gyms, T+L, filler loops; repeated types are down-weighted); the remaining inner cells get 8 m small fillers or dead zones; ring cells mostly dead zones (trees, rocks, lone cars) with a few small fillers.
 5. Optional pallets roll per tile (`p` groups) and car piles roll *one* of their numbered spots or none. If the total exceeds 24, random optional non-landmark pallets are removed; below 14 the seed is rejected.
-6. 11–12 generator candidates chosen from tile generator slots (one always in main), spread ≥ ~20 m apart where possible.
+6. 11-12 generator candidates chosen from tile slots, spread at least ~20 m where possible, all at least 6 m from the outline.
 7. Spawns: 10 survivor *anchors* and 10 hunter points spread around the whole perimeter, each 4–8 m inside the outline, outside landmarks; anchors need ≥ 75% walkable cells within 15 m (the engine scatters the 4 survivors within 15 m of the chosen anchor and picks a hunter point on the opposite side). Maps declare `spawnRules`, so the validator enforces the inset/walkable/open-space rules for them.
 8. Hooks: exactly 20 hooks placed by simulated annealing so every walkable cell is within 26 m (4-neighbour walk, the validator's metric) of a hook; tile hook slots are preferred.
 
 ## Tile library
 
-Pallet slots: G = guaranteed, O = optional groups (spawn chance in brackets), C = numbered choice spots (one spawns, chance in brackets). Rating = loop judgment used for the strong/weak counts below.
+Pallet slots: G = guaranteed, O = optional groups (spawn chance in brackets), C = numbered choice spots (one spawns, chance in brackets). Rating = loop judgment used for the strong/weak counts below. Pallet safety = isolated dropped pallet against an M1 killer; these judgments do not change engine rules. Window-only T+Ls are not pallet loops. See docs/research/tile-accuracy.md for the audit and source limitations.
 
-| Tile | Size | Category | Pallets G / O / C | Windows | Gen slots | Rating rule | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `main` Main building (Gas Heaven style) | 32 m | landmark | 2 / 3 (60%) / 0 | 3 | 3 | strong | Roofless 24x20 m building. Interior N-S wall with the "incredibly safe" window: survivors vault in 0.5 s, the hunter detours ~18 m around the wall end. Complementary pallets: south pallet door (guaranteed), west door + east corridor + east-room pallets (optional), and a low-wall pallet outside the south wall. Two more windows (north, east) chain with the outside walls. |
-| `shack` Shack | 16 m | landmark | 1 / 0 / 0 | 1 | 1 | strong | Square 10x10 m tall-walled shack: north door, east window, south-east pallet door. Loop: in the north door, out the window, around the outside, back in through the pallet. Hunter has to play reactively and force the pallet. |
-| `maze-a` Mazetile A (box-in-box) | 16 m | maze | 0 / 3 (40%) / 0 | 1 | 1 | strong if windows+pallets ≥ 3, else weak | Outer broken box with an inner C; one window, up to three optional pallets. |
-| `maze-b` Mazetile B (zig-zag) | 16 m | maze | 0 / 2 (45%) / 0 | 2 | 1 | strong if windows+pallets ≥ 3, else weak | Staggered tall walls; two windows, two optional pallets. |
-| `maze-c` Mazetile C (corridors) | 16 m | maze | 0 / 2 (45%) / 0 | 1 | 1 | strong if windows+pallets ≥ 3, else weak | Long corridors and a pocket room; one window, two optional pallets. |
-| `carpile-a` Car pile A (ring) | 16 m | carpile | 0 / 0 / 3 (75%) | 0 | 1 | weak if a pallet spawned, else none | Broken ring of low cars / tall stacks around a central stack. One of three pallet spots (75%). |
-| `carpile-b` Car pile B (scattered stacks) | 16 m | carpile | 0 / 0 / 3 (70%) | 0 | 1 | weak if a pallet spawned, else none | Scattered rows and stacks; one of three pallet spots (70%). |
-| `tl-wall` T + L wall | 16 m | loop | 0 / 0 / 0 | 2 | 1 | weak | T wall (window high in the stem) diagonal from an L wall (window low in the upright). Relatively unsafe alone: hunter double-backs on the T, the L is weaker. Strong when chained with neighbours. |
-| `jgv1` Jungle Gym v1 | 16 m | loop | 1 / 0 / 0 | 1 | 1 | strong | L wall with window in the top run, corner pieces on the right, sideways-T inner wall ending in a pallet gap against the right wall. Hunter wants to force the pallet counter-clockwise; window stays strong-ish without the pallet. |
-| `jgv2` Long-wall Jungle Gym v2 | 16 m | loop | 1 / 0 / 0 | 1 | 1 | strong | 13 m long wall with a window, bracket + short wall on the left, sideways-T with the pallet between the bracket and the T upright. "Good luck": hard to deal with without a power, crazier when chained. |
-| `filler-wallcar` Filler: wall + car stack pallet | 16 m | filler | 0 / 1 (60%) / 0 | 0 | 1 | weak if a pallet spawned, else none | 8 m tall wall, pallet gap against a low car, low wall nearby. Weak filler loop. |
-| `filler-rock` Filler: rock island | 16 m | filler | 0 / 1 (60%) / 0 | 0 | 1 | weak if a pallet spawned, else none | Tall rock + short tall wall with a pallet between, low rocks and a tree pair. Weak filler loop. |
-| `filler-windowl` Filler: window L wall | 16 m | filler | 0 / 1 (60%) / 0 | 1 | 1 | strong with pallet, weak without | Tall L with a window in the top run and an optional pallet in the upright. Strong when the pallet spawns ("strong filler loops" critique). |
-| `filler-junk` Filler: low-wall junk | 16 m | filler | 0 / 1 (55%) / 0 | 0 | 1 | weak if a pallet spawned, else none | Low walls and crates (all see-through), one optional pallet. Weak. |
-| `small-lowl` Small: low L + pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none |  |
-| `small-rock` Small: rock + wall pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none |  |
-| `small-tree` Small: tree pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none |  |
-| `small-car` Small: car pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none |  |
-| `dead-empty` Dead zone: empty | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) |  |
-| `dead-gen` Dead zone: open (gen spot) | 8 m | dead | 0 / 0 / 0 | 0 | 1 | none (dead) |  |
-| `dead-tree` Dead zone: tree | 8 m | dead | 0 / 0 / 0 | 0 | 1 | none (dead) |  |
-| `dead-rocks` Dead zone: low rocks | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) |  |
-| `dead-car` Dead zone: lone car | 8 m | dead | 0 / 0 / 0 | 0 | 1 | none (dead) |  |
-| `dead-tallrock` Dead zone: tall rock (no pallet) | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) |  |
-| `dead-tallrock2` Dead zone: two small tall rocks (no pallet, set apart) | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) |  |
-| `infinite-loop` Infinite loop (deliberately game-breaking) | 16 m | landmark | 0 / 0 / 0 | 4 | 0 | weak if a pallet spawned, else none | User probe tile: two sealed 12 m corridors between three tall walls, a window in each end wall (4 windows). Survivors fast-vault (0.5 s) vs the hunter (1.7 s) and gain more per vault than the hunter gains per corridor run. Tests whether survivors learn to exploit it. |
-| `gate` Exit gate area | 8 m | gate | 0 / 0 / 0 | 0 | 0 | none (dead) |  |
+| Tile | Size | Category | Pallets G / O / C | Windows | Gen slots | Rating rule | Pallet safety | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `shack` Shack | 16 m | landmark | 1 / 0 / 0 | 1 | 1 | strong | god | Square 10x10 m tall-walled shack: north door, east window, south-east pallet door. Loop: in the north door, out the window, around the outside, back in through the pallet. Hunter has to play reactively and force the pallet. |
+| `pallet-gym` Pallet gym (C + L walls) | 16 m | maze | 1 / 0 / 0 | 0 | 1 | strong with pallet, otherwise none | safe | Long C wall and short L joined by one 2 m pallet gap; separate rear C and straight wall. No window. Walls span 10 m / 6 m in this grid approximation. |
+| `four-lane-open` Four-lane gym (outside window) | 16 m | maze | 1 / 0 / 0 | 1 | 1 | strong with window or pallet | safe | Four parallel 11 m walls, outside window and hole in the adjacent inside wall. One 2 m pallet between the opposite pair of windowless walls. |
+| `four-lane-closed` Four-lane gym (inside window) | 16 m | maze | 1 / 0 / 0 | 1 | 1 | strong with pallet, weak with window only | safe | Same four-lane footprint; inside window, outside hole. Window alone is more mindgameable than the open variant. |
+| `carpile-long` Car pile: long stack + wreck | 16 m | carpile | 0 / 0 / 2 (80%) | 0 | 1 | strong with pallet, otherwise none | safe | Two separated 2x8 m stacks, one 2x5 m wreck. One of two 2 m pallet gaps (80%); open routes through and around the piles. |
+| `carpile-short` Car pile: scattered wrecks | 16 m | carpile | 0 / 0 / 2 (75%) | 0 | 1 | weak if a pallet spawned, else none | unsafe | Three 2x5 m wrecks, one tall. One of two 2 m pallet gaps (75%). Shorter, visible loops; no free-standing pallet or one-cell car posts. |
+| `tl-wall` T + L wall | 16 m | loop | 0 / 0 / 0 | 2 | 1 | weak | n/a | T wall (window high in the stem) diagonal from an L wall (window low in the upright). Relatively unsafe alone: hunter double-backs on the T, the L is weaker. Strong when chained with neighbours. |
+| `jgv1` Jungle Gym v1 | 16 m | loop | 1 / 0 / 0 | 1 | 1 | strong | safe | L wall with window in the top run, corner pieces on the right, sideways-T inner wall ending in a pallet gap against the right wall. Hunter wants to force the pallet counter-clockwise; window stays strong-ish without the pallet. |
+| `jgv2` Long-wall Jungle Gym v2 | 16 m | loop | 1 / 0 / 0 | 1 | 1 | strong | safe | 13 m long wall with a window, bracket + short wall on the left, sideways-T with the pallet between the bracket and the T upright. "Good luck": hard to deal with without a power, crazier when chained. |
+| `filler-wallcar` Filler: stack + car pallet | 16 m | filler | 0 / 1 (65%) / 0 | 0 | 1 | strong with pallet, otherwise none | safe | 2x7 m tall scrap stack beside a 2x5 m low car; optional 2 m pallet between their long sides. Autohaven long filler rather than an 8 m wall ending in a tiny car. |
+| `filler-rock` Filler: paired rock pallet | 16 m | filler | 0 / 1 (65%) / 0 | 0 | 1 | weak if a pallet spawned, else none | unsafe | 4x4 m and 3x4 m LOS-blocking rock clusters joined by an optional 2 m pallet; no window invented in natural rock. Unsafe alone but can chain into a nearby gym. |
+| `variant-gym` Variant jungle gym | 16 m | maze | 1 / 0 / 0 | 1 | 1 | strong with pallet, weak with window only | safe | Five separate wall segments: 10 m left wall with window near its front, central and right walls with a 2 m pallet at the front, two rear segments. One window and one guaranteed pallet. |
+| `filler-junk` Filler: tires + scrap pallet | 16 m | filler | 0 / 1 (60%) / 0 | 0 | 1 | weak if a pallet spawned, else none | unsafe | Two low 3x4 m junk/tyre islands with a 2 m pallet gap. Short visible filler; no zig-zag low-wall maze. |
+| `small-junk` Small: crate + tires pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none | unsafe | Two 2x3 m low prop groups, 2 m gap; unsafe edge filler. |
+| `small-rock` Small: paired rock pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none | unsafe | Two 2x3 m rocks with a 2 m pallet gap; unsafe, not a rock against a one-cell post. |
+| `small-tires` Small: tire stacks pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none | unsafe | Two 2x3 m tyre/scrap groups, one tall and one low; unsafe, not an isolated tree pallet. |
+| `small-car` Small: car pallet | 8 m | filler | 0 / 1 (55%) / 0 | 0 | 0 | weak if a pallet spawned, else none | unsafe | Two 2x5 m low cars with a 2 m pallet gap, a visible and mindgameable Autohaven filler. |
+| `dead-empty` Dead zone: empty | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) | n/a |  |
+| `dead-gen` Dead zone: open (gen spot) | 8 m | dead | 0 / 0 / 0 | 0 | 1 | none (dead) | n/a |  |
+| `dead-tree` Dead zone: tree | 8 m | dead | 0 / 0 / 0 | 0 | 1 | none (dead) | n/a |  |
+| `dead-rocks` Dead zone: low rocks | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) | n/a |  |
+| `dead-car` Dead zone: lone car | 8 m | dead | 0 / 0 / 0 | 0 | 1 | none (dead) | n/a |  |
+| `dead-tallrock` Dead zone: tall rock (no pallet) | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) | n/a |  |
+| `dead-tallrock2` Dead zone: two small tall rocks (no pallet, set apart) | 8 m | dead | 0 / 0 / 0 | 0 | 0 | none (dead) | n/a |  |
+| `infinite-loop` Infinite loop (deliberately game-breaking) | 16 m | landmark | 0 / 0 / 0 | 4 | 0 | strong (owner test probe) | n/a | User probe tile: two sealed 12 m corridors between three tall walls, a window in each end wall (4 windows). Survivors fast-vault (0.5 s) vs the hunter (1.7 s) and gain more per vault than the hunter gains per corridor run. Tests whether survivors learn to exploit it. |
+| `gate` Exit gate area | 8 m | gate | 0 / 0 / 0 | 0 | 0 | none (dead) | n/a |  |
 
 ## Per-variant stats
 
 - **Dead tiles** = share of the 156 8 m cells covered by tiles rated "none" (dead zones, gate areas, fillers/car piles whose pallet did not spawn).
 - **Dead zone** = share of walkable cells more than 12 m (walking) from any pallet or window.
-- Loop counts are per tile instance (a main building counts once although it holds several loops).
+- Loop counts are per tile instance (the preserved probe counts once although it holds four windows).
 
 | Variant | Pallets | Windows | Strong | Weak | Dead tiles | Dead zone | Gens | JG v1/v2 | T+L | Mazes | Car piles (pallet/none) | Gates |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| v000 | 15 | 25 | 11 | 12 | 47% | 34% | 11 | 3/3 | 4 | BCA | 1/0 | gate-s gate-e |
-| v001 | 15 | 24 | 11 | 10 | 46% | 34% | 12 | 2/3 | 3 | BAB | 1/0 | gate-s gate-n |
-| v002 | 17 | 17 | 9 | 12 | 54% | 38% | 12 | 2/3 | 2 | ABC | 1/0 | gate-s gate-w |
-| v003 | 17 | 20 | 9 | 13 | 53% | 38% | 12 | 3/1 | 3 | ABC | 1/0 | gate-s gate-n |
-| v004 | 17 | 16 | 8 | 13 | 60% | 41% | 11 | 1/2 | 2 | CBB | 1/0 | gate-n gate-e |
-| v005 | 20 | 15 | 9 | 12 | 54% | 35% | 11 | 2/3 | 1 | ACB | 1/0 | gate-e gate-s |
-| v006 | 15 | 21 | 7 | 14 | 54% | 39% | 12 | 2/2 | 4 | ACB | 1/0 | gate-w gate-e |
-| v007 | 16 | 16 | 8 | 12 | 55% | 43% | 11 | 2/3 | 1 | CAA | 1/0 | gate-n gate-w |
-| v008 | 16 | 18 | 8 | 12 | 55% | 39% | 12 | 2/2 | 3 | CAA | 0/1 | gate-s gate-e |
-| v009 | 16 | 17 | 8 | 14 | 59% | 39% | 11 | 3/2 | 3 | AAB | 1/0 | gate-s gate-n |
-| v010 | 16 | 21 | 11 | 8 | 57% | 37% | 12 | 3/1 | 3 | CBA | 1/0 | gate-s gate-n |
-| v011 | 16 | 17 | 8 | 11 | 59% | 40% | 11 | 2/1 | 2 | ACA | 1/0 | gate-e gate-n |
-| v012 | 16 | 21 | 10 | 14 | 50% | 39% | 12 | 4/2 | 3 | ABC | 1/0 | gate-s gate-n |
-| v013 | 15 | 19 | 8 | 11 | 59% | 40% | 12 | 3/2 | 2 | CBA | 1/0 | gate-n gate-w |
-| v014 | 14 | 19 | 8 | 10 | 58% | 40% | 11 | 2/2 | 3 | AAC | 1/0 | gate-s gate-w |
-| v015 | 15 | 17 | 7 | 11 | 62% | 42% | 11 | 1/1 | 3 | BCA | 1/0 | gate-e gate-w |
-| v016 | 14 | 17 | 8 | 10 | 58% | 42% | 12 | 3/2 | 2 | BAC | 1/0 | gate-n gate-s |
-| v017 | 15 | 24 | 9 | 12 | 48% | 34% | 12 | 3/2 | 4 | CCB | 1/0 | gate-w gate-e |
-| v018 | 18 | 20 | 9 | 16 | 49% | 33% | 12 | 4/1 | 3 | CAC | 0/1 | gate-w gate-e |
-| v019 | 20 | 24 | 11 | 14 | 44% | 27% | 11 | 2/2 | 4 | BCC | 1/0 | gate-n gate-w |
-| v020 | 17 | 20 | 8 | 14 | 49% | 38% | 11 | 2/2 | 3 | CBA | 1/0 | gate-w gate-e |
-| v021 | 16 | 16 | 8 | 11 | 63% | 42% | 12 | 2/1 | 2 | ABC | 1/0 | gate-e gate-w |
-| v022 | 18 | 21 | 9 | 14 | 51% | 33% | 12 | 2/2 | 3 | BBA | 0/1 | gate-w gate-e |
-| v023 | 15 | 19 | 11 | 6 | 60% | 39% | 11 | 3/2 | 2 | ACB | 1/0 | gate-w gate-e |
-| v024 | 14 | 20 | 9 | 11 | 53% | 44% | 12 | 2/3 | 2 | BCB | 1/0 | gate-w gate-s |
-| v025 | 17 | 19 | 9 | 11 | 55% | 36% | 12 | 2/2 | 3 | BAB | 1/0 | gate-w gate-n |
-| v026 | 15 | 16 | 7 | 13 | 62% | 41% | 11 | 2/2 | 1 | BAC | 1/0 | gate-w gate-e |
-| v027 | 17 | 19 | 9 | 11 | 62% | 39% | 11 | 2/2 | 2 | ABB | 1/0 | gate-n gate-e |
-| v028 | 18 | 18 | 7 | 17 | 52% | 34% | 11 | 3/1 | 3 | CBC | 1/0 | gate-w gate-s |
-| v029 | 18 | 19 | 6 | 18 | 52% | 36% | 12 | 2/1 | 3 | ACB | 1/0 | gate-e gate-n |
-| v030 | 17 | 17 | 8 | 12 | 60% | 41% | 11 | 3/2 | 1 | ABC | 1/0 | gate-s gate-w |
-| v031 | 22 | 19 | 11 | 13 | 50% | 33% | 12 | 4/2 | 2 | BAB | 1/0 | gate-s gate-n |
+| v000 | 19 | 22 | 13 | 13 | 47% | 29% | 11 | 4/2 | 4 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-n gate-s |
+| v001 | 14 | 16 | 13 | 4 | 60% | 41% | 12 | 2/2 | 1 | four-lane-closed, four-lane-closed, four-lane-open, variant-gym, variant-gym, variant-gym, variant-gym | 1/0 | gate-e gate-w |
+| v002 | 15 | 16 | 13 | 7 | 56% | 41% | 12 | 2/4 | 1 | pallet-gym, four-lane-open, four-lane-open, variant-gym | 1/0 | gate-s gate-n |
+| v003 | 24 | 14 | 11 | 16 | 50% | 33% | 11 | 1/3 | 1 | pallet-gym, four-lane-closed, four-lane-open, variant-gym, variant-gym | 1/0 | gate-n gate-w |
+| v004 | 18 | 20 | 12 | 11 | 51% | 36% | 11 | 2/2 | 3 | four-lane-closed, four-lane-open, pallet-gym, variant-gym, variant-gym, variant-gym | 1/0 | gate-s gate-w |
+| v005 | 17 | 13 | 11 | 9 | 55% | 41% | 11 | 3/1 | 2 | pallet-gym, pallet-gym, four-lane-closed | 1/0 | gate-w gate-n |
+| v006 | 18 | 19 | 11 | 12 | 53% | 34% | 11 | 2/1 | 4 | four-lane-closed, four-lane-open, pallet-gym, variant-gym, variant-gym | 1/0 | gate-s gate-n |
+| v007 | 16 | 13 | 12 | 7 | 55% | 41% | 12 | 2/2 | 2 | four-lane-closed, four-lane-closed, pallet-gym, variant-gym | 0/1 | gate-e gate-w |
+| v008 | 23 | 20 | 13 | 15 | 42% | 27% | 12 | 2/3 | 3 | four-lane-closed, four-lane-open, four-lane-closed, variant-gym, variant-gym | 0/1 | gate-e gate-w |
+| v009 | 16 | 16 | 13 | 9 | 53% | 39% | 11 | 3/3 | 3 | pallet-gym, four-lane-open, pallet-gym | 1/0 | gate-e gate-n |
+| v010 | 18 | 13 | 12 | 9 | 56% | 42% | 12 | 4/2 | 2 | four-lane-closed, pallet-gym, four-lane-open | 0/1 | gate-s gate-n |
+| v011 | 16 | 16 | 12 | 8 | 56% | 42% | 12 | 2/2 | 2 | pallet-gym, four-lane-open, four-lane-closed, variant-gym | 0/1 | gate-s gate-n |
+| v012 | 14 | 16 | 9 | 10 | 63% | 41% | 12 | 1/2 | 3 | pallet-gym, four-lane-open, four-lane-closed, variant-gym, variant-gym, variant-gym | 0/1 | gate-n gate-w |
+| v013 | 15 | 16 | 11 | 9 | 56% | 41% | 11 | 2/1 | 3 | four-lane-closed, four-lane-closed, four-lane-open, variant-gym, variant-gym | 1/0 | gate-s gate-e |
+| v014 | 17 | 16 | 13 | 8 | 54% | 35% | 11 | 3/2 | 2 | pallet-gym, four-lane-open, pallet-gym, variant-gym, variant-gym | 0/1 | gate-e gate-w |
+| v015 | 20 | 18 | 12 | 12 | 50% | 32% | 12 | 2/2 | 2 | four-lane-open, four-lane-closed, four-lane-open, variant-gym, variant-gym | 1/0 | gate-n gate-w |
+| v016 | 17 | 17 | 12 | 8 | 56% | 37% | 12 | 3/3 | 2 | four-lane-open, four-lane-open, pallet-gym, variant-gym | 0/1 | gate-e gate-w |
+| v017 | 16 | 20 | 11 | 13 | 48% | 35% | 11 | 2/2 | 5 | four-lane-closed, pallet-gym, four-lane-closed, variant-gym | 1/0 | gate-s gate-w |
+| v018 | 16 | 18 | 13 | 9 | 51% | 40% | 12 | 3/1 | 4 | four-lane-closed, pallet-gym, four-lane-open, variant-gym, variant-gym | 1/0 | gate-w gate-n |
+| v019 | 17 | 21 | 16 | 5 | 50% | 34% | 12 | 5/2 | 2 | pallet-gym, four-lane-open, four-lane-open, variant-gym, variant-gym, variant-gym | 1/0 | gate-s gate-n |
+| v020 | 14 | 18 | 14 | 6 | 55% | 39% | 11 | 4/1 | 3 | pallet-gym, four-lane-open, four-lane-closed, variant-gym | 1/0 | gate-s gate-w |
+| v021 | 17 | 16 | 12 | 8 | 56% | 38% | 11 | 2/2 | 2 | pallet-gym, four-lane-closed, four-lane-open, variant-gym, variant-gym | 1/0 | gate-s gate-n |
+| v022 | 17 | 18 | 12 | 10 | 53% | 38% | 12 | 2/2 | 3 | four-lane-open, four-lane-open, four-lane-closed, variant-gym | 1/0 | gate-e gate-w |
+| v023 | 15 | 15 | 9 | 10 | 61% | 46% | 11 | 2/1 | 2 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 0/1 | gate-n gate-w |
+| v024 | 17 | 19 | 13 | 10 | 49% | 35% | 12 | 3/2 | 3 | four-lane-open, four-lane-closed, pallet-gym, variant-gym, variant-gym | 1/0 | gate-w gate-s |
+| v025 | 16 | 18 | 14 | 9 | 47% | 38% | 11 | 2/2 | 4 | four-lane-open, four-lane-closed, pallet-gym, variant-gym, variant-gym | 1/0 | gate-n gate-s |
+| v026 | 22 | 18 | 14 | 12 | 51% | 33% | 12 | 3/2 | 2 | four-lane-open, four-lane-closed, pallet-gym, variant-gym, variant-gym | 1/0 | gate-w gate-e |
+| v027 | 17 | 16 | 13 | 7 | 58% | 40% | 11 | 2/3 | 2 | pallet-gym, four-lane-open, four-lane-closed, variant-gym, variant-gym | 1/0 | gate-s gate-n |
+| v028 | 17 | 15 | 12 | 9 | 54% | 41% | 11 | 3/2 | 2 | four-lane-open, pallet-gym, four-lane-closed, variant-gym | 0/1 | gate-w gate-n |
+| v029 | 20 | 17 | 10 | 14 | 50% | 31% | 12 | 2/1 | 3 | pallet-gym, four-lane-open, four-lane-closed, variant-gym | 1/0 | gate-e gate-n |
+| v030 | 18 | 14 | 12 | 10 | 53% | 39% | 11 | 3/1 | 2 | pallet-gym, four-lane-closed, four-lane-open, variant-gym | 1/0 | gate-e gate-n |
+| v031 | 15 | 16 | 13 | 5 | 56% | 44% | 12 | 4/1 | 2 | four-lane-open, four-lane-closed, four-lane-open, variant-gym | 1/0 | gate-w gate-e |
 
 ### Spread across the pool
 
 | Stat | Min | Mean | Max |
 | --- | --- | --- | --- |
-| Pallets | 14.0 | 16.5 | 22.0 |
-| Windows | 15.0 | 19.1 | 25.0 |
-| Strong loops | 6.0 | 8.7 | 11.0 |
-| Weak loops | 6.0 | 12.3 | 18.0 |
-| Dead tiles | 44% | 55% | 63% |
-| Dead zone | 27% | 38% | 44% |
+| Pallets | 14.0 | 17.2 | 24.0 |
+| Windows | 13.0 | 16.9 | 22.0 |
+| Strong loops | 9.0 | 12.2 | 16.0 |
+| Weak loops | 4.0 | 9.5 | 16.0 |
+| Safe pallets | 6.0 | 9.3 | 13.0 |
+| Unsafe pallets | 3.0 | 6.9 | 14.0 |
+| God pallets | 1.0 | 1.0 | 1.0 |
+| Dead tiles | 42% | 53% | 63% |
+| Dead zone | 27% | 38% | 46% |
 
 Hand-made v1 for comparison: 14 pallets, 9 windows.
 

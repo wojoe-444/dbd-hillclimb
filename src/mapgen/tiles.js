@@ -1,6 +1,6 @@
 // Tile library for the tile-based map generator.
 //
-// Every tile is drawn as ASCII art on its own local 1 m grid (8x8, 16x16, or 32x32 for the main building).
+// Every tile is drawn as ASCII art on its own local 1 m grid (8x8 or 16x16).
 // Row 0 / last row / column 0 / last column are kept walkable so neighbouring tiles always connect.
 // Tiles are rotated (90° steps) and mirrored when placed; window/pallet axes are inferred AFTER placement
 // from the surrounding solid cells, so transforms never need special handling.
@@ -17,8 +17,10 @@
 //   T  tree           (5.0 m)
 //   k  crate          (1.0 m)
 //
-// Loop rating (`rate`) is a design judgment used for stats only: 'strong' | 'weak' | 'none', computed from
-// what actually spawned (realised pallets / windows inside the tile instance).
+// Loop rating (`rate`) and palletSafety are design judgments, not engine rules. Safety describes the
+// dropped pallet against an ordinary M1 killer in isolation, not whether a whole tile is strong.
+// Dimensions are 1 m collision approximations of reference layouts, not extracted game assets.
+// See docs/research/tile-accuracy.md for sources, measurements and owner-preserved exceptions.
 
 export const SOLID_CHARS = {
   '#': { kind: 'wall', height: 3.0 },
@@ -35,7 +37,7 @@ export const SOLID_CHARS = {
 export const isSolidChar = ch => ch in SOLID_CHARS;
 export const isPalletChar = ch => ch === 'P' || ch === 'p' || (ch >= '1' && ch <= '9');
 
-// Build a tile's rows with drawing helpers (used for the big main building where ASCII gets unwieldy).
+// Build a tile's rows with drawing helpers where ASCII gets unwieldy.
 function draw(size, fn) {
   const g = Array.from({ length: size }, () => Array(size).fill('.'));
   const set = (x, z, ch) => { g[z][x] = ch; };
@@ -54,36 +56,14 @@ const withSlots = (rows, slots) => {
 const rateBy = (strongIf, weakIf = r => r.pallets + r.windows > 0) => r => (strongIf(r) ? 'strong' : weakIf(r) ? 'weak' : 'none');
 
 const T = [];
-const tile = def => { T.push({ optionalChance: 0.7, choiceChance: 0.75, ...def }); };
+const tile = def => { T.push({ optionalChance: 0.7, choiceChance: 0.75, palletSafety: 'unsafe', ...def }); };
 
 // ---------------------------------------------------------------------------------------------------------
 // Landmarks
 // ---------------------------------------------------------------------------------------------------------
 
 tile({
-  id: 'main', name: 'Main building (Gas Heaven style)', size: 32, category: 'landmark', optionalChance: 0.6,
-  notes: 'Roofless 24x20 m building. Interior N-S wall with the "incredibly safe" window: survivors vault in 0.5 s, the hunter detours ~18 m around the wall end. Complementary pallets: south pallet door (guaranteed), west door + east corridor + east-room pallets (optional), and a low-wall pallet outside the south wall. Two more windows (north, east) chain with the outside walls.',
-  rate: () => 'strong',
-  rows: draw(32, ({ set, fill }) => {
-    fill(4, 6, 24, 1, 'B'); fill(4, 25, 24, 1, 'B'); fill(4, 6, 1, 20, 'B'); fill(27, 6, 1, 20, 'B');
-    set(22, 6, 'W');                          // north window, loops with the exterior wall stub
-    set(27, 9, '.'); set(27, 10, '.');        // east door
-    set(27, 18, 'W');                         // east window
-    set(4, 13, 'p'); set(4, 14, 'p');         // west door pallet (optional)
-    set(9, 25, '.'); set(10, 25, '.');        // south open door
-    set(20, 25, 'P'); set(21, 25, 'P');       // south pallet door
-    fill(16, 7, 1, 11, 'B'); set(16, 11, 'W');// interior safe window
-    fill(19, 15, 6, 1, '#'); set(25, 15, 'p'); set(26, 15, 'p'); // east-room pallet (optional)
-    fill(18, 2, 9, 1, '#');                   // exterior north wall stub
-    fill(5, 28, 5, 1, '='); set(10, 28, 'P'); set(11, 28, 'P'); fill(12, 28, 4, 1, '='); // south low-wall pallet
-    fill(30, 18, 1, 7, '#'); set(28, 22, 'p'); set(29, 22, 'p'); // east corridor pallet (optional)
-    set(10, 20, 'G'); set(22, 10, 'G'); set(7, 30, 'G');
-    set(13, 30, 'H'); set(2, 2, 'H'); set(29, 29, 'H'); set(10, 10, 'H');
-  }),
-});
-
-tile({
-  id: 'shack', name: 'Shack', size: 16, category: 'landmark',
+  id: 'shack', name: 'Shack', size: 16, category: 'landmark', palletSafety: 'god',
   notes: 'Square 10x10 m tall-walled shack: north door, east window, south-east pallet door. Loop: in the north door, out the window, around the outside, back in through the pallet. Hunter has to play reactively and force the pallet.',
   rate: () => 'strong',
   rows: [
@@ -106,121 +86,61 @@ tile({
   ],
 });
 
-// Mazetiles: tall wall clusters with several gaps; pallets are optional so safety is unpredictable.
-const mazeRate = rateBy(r => r.windows + r.pallets >= 3);
+// Standard maze families. One guaranteed pallet, and zero (pallet gym) or one (four-lane) window.
+// No optional pallets embedded in arbitrary multi-room mazes. The unused four-lane vault is a hole.
 tile({
-  id: 'maze-a', name: 'Mazetile A (box-in-box)', size: 16, category: 'maze', optionalChance: 0.4, rate: mazeRate,
-  notes: 'Outer broken box with an inner C; one window, up to three optional pallets.',
-  rows: [
-    '................',
-    '.######..######.',
-    '.#............#.',
-    '.#..######....#.',
-    '.#..#.........W.',
-    '.#..#.........#.',
-    '.p..#...####..#.',
-    '.#..#......#..#.',
-    '.#.........#....',
-    '.#.........#..#.',
-    '.#..####...#..p.',
-    '.#.........#..#.',
-    '.#....G.......#.',
-    '.##p##..#######.',
-    '...........H....',
-    '................',
-  ],
+  id: 'pallet-gym', name: 'Pallet gym (C + L walls)', size: 16, category: 'maze',
+  palletSafety: 'safe', rate: rateBy(r => r.pallets > 0),
+  notes: 'Long C wall and short L joined by one 2 m pallet gap; separate rear C and straight wall. No window. Walls span 10 m / 6 m in this grid approximation.',
+  rows: draw(16, ({ set, fill }) => {
+    fill(2, 3, 7, 1, '#'); fill(2, 3, 1, 10, '#'); fill(2, 12, 7, 1, '#');
+    fill(11, 7, 1, 6, '#'); fill(11, 12, 4, 1, '#'); fill(9, 12, 2, 1, 'P');
+    fill(11, 2, 4, 1, '#'); fill(14, 2, 1, 3, '#'); fill(11, 4, 4, 1, '#');
+    fill(6, 6, 3, 1, '#'); set(7, 9, 'G'); set(13, 6, 'H');
+  }),
 });
 tile({
-  id: 'maze-b', name: 'Mazetile B (zig-zag)', size: 16, category: 'maze', optionalChance: 0.45, rate: mazeRate,
-  notes: 'Staggered tall walls; two windows, two optional pallets.',
-  rows: [
-    '................',
-    '................',
-    '..#####.####....',
-    '..#.......#.....',
-    '..#.......#..##.',
-    '..W...##..p..#..',
-    '..#....#..#..#..',
-    '..#....#..#.....',
-    '.......#........',
-    '..####.#####....',
-    '.....#.....#..#.',
-    '.....p.....W..#.',
-    '.....#.....#..#.',
-    '..####..####..#.',
-    '.H.........G....',
-    '................',
-  ],
+  id: 'four-lane-open', name: 'Four-lane gym (outside window)', size: 16, category: 'maze',
+  palletSafety: 'safe', rate: rateBy(r => r.windows > 0 || r.pallets > 0),
+  notes: 'Four parallel 11 m walls, outside window and hole in the adjacent inside wall. One 2 m pallet between the opposite pair of windowless walls.',
+  rows: draw(16, ({ set, fill }) => {
+    for (const x of [2, 5, 9, 12]) fill(x, 2, 1, 11, '#');
+    set(2, 5, 'W'); set(5, 5, '.'); fill(10, 10, 2, 1, 'P');
+    set(7, 7, 'G'); set(14, 14, 'H');
+  }),
 });
 tile({
-  id: 'maze-c', name: 'Mazetile C (corridors)', size: 16, category: 'maze', optionalChance: 0.45, rate: mazeRate,
-  notes: 'Long corridors and a pocket room; one window, two optional pallets.',
-  rows: [
-    '................',
-    '................',
-    '..##########....',
-    '...........#....',
-    '..########.#.##.',
-    '..#......#.W..#.',
-    '..#......#.#..#.',
-    '..p......#.#..#.',
-    '..#.##p###.#..#.',
-    '..#.#......#..#.',
-    '..#.#...........',
-    '..#.#..#######..',
-    '..#.............',
-    '..#####..####...',
-    '.......G.....H..',
-    '................',
-  ],
+  id: 'four-lane-closed', name: 'Four-lane gym (inside window)', size: 16, category: 'maze',
+  palletSafety: 'safe', rate: rateBy(r => r.pallets > 0),
+  notes: 'Same four-lane footprint; inside window, outside hole. Window alone is more mindgameable than the open variant.',
+  rows: draw(16, ({ set, fill }) => {
+    for (const x of [2, 5, 9, 12]) fill(x, 2, 1, 11, '#');
+    set(2, 5, '.'); set(5, 5, 'W'); fill(10, 10, 2, 1, 'P');
+    set(7, 7, 'G'); set(14, 14, 'H');
+  }),
 });
 
-// Car piles: rings of low cars and tall car stacks; exactly one of the numbered pallet spots spawns
-// (or none) -> "inconsistent pallet generation".
-const carRate = rateBy(() => false);
+// Navigable single-tile car piles, following the Gas Heaven 6.7 rework. Two mutually exclusive
+// pallet locations, not a car enclosure. Low cars use approximately 2 x 5 m collision footprints.
 tile({
-  id: 'carpile-a', name: 'Car pile A (ring)', size: 16, category: 'carpile', choiceChance: 0.75, rate: carRate,
-  notes: 'Broken ring of low cars / tall stacks around a central stack. One of three pallet spots (75%).',
-  rows: [
-    '................',
-    '................',
-    '...cccc1CCCC....',
-    '...c........C...',
-    '...c........C...',
-    '...c...CC...2...',
-    '...c...CC...C...',
-    '...3...cc...C...',
-    '...c........C...',
-    '...c............',
-    '...c............',
-    '...cccc..CCCcc..',
-    '................',
-    '.............G..',
-    '.H..............',
-    '................',
-  ],
+  id: 'carpile-long', name: 'Car pile: long stack + wreck', size: 16, category: 'carpile', choiceChance: 0.8,
+  palletSafety: 'safe', rate: rateBy(r => r.pallets > 0),
+  notes: 'Two separated 2x8 m stacks, one 2x5 m wreck. One of two 2 m pallet gaps (80%); open routes through and around the piles.',
+  rows: draw(16, ({ set, fill }) => {
+    fill(3, 3, 2, 8, 'C'); fill(7, 3, 2, 8, 'C'); fill(11, 5, 2, 5, 'c');
+    fill(5, 6, 2, 1, '1'); fill(9, 7, 2, 1, '2');
+    set(5, 13, 'G'); set(14, 2, 'H');
+  }),
 });
 tile({
-  id: 'carpile-b', name: 'Car pile B (scattered stacks)', size: 16, category: 'carpile', choiceChance: 0.7, rate: carRate,
-  notes: 'Scattered rows and stacks; one of three pallet spots (70%).',
-  rows: [
-    '................',
-    '................',
-    '..CCCC1cccc.....',
-    '................',
-    '..........CC....',
-    '...cc.....CC....',
-    '...cc.....2.....',
-    '..........CC....',
-    '...CCC....CC.H..',
-    '...CCC..........',
-    '................',
-    '....cccc3CCC....',
-    '................',
-    '......G....cc...',
-    '...........cc...',
-    '................',
-  ],
+  id: 'carpile-short', name: 'Car pile: scattered wrecks', size: 16, category: 'carpile', choiceChance: 0.75,
+  rate: rateBy(() => false),
+  notes: 'Three 2x5 m wrecks, one tall. One of two 2 m pallet gaps (75%). Shorter, visible loops; no free-standing pallet or one-cell car posts.',
+  rows: draw(16, ({ set, fill }) => {
+    fill(2, 3, 2, 5, 'c'); fill(6, 3, 2, 5, 'C'); fill(10, 5, 2, 5, 'c');
+    fill(4, 5, 2, 1, '1'); fill(8, 6, 2, 1, '2');
+    set(6, 12, 'G'); set(13, 12, 'H');
+  }),
 });
 
 // ---------------------------------------------------------------------------------------------------------
@@ -251,7 +171,7 @@ tile({
 });
 
 tile({
-  id: 'jgv1', name: 'Jungle Gym v1', size: 16, category: 'loop', rate: () => 'strong',
+  id: 'jgv1', name: 'Jungle Gym v1', size: 16, category: 'loop', palletSafety: 'safe', rate: () => 'strong',
   notes: 'L wall with window in the top run, corner pieces on the right, sideways-T inner wall ending in a pallet gap against the right wall. Hunter wants to force the pallet counter-clockwise; window stays strong-ish without the pallet.',
   rows: [
     '................',
@@ -274,7 +194,7 @@ tile({
 });
 
 tile({
-  id: 'jgv2', name: 'Long-wall Jungle Gym v2', size: 16, category: 'loop', rate: () => 'strong',
+  id: 'jgv2', name: 'Long-wall Jungle Gym v2', size: 16, category: 'loop', palletSafety: 'safe', rate: () => 'strong',
   notes: '13 m long wall with a window, bracket + short wall on the left, sideways-T with the pallet between the bracket and the T upright. "Good luck": hard to deal with without a power, crazier when chained.',
   rows: [
     '................',
@@ -297,99 +217,45 @@ tile({
 });
 
 tile({
-  id: 'filler-wallcar', name: 'Filler: wall + car stack pallet', size: 16, category: 'filler', optionalChance: 0.6,
-  rate: rateBy(() => false),
-  notes: '8 m tall wall, pallet gap against a low car, low wall nearby. Weak filler loop.',
-  rows: [
-    '................',
-    '................',
-    '................',
-    '................',
-    '................',
-    '.............cc.',
-    '...########ppcc.',
-    '.............cc.',
-    '................',
-    '................',
-    '.....G..........',
-    '................',
-    '......=====.....',
-    '..H.............',
-    '................',
-    '................',
-  ],
+  id: 'filler-wallcar', name: 'Filler: stack + car pallet', size: 16, category: 'filler', optionalChance: 0.65,
+  palletSafety: 'safe', rate: rateBy(r => r.pallets > 0),
+  notes: '2x7 m tall scrap stack beside a 2x5 m low car; optional 2 m pallet between their long sides. Autohaven long filler rather than an 8 m wall ending in a tiny car.',
+  rows: draw(16, ({ set, fill }) => {
+    fill(3, 4, 2, 7, 'C'); fill(7, 4, 2, 5, 'c'); fill(5, 7, 2, 1, 'p');
+    fill(11, 11, 2, 2, 'k'); set(6, 12, 'G'); set(2, 13, 'H');
+  }),
 });
 
 tile({
-  id: 'filler-rock', name: 'Filler: rock island', size: 16, category: 'filler', optionalChance: 0.6,
+  id: 'filler-rock', name: 'Filler: paired rock pallet', size: 16, category: 'filler', optionalChance: 0.65,
   rate: rateBy(() => false),
-  notes: 'Tall rock + short tall wall with a pallet between, low rocks and a tree pair. Weak filler loop.',
-  rows: [
-    '................',
-    '................',
-    '................',
-    '....RRRR........',
-    '....RRRR........',
-    '....RRRRp#......',
-    '.........#......',
-    '.........#......',
-    '.........#......',
-    '................',
-    '.......rr.......',
-    '...TT..rr...G...',
-    '...TT...........',
-    '................',
-    '...........H....',
-    '................',
-  ],
+  notes: '4x4 m and 3x4 m LOS-blocking rock clusters joined by an optional 2 m pallet; no window invented in natural rock. Unsafe alone but can chain into a nearby gym.',
+  rows: draw(16, ({ set, fill }) => {
+    fill(3, 4, 4, 4, 'R'); fill(9, 4, 3, 4, 'R'); fill(7, 6, 2, 1, 'p');
+    fill(4, 11, 2, 2, 'r'); set(12, 11, 'G'); set(12, 13, 'H');
+  }),
 });
 
 tile({
-  id: 'filler-windowl', name: 'Filler: window L wall', size: 16, category: 'filler', optionalChance: 0.6,
-  rate: rateBy(r => r.windows >= 1 && r.pallets >= 1),
-  notes: 'Tall L with a window in the top run and an optional pallet in the upright. Strong when the pallet spawns ("strong filler loops" critique).',
-  rows: [
-    '................',
-    '................',
-    '................',
-    '...######W###...',
-    '...#............',
-    '...#............',
-    '...#.......G....',
-    '...p............',
-    '...#............',
-    '...#............',
-    '...#....rrr.....',
-    '........rrr.....',
-    '................',
-    '.............H..',
-    '................',
-    '................',
-  ],
+  id: 'variant-gym', name: 'Variant jungle gym', size: 16, category: 'maze',
+  palletSafety: 'safe', rate: rateBy(r => r.pallets > 0),
+  notes: 'Five separate wall segments: 10 m left wall with window near its front, central and right walls with a 2 m pallet at the front, two rear segments. One window and one guaranteed pallet.',
+  rows: draw(16, ({ set, fill }) => {
+    fill(2, 3, 1, 10, '#'); set(2, 10, 'W');
+    fill(7, 5, 1, 8, '#'); fill(10, 7, 1, 6, '#'); fill(8, 11, 2, 1, 'P');
+    fill(4, 2, 4, 1, '#'); fill(10, 3, 4, 1, '#');
+    set(5, 7, 'G'); set(13, 13, 'H');
+  }),
 });
 
 tile({
-  id: 'filler-junk', name: 'Filler: low-wall junk', size: 16, category: 'filler', optionalChance: 0.55,
+  id: 'filler-junk', name: 'Filler: tires + scrap pallet', size: 16, category: 'filler', optionalChance: 0.6,
   rate: rateBy(() => false),
-  notes: 'Low walls and crates (all see-through), one optional pallet. Weak.',
-  rows: [
-    '................',
-    '................',
-    '................',
-    '..=====..=====..',
-    '......=.........',
-    '......=.........',
-    '......p.........',
-    '......=.....kk..',
-    '......=.....kk..',
-    '..=====.........',
-    '................',
-    '................',
-    '.........G......',
-    '................',
-    '...H............',
-    '................',
-  ],
+  notes: 'Two low 3x4 m junk/tyre islands with a 2 m pallet gap. Short visible filler; no zig-zag low-wall maze.',
+  rows: draw(16, ({ set, fill }) => {
+    fill(3, 5, 3, 4, '='); fill(8, 5, 3, 4, 'k'); fill(6, 7, 2, 1, 'p');
+    set(9, 12, 'G'); set(3, 13, 'H');
+  }),
 });
 
 // ---------------------------------------------------------------------------------------------------------
@@ -399,20 +265,24 @@ tile({
 const smallRate = rateBy(() => false);
 const SMALL_OPT = 0.55;
 tile({
-  id: 'small-lowl', name: 'Small: low L + pallet', size: 8, category: 'filler', optionalChance: SMALL_OPT, rate: smallRate,
-  rows: ['........', '.===p==.', '.=......', '.=......', '.=......', '........', '.....H..', '........'],
+  id: 'small-junk', name: 'Small: crate + tires pallet', size: 8, category: 'filler', optionalChance: SMALL_OPT, rate: smallRate,
+  notes: 'Two 2x3 m low prop groups, 2 m gap; unsafe edge filler.',
+  rows: ['........', '........', '.kk..==.', '.kkpp==.', '.kk..==.', '........', '.....H..', '........'],
 });
 tile({
-  id: 'small-rock', name: 'Small: rock + wall pallet', size: 8, category: 'filler', optionalChance: SMALL_OPT, rate: smallRate,
-  rows: ['........', '........', '..RRR...', '..RRRp#.', '..RRR.#.', '......#.', '.H......', '........'],
+  id: 'small-rock', name: 'Small: paired rock pallet', size: 8, category: 'filler', optionalChance: SMALL_OPT, rate: smallRate,
+  notes: 'Two 2x3 m rocks with a 2 m pallet gap; unsafe, not a rock against a one-cell post.',
+  rows: ['........', '........', '.RR..RR.', '.RRppRR.', '.RR..RR.', '........', '.H......', '........'],
 });
 tile({
-  id: 'small-tree', name: 'Small: tree pallet', size: 8, category: 'filler', optionalChance: SMALL_OPT, rate: smallRate,
-  rows: ['........', '........', '.TT.....', '.TTpTT..', '....TT..', '........', '......H.', '........'],
+  id: 'small-tires', name: 'Small: tire stacks pallet', size: 8, category: 'filler', optionalChance: SMALL_OPT, rate: smallRate,
+  notes: 'Two 2x3 m tyre/scrap groups, one tall and one low; unsafe, not an isolated tree pallet.',
+  rows: ['........', '........', '.CC..==.', '.CCpp==.', '.CC..==.', '........', '......H.', '........'],
 });
 tile({
   id: 'small-car', name: 'Small: car pallet', size: 8, category: 'filler', optionalChance: SMALL_OPT, rate: smallRate,
-  rows: ['........', '........', '.cc..cc.', '.ccppcc.', '.cc..cc.', '........', '...H....', '........'],
+  notes: 'Two 2x5 m low cars with a 2 m pallet gap, a visible and mindgameable Autohaven filler.',
+  rows: ['........', '.cc..cc.', '.cc..cc.', '.ccppcc.', '.cc..cc.', '.cc..cc.', '...H....', '........'],
 });
 
 const deadRate = () => 'none';
@@ -428,7 +298,7 @@ tile({
 });
 tile({
   id: 'dead-car', name: 'Dead zone: lone car', size: 8, category: 'dead', rate: deadRate,
-  rows: ['........', '........', '..ccc...', '..ccc...', '........', '.....G..', '.H......', '........'],
+  rows: ['........', '........', '.ccccc..', '.ccccc..', '........', '.....G..', '.H......', '........'],
 });
 tile({
   id: 'dead-tallrock', name: 'Dead zone: tall rock (no pallet)', size: 8, category: 'dead', rate: deadRate,

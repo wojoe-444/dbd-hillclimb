@@ -5,7 +5,7 @@
 export const gasHeavenLayout = {
   id: 'gas-heaven',
   name: 'Gas Heaven (tiles)',
-  generator: 'mapgen/gas-heaven@1',
+  generator: 'mapgen/gas-heaven@2',
   size: { w: 112, h: 96 },
   cell: 8,
   outline: [[16, 0], [112, 0], [112, 64], [96, 64], [96, 96], [0, 96], [0, 16], [16, 16]],
@@ -30,22 +30,22 @@ export const gasHeavenLayout = {
   ],
 
   pools: {
-    maze: { decay: 0.35, tiles: { 'maze-a': 1, 'maze-b': 1, 'maze-c': 1 } },
-    carpile: { decay: 0.6, tiles: { 'carpile-a': 1, 'carpile-b': 1 } },
+    maze: { decay: 0.35, tiles: { 'pallet-gym': 1, 'four-lane-open': 1, 'four-lane-closed': 1 } },
+    carpile: { decay: 0.6, tiles: { 'carpile-long': 1, 'carpile-short': 1 } },
     jg: { decay: 0, tiles: { jgv1: 1, jgv2: 1 } },   // decay 0: the second slot always gets the other variation
     inner16: {
       decay: 0.6,
-      tiles: { jgv1: 3, jgv2: 1.5, 'tl-wall': 3, 'filler-wallcar': 2, 'filler-rock': 2, 'filler-windowl': 1.5, 'filler-junk': 1.5 },
+      tiles: { jgv1: 3, jgv2: 1.5, 'tl-wall': 3, 'filler-wallcar': 2, 'filler-rock': 2, 'variant-gym': 1.5, 'filler-junk': 1.5 },
     },
     inner8: {
       decay: 1,
       tiles: { 'dead-empty': 2, 'dead-gen': 1.5, 'dead-tree': 2, 'dead-rocks': 1.5, 'dead-car': 1, 'dead-tallrock': 4, 'dead-tallrock2': 2,   // user: more sight-blocking, non-loopable rocks
-        'small-lowl': 0.7, 'small-rock': 0.7, 'small-tree': 0.7, 'small-car': 0.7 },
+        'small-junk': 0.7, 'small-rock': 0.7, 'small-tires': 0.7, 'small-car': 0.7 },
     },
     ring8: {
       decay: 0.95,
       tiles: { 'dead-empty': 3, 'dead-gen': 1.5, 'dead-tree': 3, 'dead-rocks': 2, 'dead-car': 2, 'dead-tallrock': 4, 'dead-tallrock2': 2,
-        'small-lowl': 0.35, 'small-tree': 0.35, 'small-rock': 0.35 },
+        'small-junk': 0.35, 'small-tires': 0.35, 'small-rock': 0.35 },
     },
   },
   bigTileChance: 0.55,
