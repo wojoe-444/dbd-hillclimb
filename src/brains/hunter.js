@@ -257,6 +257,7 @@ export function makeHunter(P) {
             lastPos = { x: s.x + s.dx * 3, z: s.z + s.dz * 3 }; lastPosT = obs.t;
           }
           if (d2(lastPos, me) > 1.5) return sweep(api, me, lastPos, obs.t, P.lookSweepDeg, P.lookPeriodS);
+          lastPos = null;   // arrived and nobody here: forget it (otherwise we dither between this and the next behaviour)
         }
         target = null;
         if (P.followScratch > 0.5) {
