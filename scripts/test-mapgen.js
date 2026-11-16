@@ -16,7 +16,7 @@ const protectedRows = {
   'infinite-loop': '2e386f6ccbd6f4ca211be2fbb78e706c0ef6828550c161035b0d558b7daf92a2',
 };
 for (const [id, expected] of Object.entries(protectedRows)) assert.equal(hash(TILES[id].rows), expected, `${id}: owner-protected geometry`);
-assert.equal(hash(gasHeavenLayout.overlays), '4341ab012617defbde2d32699f806c98845dc29afb169a12572d4654b02fe430', 'owner MID overlays');
+assert.deepEqual(gasHeavenLayout.overlays, [], 'MID overlays retired (user 2026-11-16)');
 
 const gyms = { 'pallet-gym': [1, 0], 'four-lane-open': [1, 1], 'four-lane-closed': [1, 1], 'variant-gym': [1, 1] };
 let transforms = 0;
@@ -59,21 +59,9 @@ for (const [i, variant] of index.variants.entries()) {
   assert(map.pallets.length >= Math.round(14 * pr) && map.pallets.length <= Math.round(24 * pr), `${variant.file}: pallet budget`);
   const tiles = map.mapgen.tiles;
   const at = (x, z) => tiles.find(t => t.x === x && t.z === z);
-  if (map.mapgen.shape) {
-    // shaped outline (src/mapgen/outline.js): fixed pieces may move to the nearest free slot; they must all be present
-    const has = (id) => tiles.filter(t => t.tile === id);
-    for (const id of ['tl-wall', 'shack', 'infinite-loop', 'jgv1', 'jgv2']) assert(has(id).length >= 1, `${variant.file}: fixed piece ${id}`);
-    assert(has('shack').every(t => t.mirror === false), `${variant.file}: shack unmirrored`);
-  } else {
-    assert.equal(at(48, 16)?.tile, 'tl-wall');
-    assert.equal(at(8, 72)?.tile, 'shack');
-    assert.equal(at(8, 72).mirror, false);
-    assert.equal(at(24, 40)?.tile, 'infinite-loop');
-    assert.deepEqual([at(56, 56)?.tile, at(88, 40)?.tile].sort(), ['jgv1', 'jgv2']);
-    for (const overlay of gasHeavenLayout.overlays) for (let z = overlay.z; z < overlay.z + overlay.d; z++) for (let x = overlay.x; x < overlay.x + overlay.w; x++) {
-      assert(map.obstacles.some(o => o.height >= map.eyeHeight && x >= o.x && z >= o.z && x < o.x + o.w && z < o.z + o.d), `${variant.file}: MID wall cell ${x},${z}`);
-    }
-  }
+  // no fixed placements (user 2026-11-16): one shack (never mirrored) and one infinite-loop probe at random slots
+  for (const id of ['shack', 'infinite-loop']) assert.equal(tiles.filter(t => t.tile === id).length, 1, `${variant.file}: one ${id}`);
+  assert(tiles.filter(t => t.tile === 'shack').every(t => t.mirror === false), `${variant.file}: shack unmirrored`);
   const s = map.mapgen.stats;
   assert.equal(s.safePallets + s.unsafePallets + s.godPallets, map.pallets.length, `${variant.file}: safety totals`);
   for (const key of ['pallets', 'windows', 'strongLoops', 'weakLoops', 'safePallets', 'unsafePallets', 'godPallets', 'deadTileFraction', 'deadZoneFraction']) assert.equal(variant[key], s[key], `${variant.file}: index ${key}`);

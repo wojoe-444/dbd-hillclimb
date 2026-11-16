@@ -85,9 +85,22 @@ export function generateFromLayout(baseLayout, seed, opts = {}) {
   };
 
   // ---- 1. landmarks ---------------------------------------------------------------------------------
+  const lmLabels = [];
   for (const lm of layout.landmarks) {
     const tileId = lm.tile ?? pickFromPool(lm.pool);
-    place(tileId, lm.x, lm.z, lm.role ?? TILES[tileId].category, { rot: lm.rot, mirror: lm.mirror });
+    let x0 = lm.x, z0 = lm.z;
+    if (lm.random) {   // a random free inner slot (all cells inside the outline, free, not on the ring)
+      const n = TILES[tileId].size / C, slots = [];
+      for (let j = 0; j + n <= chh; j++) for (let i = 0; i + n <= cw; i++) {
+        let ok = true;
+        for (let b = j; b < j + n && ok; b++) for (let a = i; a < i + n && ok; a++) if (!cellInside(a, b) || cellRing(a, b) || cellOwner[b * cw + a] >= 0) ok = false;
+        if (ok) slots.push([i * C, j * C]);
+      }
+      if (!slots.length) return { ok: false, error: `no free slot for ${tileId}` };
+      [x0, z0] = rng.pick(slots);
+    }
+    place(tileId, x0, z0, lm.role ?? TILES[tileId].category, { rot: lm.rot, mirror: lm.mirror });
+    if (lm.label) lmLabels.push({ text: lm.label, x: x0 + TILES[tileId].size / 2, z: z0 + TILES[tileId].size / 2 });
   }
 
   // ---- 2. exit gates (on ring cells along straight outline edges) ------------------------------------
@@ -424,7 +437,7 @@ export function generateFromLayout(baseLayout, seed, opts = {}) {
     size: { w, h }, outline: layout.outline, eyeHeight: layout.eyeHeight,
     obstacles, windows, pallets, generators, hooks: hookList, exitGates,
     spawns: { hunter: hunterSpawns, survivors: survivorSpawns },
-    labels: (layout.labels ?? []).map(({ text, x, z }) => ({ text, x, z })),
+    labels: [...(layout.labels ?? []).map(({ text, x, z }) => ({ text, x, z })), ...lmLabels],
     spawnRules: { inset: layout.spawns.inset, survivorAnchors: true },
     mapgen: {
       generator: layout.generator, seed,
@@ -488,6 +501,7 @@ export function fitLayoutToOutline(layout, outline) {
   const landmarks = layout.landmarks.slice();
   const taken = (i, j) => occ[j * cw + i] === 1;
   for (const k of order) {
+    if (layout.landmarks[k].random) continue;   // placed per seed inside the outline (generateFromLayout)
     const lm = layout.landmarks[k], n = sizeOf(lm) / C, i0 = lm.x / C, j0 = lm.z / C;
     let d = null;
     if (lm.group && shift[lm.group]) {

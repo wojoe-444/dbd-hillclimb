@@ -1883,20 +1883,10 @@ test('shaped variants: content inside the outline, gens >= 6 m from the wall, ga
     const eg = map.exitGates;
     ok(eg.length === 2 && Math.hypot(eg[0].exit.x - eg[1].exit.x, eg[0].exit.z - eg[1].exit.z) >= L.gates.minDistance, tag + ': 2 exit gates far apart');
     ok(res.maxHookDistance <= L.hooks.radius, tag + ': hook coverage ' + res.maxHookDistance + ' m <= ' + L.hooks.radius);
-    for (const id of ['tl-wall', 'shack', 'infinite-loop']) ok(tiles.some(t => t.tile === id), tag + ': fixed piece ' + id + ' present');
-    ok(tiles.filter(t => t.category === 'maze').length >= 3 && tiles.some(t => t.tile === 'jgv1') && tiles.some(t => t.tile === 'jgv2') && tiles.some(t => t.category === 'carpile'),
-      tag + ': mazes, both jungle gyms and the car pile present');
+    for (const id of ['shack', 'infinite-loop']) ok(tiles.filter(t => t.tile === id).length === 1, tag + ': exactly one ' + id + ' (random slot)');
+    ok(tiles.filter(t => t.category === 'maze').length >= 3 && tiles.some(t => t.category === 'carpile'), tag + ': maze-pool tiles and the car pile present');
     const shack = tiles.find(t => t.tile === 'shack');
     ok(shack && shack.mirror === false, tag + ': shack never mirrored');
-    // a landmark only moves when its own slot does not fit (outside the outline, or taken by an earlier piece)
-    for (const mv of sh.moved.filter(m => m.from)) {
-      const n = TILES[mv.piece] ? TILES[mv.piece].size : 16;
-      let fitsHome = true;
-      for (let z = mv.from[1]; z < mv.from[1] + n; z += C) for (let x = mv.from[0]; x < mv.from[0] + n; x += C) if (!inTile(x, z)) fitsHome = false;
-      const taken = tiles.some(t => t.role !== 'gate' && t.category !== 'filler' && t.category !== 'dead' && t.role !== 'loop' && !(t.x === mv.to[0] && t.z === mv.to[1])
-        && t.x < mv.from[0] + n && mv.from[0] < t.x + t.size && t.z < mv.from[1] + n && mv.from[1] < t.z + t.size);
-      ok(!fitsHome || taken || sh.moved.some(m => m.piece === 'overlays'), tag + ': ' + mv.piece + ' moved only because its slot does not fit');
-    }
     const r2 = generateFromLayout(L, seed, { shaped: true, family: fam });
     ok(JSON.stringify(r2.map) === JSON.stringify(map), tag + ': deterministic');
     if (k === 0) {
@@ -1905,12 +1895,11 @@ test('shaped variants: content inside the outline, gens >= 6 m from the wall, ga
       ok(m.durationS > 0 && m.kills + m.escapes === 4, tag + ': a full param-brain match runs on the shaped map (' + m.kills + ' kills, ' + m.escapes + ' escapes)');
     }
   }
-  // refitting to the layout's own outline moves nothing, and the base path keeps every landmark slot
-  const same = generateFromLayout(L, 4242, { outline: L.outline });
-  ok(same.ok && same.map.mapgen.shape.moved.length === 0, 'own outline: no fixed piece moves');
-  const base = generateFromLayout(L, 4242);
+  // no fixed placements any more (user 2026-11-16): landmarks land on random free inner slots, so different seeds differ
+  const base = generateFromLayout(L, 4242), base2 = generateFromLayout(L, 4243);
   ok(base.ok && !base.map.mapgen.shape, 'base outline: no shape record');
-  if (base.ok) for (const lm of L.landmarks) ok(base.map.mapgen.tiles.some(t => t.x === lm.x && t.z === lm.z && (!lm.tile || t.tile === lm.tile)), 'base outline: landmark ' + (lm.tile ?? lm.pool) + ' at its exact slot ' + lm.x + ',' + lm.z);
+  const spot = (r) => { const t = r.map.mapgen.tiles.find(t => t.tile === 'shack'); return t.x + ',' + t.z; };
+  ok(base.ok && base2.ok && L.landmarks.every(lm => lm.random) && (spot(base) !== spot(base2) || generateFromLayout(L, 4244).ok), 'landmarks are randomly placed (shack ' + (base.ok ? spot(base) : '?') + ' vs ' + (base2.ok ? spot(base2) : '?') + ')');
 });
 
 test('shipped variant pool: odd variants shaped (all families, 9216-9792 m2, aspect <= 1.6), even ones keep the base outline', () => {
