@@ -33,8 +33,11 @@ export const survivorSpace = {
   genJitter:     [0, 2, 0.3],    // per-survivor fixed random preference per gen (breaks the four-identical-bots symmetry)
   // ---- stealth: use line of sight ----
   hideDist:      [0, 75, 40],    // hunter seen within this, not chasing me, and it could see me -> slip out of its view
-  hideSearchR:   [4, 20, 10],    // how far to look for a hiding spot (m)
   hideWalk:      [0, 1, 0.6],    // >0.5: walk (no scratch marks) while slipping out of view
+  // ---- camera (survivor.camera): where to look, peeking ----
+  glanceRate:    [0, 1, 0.4],    // how often to glance around while working / walking (0 = rarely, 1 = constantly)
+  peekW:         [0, 3, 1],      // hiding-spot score: bonus for a "peek spot" (body out of the hunter's sight, camera sees it)
+  peekMoveMaxM:  [2, 20, 10],    // how far to move for a peek / hiding spot when slipping out of a visible hunter's view
   hideHoldS:     [0, 8, 2],      // once out of view, stay put this long while the hunter is still around
   // ---- chase: loops scored by "equivalent distance held" (loops.js) ----
   loopTravelMaxM:[5, 50, 25],    // max path distance I'll run to reach a loop's entry
@@ -126,18 +129,24 @@ export function makeSurvivor(P) {
       if (d > 1.5 && (dx * fx + dz * fz) < d * Math.cos((50 * Math.PI) / 180)) return false;   // outside its 100 deg cone
       return api.visibility(h, pt) >= 0.5;
     }
+    // a spot near me the hunter can't see (its cone + line of sight), not toward it; among those prefer peek spots
+    // (body out of its line of sight whatever its facing, camera sees it) by peekW vs the walk there
+    let hideLook = null, hidePeekV = 0;
     function findHide(obs, api, me, h) {
       if (hideSpot && obs.t - hideT < 1 && !hunterCouldSee(api, h, hideSpot)) return hideSpot;
-      hideT = obs.t; hideSpot = null;
-      let best = null, bd = Infinity;
-      for (let rr = 2; rr <= P.hideSearchR; rr += 2) {
+      hideT = obs.t; hideSpot = null; hideLook = null; hidePeekV = 0;
+      const tg = [{ x: h.x, z: h.z, p: 1 }, { x: h.x + (h.vx || 0) * 1.5, z: h.z + (h.vz || 0) * 1.5, p: 0.5 }];
+      let best = null, bs = -Infinity, nFound = 0;
+      for (let rr = 2; rr <= P.peekMoveMaxM && nFound < 8; rr += 2) {
         for (let k = 0; k < 12; k++) {
           const a = (k / 12) * 2 * Math.PI, pt = { x: me.x + Math.cos(a) * rr, z: me.z + Math.sin(a) * rr };
           if (hunterCouldSee(api, h, pt) || d2(pt, h) < d2(me, h) - 2) continue;   // hidden, and not toward the hunter
-          const d = api.nav.dist(me, pt);
-          if (d < bd) { bd = d; best = pt; }
+          if (!api.walkClear(me, pt)) continue;
+          nFound++;
+          const pv = P.peekW > 0 ? peekValue(api, pt, tg) : { v: 0, look: null };
+          const sc = -rr / Math.max(2, P.peekMoveMaxM) + P.peekW * pv.v;
+          if (sc > bs) { bs = sc; best = pt; hideLook = pv.look; hidePeekV = pv.v; }
         }
-        if (best) break;
       }
       hideSpot = best;
       return best;
@@ -146,10 +155,53 @@ export function makeSurvivor(P) {
     // ---- hiding from an UNSEEN hunter: own belief map + static cover ----
     const belief = new HunterBelief(ctx, { spread: P.hbSpread });
     const beliefOn = P.hideThreat <= 1 || P.genThreatW > 0;   // otherwise only the terror trend is tracked
+    // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
+    const CAM = ctx.config.survivor.camera || { enabled: false };
+    const camAt = (x, z, yaw) => {
+      const lx = Math.cos(yaw), lz = Math.sin(yaw), side = CAM.side ?? 1, px = -lz * side, pz = lx * side;
+      const dx = -lx * CAM.backM + px * CAM.shoulderM, dz = -lz * CAM.backM + pz * CAM.shoulderM, L = Math.hypot(dx, dz);
+      const n = Math.max(1, Math.ceil(L / 0.1)), W = M.w, Hh = M.h;
+      let free = L;
+      for (let k = 1; k <= n; k++) {
+        const i = Math.floor(x + dx * k / n), j = Math.floor(z + dz * k / n);
+        if (i < 0 || j < 0 || i >= W || j >= Hh || belief.opq[j * W + i] === -2) { free = Math.max(0, L * (k - 1) / n - CAM.wallMarginM); break; }
+      }
+      if (free < CAM.minM) return { x, z };
+      return { x: x + dx * free / L, z: z + dz * free / L };
+    };
+    // peek value of standing at c: body hidden from every target (any facing) and a camera aimed at the targets' centre
+    // sees them; returns { v: seen mass share (0 if the body is exposed), look } — targets [{x, z, p}]
+    function peekValue(api, c, targets) {
+      if (!targets.length) return { v: 0, look: null };
+      let tot = 0, cx = 0, cz = 0;
+      for (const t of targets) { tot += t.p; cx += t.x * t.p; cz += t.z * t.p; }
+      cx /= tot; cz /= tot;
+      for (const t of targets) if (api.los(t, c)) return { v: 0, look: null };
+      if (!CAM.enabled) return { v: 0, look: { x: cx, z: cz } };
+      const base = Math.atan2(cz - c.z, cx - c.x);
+      let best = 0, bl = null;
+      for (const off of [0, 0.35, -0.35]) {
+        const yaw = base + off, cam = camAt(c.x, c.z, yaw), cosF = Math.cos((CAM.fovDeg / 2) * Math.PI / 180);
+        let m = 0;
+        for (const t of targets) {
+          const dx = t.x - cam.x, dz = t.z - cam.z, d = Math.hypot(dx, dz);
+          if (d > 75 || (d > 0.5 && (dx * Math.cos(yaw) + dz * Math.sin(yaw)) < d * cosF)) continue;
+          if (api.los(cam, t)) m += t.p;
+        }
+        if (m > best) { best = m; bl = { x: c.x + Math.cos(yaw) * 5, z: c.z + Math.sin(yaw) * 5 }; }
+      }
+      return { v: best / tot, look: bl };
+    }
+    const peekTargets = (obs) => {
+      if (obs.hunter) { const h = obs.hunter; return [{ x: h.x, z: h.z, p: 1 }, { x: h.x + (h.vx || 0) * 1.5, z: h.z + (h.vz || 0) * 1.5, p: 0.5 }]; }
+      if (beliefOn) return belief.topCells(4);
+      return obs.lastHunter ? [{ x: obs.lastHunter.x, z: obs.lastHunter.z, p: 1 }] : [];
+    };
+    let peek = null;              // current peek: { spot, look, since }
     let hide = null;              // { start, lastTrig, spot, spotT }
     let hideCooldownUntil = -99;
-    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0 };   // diagnostics (read by scripts via brain.stats)
-    let wasChased = false, lastHideTickT = -99;
+    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0 };   // diagnostics (read by scripts via brain.stats)
+    let wasChased = false, lastHideTickT = -99, lastPeekT = -99;
     const genCover = M.generators.map(() => null);   // per known gen: mean cover of its repair slots (lazy)
     const genCoverOf = (g, i) => {
       if (genCover[i] === null) { const sl = g.slots && g.slots.length ? g.slots : [g]; genCover[i] = sl.reduce((a, s) => a + belief.coverAt(s.x, s.z), 0) / sl.length; }
@@ -243,7 +295,8 @@ export function makeSurvivor(P) {
       const top = beliefOn && P.exposeW > 0 ? belief.topCells(12) : null;
       // the hunter will come to check the generator I was working on: count it as a likely viewpoint too
       if (top && hide && hide.gen >= 0 && obs.gens[hide.gen].known) { const g = obs.gens[hide.gen], m = top.reduce((a, c) => a + c.p, 0); top.push({ x: g.x, z: g.z, p: m * P.hideGenFear }); }
-      let best = here, bs = -Infinity;
+      let best = here, bs = -Infinity, bestPv = { v: 0, look: null };
+      const pts = peekTargets(obs);
       let tried = 0;
       for (const c of cands) {
         if (tried >= 6) break;
@@ -254,9 +307,12 @@ export function makeSurvivor(P) {
         if (top) s -= P.exposeW * belief.exposure(api, c.pt, top);
         if (fl.length) s += P.followFleeW * 10 * alignTo(fl, me, c.pt);
         if (cc) s += P.genClusterW * 10 * clusterAt(cc, c.pt);
+        const pv = P.peekW > 0 && pts.length ? peekValue(api, c.pt, pts) : { v: 0, look: null };
+        s += P.peekW * pv.v;
         if (hide && hide.spot && d2(c.pt, hide.spot) < 1.5) s += 0.1;     // keep the current spot unless clearly worse
-        if (s > bs) { bs = s; best = c.pt; }
+        if (s > bs) { bs = s; best = c.pt; bestPv = pv; }
       }
+      if (hide) { hide.look = bestPv.look; hide.peekV = bestPv.v; }
       return best;
     }
 
@@ -472,6 +528,32 @@ export function makeSurvivor(P) {
       return { moveDir: { x: me.x - hp.x, z: me.z - hp.z } };
     }
 
+    // ---- where the camera looks (if the action didn't say): the hunter if seen (slightly ahead), where it should be if
+    // just lost, the belief's guess when it's close / the terror radius is heard; otherwise along my path (default) with
+    // glances (glanceRate) toward the likeliest hunter cells or sweeping around
+    let glanceUntil = -99, nextGlance = 0, glanceLook = null, sweepYaw = ctx.rng.next() * 6.283;
+    function withLook(obs, a) {
+      if (!CAM.enabled || !a || a.look) return a;
+      const me = obs.self, h = obs.hunter;
+      const L = (x, z) => ({ ...a, look: { x, z } });
+      if (h) return L(h.x + (h.vx || 0) * 0.4, h.z + (h.vz || 0) * 0.4);
+      const lh = obs.lastHunter;
+      if (lh && obs.t - lh.t < 5) { const k = Math.min(2, obs.t - lh.t); return L(lh.x + (lh.vx || 0) * k, lh.z + (lh.vz || 0) * k); }
+      if (me.state === 'downed' || me.state === 'carried' || me.state === 'hooked') return a;
+      if (beliefOn && (obs.terror || myThreat(me) > 0.3)) { const e = belief.expectedPos(); if (e) return L(e.x, e.z); }
+      if (obs.t < glanceUntil && glanceLook) return L(glanceLook.x, glanceLook.z);
+      if (obs.t >= nextGlance) {
+        const top = beliefOn ? belief.topCells(3) : [];
+        if (top.length && ctx.rng.next() < 0.5) glanceLook = top[ctx.rng.int(top.length)];
+        else { sweepYaw += 2.1; glanceLook = { x: me.x + 5 * Math.cos(sweepYaw), z: me.z + 5 * Math.sin(sweepYaw) }; }
+        glanceUntil = obs.t + 1.0;
+        nextGlance = obs.t + 1.0 + (1 - P.glanceRate) * 9 + 0.5;
+        return L(glanceLook.x, glanceLook.z);
+      }
+      // standing still (repairing / healing / holding): keep facing the work; the engine keeps the yaw
+      return a;
+    }
+
     // body-blocked by a teammate (moving, no progress, a teammate within 1.2 m) for 0.6 s: sidestep for 0.5 s
     let blockedT = 0, sideUntil = -99, sideDir = null;
     function unblock(obs, a) {
@@ -495,9 +577,10 @@ export function makeSurvivor(P) {
       loops,
       belief,
       decide(obs, api) {
-        const a = this.decideInner(obs, api);
+        let a = this.decideInner(obs, api);
         const st = obs.self.state;
-        return st === 'healthy' || st === 'injured' ? unblock(obs, a) : a;
+        if (st === 'healthy' || st === 'injured') a = unblock(obs, a);
+        return withLook(obs, a);
       },
       decideInner(obs, api) {
         const me = obs.self, h = obs.hunter, nav = api.nav;
@@ -506,7 +589,7 @@ export function makeSurvivor(P) {
         if (me.state === 'carried') return { act: 'wiggle' };
         belief.update(obs, api, 2.0, beliefOn);   // heavy belief step every 2 s (sightings, hooks, auras, layer changes apply at once)
         stats.decides++;
-        if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; }   // chase on me began within 5 s of hiding
+        if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; if (obs.t - lastPeekT < 5) stats.peekFound++; }   // chase on me began within 5 s of hiding
         wasChased = !!me.chased;
         know.update(obs, api, 1.0);
         if (me.chased && !wasChasedR) chaseStartT = obs.t;
@@ -550,10 +633,11 @@ export function makeSurvivor(P) {
         const dh = h ? d2(h, me) : Infinity;
         // a teammate is healing me: stand still (healing needs an idle patient) unless the hunter is close
         if (hud && hud[me.id] && hud[me.id].beingHealed && !(h && dh < 10)) return {};
-        // hiding and the hunter appears but can't see me (and isn't close): don't bolt (running is what starts a chase)
-        if (hide && h && !me.chased && dh >= P.hideNerveM && !hunterCouldSee(api, h, me)) {
-          hide.lastTrig = obs.t; stats.hideTicks++; lastHideTickT = obs.t;
-          return {};
+        // hiding / holding out of view and the hunter appears but can't see me (and isn't close): don't bolt (running is what starts a chase)
+        if ((hide || obs.t < hiddenUntil) && h && !me.chased && dh >= P.hideNerveM && !hunterCouldSee(api, h, me)) {
+          if (hide) { hide.lastTrig = obs.t; stats.hideTicks++; lastHideTickT = obs.t; }
+          if (!api.los(h, me)) { stats.peekTicks++; if (obs.t - lastPeekT > 3) stats.peeks++; lastPeekT = obs.t; }
+          return { look: { x: h.x + (h.vx || 0) * 0.5, z: h.z + (h.vz || 0) * 0.5 } };   // frozen, watching it
         }
         if (h && dh < P.fleeSeenDist) { mode = 'chase'; lastThreatT = obs.t; }
         else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
@@ -567,8 +651,11 @@ export function makeSurvivor(P) {
         if (mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
           if (hunterCouldSee(api, h, me)) {
             const spot = findHide(obs, api, me, h);
-            if (spot) { hiddenUntil = obs.t + P.hideHoldS; return { moveTo: spot, walk: P.hideWalk > 0.5 }; }
-          } else if (obs.t < hiddenUntil) return {};          // out of view: hold still while the hunter passes
+            if (spot) { hiddenUntil = obs.t + P.hideHoldS; return { moveTo: spot, walk: P.hideWalk > 0.5, look: h }; }
+          } else if (obs.t < hiddenUntil) {                   // out of view: hold still and watch it pass (peek)
+            if (!api.los(h, me)) { stats.peekTicks++; if (obs.t - lastPeekT > 3) stats.peeks++; lastPeekT = obs.t; }
+            return { look: { x: h.x + (h.vx || 0) * 0.5, z: h.z + (h.vz || 0) * 0.5 } };
+          }
         }
 
         if (mode === 'chase') {
@@ -591,8 +678,10 @@ export function makeSurvivor(P) {
           if (hide) {
             stats.hideTicks++; lastHideTickT = obs.t;
             if (!hide.spot || obs.t - hide.spotT >= 2) { hide.spot = pickHideSpot(obs, api, me); hide.spotT = obs.t; }
+            const lk = hide.look || (beliefOn ? belief.expectedPos() : null);
+            if (hide.peekV > 0.2) { stats.peekTicks++; if (!hide.peeked) { hide.peeked = true; stats.peeks++; } lastPeekT = obs.t; }
             if (d2(me, hide.spot) > 0.6) return { moveTo: hide.spot, walk: P.coverRun <= 0.5 };
-            return {};
+            return lk ? { look: lk } : {};
           }
         }
         const walk = P.walkWhenTR > 0.5 && obs.terror !== null;
