@@ -142,6 +142,9 @@ export class RouteEval {
     return out.reverse();
   }
 
+  // gap (m) if I'm at (x,z) at time t (same rule as gapAt; off the grid = -Infinity)
+  gapAtPoint(x, z, t) { const i = Math.floor(x), j = Math.floor(z); if (i < 0 || j < 0 || i >= this.W || j >= this.H) return -Infinity; return this.gapAt(j * this.W + i, t); }
+
   gapAt(cell, t) { const hd = this.fH[cell]; return (hd >= 0 ? hd / 10 : this.R + 10) - this.vH * Math.max(0, t - (this.hDelay || 0)) - this.reach; }
 
   // min gap (m) along my path to (x,z) over `horizon` s (or until arrival if untilArrival); also the arrival time.
