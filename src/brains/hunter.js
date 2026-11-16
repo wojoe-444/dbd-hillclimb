@@ -12,7 +12,7 @@ export const hunterSpace = {
   campS:         [0, 45, 5],       // linger near a fresh hook this long
   campRadius:    [4, 24, 10],
   tunnel:        [0, 1, 0.3],      // target preference for survivors with hooks already
-  injuredPref:   [0, 15, 5],       // metres of preference for injured targets
+  injuredPref:   [-15, 15, 5],     // metres of preference for injured targets (<0: prefer healthy ones = spread damage)
   switchMargin:  [0, 15, 4],       // switch chase target only if another is this much better
   slugDist:      [0, 20, 0],       // leave a downed survivor to chase a visible one within this
   progressW:     [0, 3, 1.5],      // patrol: weight on generator progress
