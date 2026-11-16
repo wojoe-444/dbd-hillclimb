@@ -30,6 +30,19 @@ export const survivorSpace = {
   downedStillDist: [0, 40, 12],  // downed: lie still (auto-recover to 95%) unless the hunter is seen within this; then crawl away
   seekHeal:      [0, 1, 0.4],    // >0.5: when injured, walk to a visible healthy teammate and stand still to be healed
   trustIntent:   [0, 1, 0.6],    // >0.5: skip a rescue if a teammate just said "going for unhook" (unless I'm right there)
+  // ---- generator choice ----
+  farFromHunterW: [0, 2, 0.5],   // prefer gens far from the hunter's last known position (linear up to 60 m)
+  genJitter:     [0, 2, 0.3],    // per-survivor fixed random preference per gen (breaks the four-identical-bots symmetry)
+  // ---- stealth: use line of sight ----
+  hideDist:      [0, 75, 40],    // hunter seen within this, not chasing me, and it could see me -> slip out of its view
+  hideSearchR:   [4, 20, 10],    // how far to look for a hiding spot (m)
+  hideWalk:      [0, 1, 0.6],    // >0.5: walk (no scratch marks) while slipping out of view
+  hideHoldS:     [0, 8, 2],      // once out of view, stay put this long while the hunter is still around
+  // ---- chase: loop quality ----
+  loopQualityW:  [0, 2, 0.2],    // anchor score = path distance - this * (hunter's walk-around detour, m): prefer strong loops
+  avoidHeading:  [0, 1, 0.6],    // >0.5: skip anchors the hunter is heading toward (it would cut us off)
+  weakPalletM:   [0, 20, 8],     // a pallet whose hunter detour is below this is "weak"...
+  weakDropDist:  [1.5, 8, 4],    // ...and gets dropped as soon as the hunter is this close (no holding for a stun)
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -59,6 +72,32 @@ export function makeSurvivor(P) {
       anchors.push({ kind: 'p', i, p, c, s: [{ x: c.x - ax.x * 1.6, z: c.z - ax.z * 1.6 }, { x: c.x + ax.x * 1.6, z: c.z + ax.z * 1.6 }] });
     });
 
+    // hunter walk-around detour per anchor: grid BFS from one side to the other with the anchor cell blocked (windows
+    // and pallets elsewhere count as open for the hunter only if they're windows; pallets are assumed down = blocked).
+    {
+      const W = M.w, H = M.h, solid = new Uint8Array(W * H);
+      const inPoly = (x, z) => { let c = false; const o = M.outline; for (let i = 0, j = o.length - 1; i < o.length; j = i++) { const [xi, zi] = o[i], [xj, zj] = o[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
+      for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (!inPoly(i + 0.5, j + 0.5)) solid[j * W + i] = 1;
+      for (const o of M.obstacles) for (let j = o.z; j < o.z + o.d; j++) for (let i = o.x; i < o.x + o.w; i++) if (i >= 0 && j >= 0 && i < W && j < H) solid[j * W + i] = 1;
+      for (const g of [...(M.generatorCandidates || []), ...gens]) solid[Math.floor(g.z) * W + Math.floor(g.x)] = 1;
+      for (const w of M.windows) solid[w.z * W + w.x] = 1;                  // walking around: windows don't count as a path
+      for (const q of M.pallets) for (let j = q.z0 ?? q.z; j < (q.z1 ?? q.z + 1); j++) for (let i = q.x0 ?? q.x; i < (q.x1 ?? q.x + 1); i++) solid[j * W + i] = 1;
+      const bfs = (a, b) => {
+        const si = Math.floor(a.x), sj = Math.floor(a.z), ti = Math.floor(b.x), tj = Math.floor(b.z);
+        if (si < 0 || sj < 0 || si >= W || sj >= H || solid[sj * W + si]) return 60;
+        const dist = new Map([[sj * W + si, 0]]), q = [sj * W + si];
+        for (let h = 0; h < q.length; h++) {
+          const c = q[h], d = dist.get(c); if (d > 60) break;
+          if (c === tj * W + ti) return d;
+          const ci = c % W, cj = (c / W) | 0;
+          for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = ci + di, nj = cj + dj; if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue; const n = nj * W + ni; if (solid[n] || dist.has(n)) continue; dist.set(n, d + 1); q.push(n); }
+        }
+        return 60;
+      };
+      for (const a of anchors) a.detour = Math.max(0, bfs(a.s[0], a.s[1]) - 3.2);
+    }
+
+    const jitter = gens.map(() => ctx.rng.next());   // this survivor's own taste per gen (own seeded stream)
     let mode = 'work';          // work | chase | sneak
     let lastThreatT = -99;
     let anchor = null;
@@ -77,6 +116,32 @@ export function makeSurvivor(P) {
     const crossable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] === 'dropped');
     const side = (a, pt) => (d2(a.s[0], pt) <= d2(a.s[1], pt) ? 0 : 1);
 
+    // stealth: a spot near me the hunter can't see (cone + line of sight), cached ~1 s
+    let hideSpot = null, hideT = -99, hiddenUntil = -99;
+    function hunterCouldSee(api, h, pt) {
+      const dx = pt.x - h.x, dz = pt.z - h.z, d = Math.hypot(dx, dz);
+      if (d > 75) return false;
+      const fx = Math.cos(h.facing), fz = Math.sin(h.facing);
+      if (d > 1.5 && (dx * fx + dz * fz) < d * Math.cos((50 * Math.PI) / 180)) return false;   // outside its 100 deg cone
+      return api.visibility(h, pt) >= 0.5;
+    }
+    function findHide(obs, api, me, h) {
+      if (hideSpot && obs.t - hideT < 1 && !hunterCouldSee(api, h, hideSpot)) return hideSpot;
+      hideT = obs.t; hideSpot = null;
+      let best = null, bd = Infinity;
+      for (let rr = 2; rr <= P.hideSearchR; rr += 2) {
+        for (let k = 0; k < 12; k++) {
+          const a = (k / 12) * 2 * Math.PI, pt = { x: me.x + Math.cos(a) * rr, z: me.z + Math.sin(a) * rr };
+          if (hunterCouldSee(api, h, pt) || d2(pt, h) < d2(me, h) - 2) continue;   // hidden, and not toward the hunter
+          const d = api.nav.dist(me, pt);
+          if (d < bd) { bd = d; best = pt; }
+        }
+        if (best) break;
+      }
+      hideSpot = best;
+      return best;
+    }
+
     function chase(obs, api, me, h) {
       const nav = api.nav;
       const hp = h ?? obs.lastHunter;
@@ -91,7 +156,11 @@ export function makeSurvivor(P) {
           const dh = d2(hp, a.c);
           if (d2(me, a.c) > P.loopRange) continue;
           const dm = nav.dist(me, a.c);
-          if (dm < P.loopRange && dm < P.loopRace * dh && dm < bd) { bd = dm; best = a; }
+          if (!(dm < P.loopRange && dm < P.loopRace * dh)) continue;
+          // the hunter is heading for it: it would cut us off there
+          if (h && P.avoidHeading > 0.5) { const tx = a.c.x - h.x, tz = a.c.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dh < d2(me, a.c) + 4) continue; }
+          const sc = dm - P.loopQualityW * Math.min(30, a.detour);
+          if (sc < bd) { bd = sc; best = a; }
         }
         anchor = best;
       }
@@ -105,7 +174,8 @@ export function makeSurvivor(P) {
         if (anchor.kind === 'p' && obs.pallets[anchor.i] === 'up') {
           const p = anchor.p;
           const near = rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= 1.1;
-          if (near && hs !== ms && d2(hp, anchor.c) < P.palletDropDist) return { act: 'dropPallet', target: p.id };
+          const dropAt = anchor.detour < P.weakPalletM ? Math.max(P.palletDropDist, P.weakDropDist) : P.palletDropDist;   // weak pallet: drop early
+          if (near && hs !== ms && d2(hp, anchor.c) < dropAt) return { act: 'dropPallet', target: p.id };
           if (near && dhm < P.palletDropDist * 0.6) return { act: 'dropPallet', target: p.id };
           // get to the far side of the standing pallet
           return { moveTo: anchor.s[1 - hs] };
@@ -121,9 +191,9 @@ export function makeSurvivor(P) {
       if (!fleePoint || obs.t - fleeT > 1 || d2(me, fleePoint) < 2) {
         fleeT = obs.t;
         let bs = -Infinity;
-        const cands = [...gens, ...M.hooks];
+        const cands = [...gens, ...M.hooks, ...anchors.filter((a) => anchorUsable(a, obs)).map((a) => ({ x: a.c.x, z: a.c.z, q: a.detour }))];
         for (const c of cands) {
-          const s = d2(c, hp) - 0.6 * d2(c, me);
+          const s = d2(c, hp) - 0.6 * d2(c, me) + P.loopQualityW * Math.min(30, c.q ?? 0);
           if (d2(c, hp) < d2(me, hp)) continue;
           if (s > bs) { bs = s; fleePoint = { x: c.x, z: c.z }; }
         }
@@ -175,6 +245,14 @@ export function makeSurvivor(P) {
         }
         else if (mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS) { mode = 'work'; anchor = null; }
         else if (obs.t - lastThreatT > P.calmS) { mode = 'work'; anchor = null; }
+
+        // ---- stealth: the hunter is around but not on me -> get out of its view (and back to work once it's gone) ----
+        if (mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
+          if (hunterCouldSee(api, h, me)) {
+            const spot = findHide(obs, api, me, h);
+            if (spot) { hiddenUntil = obs.t + P.hideHoldS; return { moveTo: spot, walk: P.hideWalk > 0.5 }; }
+          } else if (obs.t < hiddenUntil) return {};          // out of view: hold still while the hunter passes
+        }
 
         if (mode === 'chase') {
           const a = chase(obs, api, me, h);
@@ -277,6 +355,9 @@ export function makeSurvivor(P) {
             let s = P.genDistW * nav.dist(me, gens[i]) / 20 - P.genProgW * g.progress * 3;
             const others = g.workers ? g.workers.filter((w) => w !== me.id).length : 0;   // only for gens currently seen
             s += P.spreadW * others;
+            const hpos = h ?? (obs.lastHunter && obs.t - obs.lastHunter.t < 90 ? obs.lastHunter : null);
+            if (hpos) s -= P.farFromHunterW * Math.min(60, d2(gens[i], hpos)) / 20;
+            s += P.genJitter * jitter[i];
             if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(gens[i], obs.lastHunter)) / 10;
             if (i === genTarget) s -= 0.5; // hysteresis
             if (s < bs) { bs = s; bi = i; }
