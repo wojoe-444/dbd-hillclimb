@@ -2023,5 +2023,24 @@ test('heal handshake in matches: few impossible heals, deterministic, healOfferS
   ok(off.every((x) => x.healing === 0 && x.accepts === 0), 'healOfferS 0: no "healing" intents, no patient pauses');
 });
 
+test('survivor unblock sidestep keeps the action\'s gait (walk) and look', () => {
+  const B = getBrains();
+  for (const walk of [true, false]) {
+    let brain = null, api = null;
+    const sf = B.survivor.make(defaults(B.survivor.space));
+    createMatch({ map: smallMap, seed: 3, hunter: () => ({ decide: () => ({}) }),
+      survivors: [(c) => { brain = sf(c); api = c.api; return brain; }, () => ({ decide: () => ({}) }), () => ({ decide: () => ({}) }), () => ({ decide: () => ({}) })] });
+    const look = { x: 30, z: 20 };
+    brain.decideInner = () => ({ moveTo: { x: 30.5, z: 32.5 }, walk, look });
+    const acts = [];
+    for (let k = 0; k < 14; k++) acts.push(brain.decide({ t: k * 0.1, tick: k, self: { id: 0, x: 20.5, z: 32.5, vx: 0, vz: 0, state: 'healthy' },
+      hunter: null, lastHunter: null, terror: null, teammates: [{ id: 1, x: 21.5, z: 32.5, vx: 0, vz: 0, state: 'healthy' }] }, api));
+    const side = acts.filter((a) => a.moveDir);
+    ok(side.length >= 3, 'blocked by a teammate: sidesteps (' + side.length + ' ticks)');
+    ok(side.every((a) => !!a.walk === walk), 'sidestep keeps walk = ' + walk);
+    ok(side.every((a) => a.look && a.look.x === look.x && a.look.z === look.z), 'sidestep keeps the look target');
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('\nFailures:\n' + failures.map(f => ' * ' + f).join('\n')); process.exit(1); }

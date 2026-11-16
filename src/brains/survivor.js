@@ -727,11 +727,14 @@ export function makeSurvivor(P) {
       return a;
     }
 
-    // body-blocked by a teammate (moving, no progress, a teammate within 1.2 m) for 0.6 s: sidestep for 0.5 s
+    // body-blocked by a teammate (moving, no progress, a teammate within 1.2 m) for 0.6 s: sidestep for 0.5 s.
+    // The sidestep keeps the current action's gait and camera (`walk`, `look`): sidestepping a teammate while sneaking
+    // must not turn into a run (scratch marks). Running here would have to be an explicit choice of the inner action.
     let blockedT = 0, sideUntil = -99, sideDir = null;
+    const sidestep = (a) => { const o = { moveDir: sideDir }; if (a && a.walk) o.walk = true; if (a && a.look) o.look = a.look; return o; };
     function unblock(obs, a) {
       const me = obs.self;
-      if (obs.t < sideUntil && sideDir) return { moveDir: sideDir };
+      if (obs.t < sideUntil && sideDir) return sidestep(a);
       const mt = a && a.moveTo;
       const mate = obs.teammates.find((t) => d2(t, me) < 1.2 && (t.state === 'healthy' || t.state === 'injured'));
       if (!mt || a.act || d2(mt, me) < 1 || !mate || Math.hypot(me.vx, me.vz) > 0.3) { blockedT = 0; return a; }
@@ -742,7 +745,7 @@ export function makeSurvivor(P) {
       const gx = mt.x - me.x, gz = mt.z - me.z, L = Math.hypot(gx, gz) || 1;
       const sgn = ((mate.x - me.x) * -gz + (mate.z - me.z) * gx) > 0 ? -1 : 1;   // step to the side away from the teammate
       sideDir = { x: (-gz / L) * sgn + (gx / L) * 0.3, z: (gx / L) * sgn + (gz / L) * 0.3 };
-      return { moveDir: sideDir };
+      return sidestep(a);
     }
 
     return {
