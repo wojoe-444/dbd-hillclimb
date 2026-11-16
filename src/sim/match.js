@@ -642,6 +642,8 @@ export class Match {
       return;
     }
     const crawl = s.st === S_DOWNED;
+    // genre: once the hunter has started picking a downed survivor up, they're locked in place (can't crawl out of reach)
+    if (crawl && this.hunter.curAct === 'pickup' && this.hunter.curTgt === s.id) { s.vx = s.vz = 0; s.prog = 0; s.curAct = null; return; }
     let speed = crawl ? sv.crawlSpeed : (A.walk ? sv.walkSpeed : sv.runSpeed);
     if (!crawl) {
       const haste = s.protT > 0 ? 1 + cfg.unhook.haste : 1;

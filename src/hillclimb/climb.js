@@ -83,16 +83,17 @@ function runJobs(jobs) {
 }
 
 // ---------- scoring ----------
-// Zero-sum score in [0,1] from the hunter's perspective.
+// Zero-sum score in [0,1] from the hunter's perspective. A survivor still in the match at the time cap counts as a
+// loss for the survivors (hiding until the cap isn't a win in the genre; otherwise the climb learns to stall).
 export function hunterScore(r) {
-  return 0.85 * (r.kills / 4) + 0.15 * (1 - Math.min(5, r.gensDone) / 5);
+  return 0.85 * ((r.kills + (r.timeouts ?? 0)) / 4) + 0.15 * (1 - Math.min(5, r.gensDone) / 5);
 }
 function summarize(results) {
   const n = results.length;
-  const s = { n, hunterScore: 0, kills: 0, escapes: 0, gensDone: 0, hooks: 0, durationS: 0 };
+  const s = { n, hunterScore: 0, kills: 0, escapes: 0, timeouts: 0, gensDone: 0, hooks: 0, durationS: 0 };
   for (const r of results) {
     s.hunterScore += hunterScore(r);
-    s.kills += r.kills; s.escapes += r.escapes; s.gensDone += r.gensDone;
+    s.kills += r.kills; s.escapes += r.escapes; s.timeouts += r.timeouts ?? 0; s.gensDone += r.gensDone;
     s.hooks += r.hooks; s.durationS += r.durationS;
   }
   for (const k of Object.keys(s)) if (k !== 'n') s[k] = +(s[k] / n).toFixed(4);

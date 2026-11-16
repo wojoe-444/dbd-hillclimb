@@ -757,6 +757,16 @@ test('anti-camp Resolve: face-camp fills in 30-40 s, kick-and-leave barely moves
   ok(!('resolve' in so.self) && so.teammates.every(t => !('resolve' in t)), 'survivor obs: no resolve info');
 });
 
+test('pickup locks the downed survivor in place (no crawling out of reach mid-pickup)', () => {
+  const { m, ctl } = mk();
+  const v = m.survivors[0];
+  place(m.hunter, 30.5, 26.5); place(v, 31.7, 26.5); v.st = DOWNED; v.bleedT = 200;
+  ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });            // crawl away at 0.7 m/s
+  ctl.H = () => ({ act: 'pickup', target: 0 });
+  run(m, 25);
+  ok(m.hunter.carrying === 0, 'pickup completes although the survivor tries to crawl away');
+});
+
 test('determinism with the param brains: same seed, same result regardless of cache state / match order', () => {
   const gh = load('maps/gas-heaven.json');
   const B = getBrains();
@@ -772,7 +782,7 @@ test('determinism with the param brains: same seed, same result regardless of ca
 
 test('full matches with the baseline brains: terminate, consistent, every mechanic fires', () => {
   // eased batch (faster gens, longer hook stages) so the trivial baseline brains reliably reach the gates
-  const maps = [['test-small', smallMap, 30], ['test-small eased', smallMap, 10, { gens: { repairS: 10 }, hooks: { stageS: 120 } }]];
+  const maps = [['test-small', smallMap, 30], ['test-small eased', smallMap, 10, { gens: { repairS: 8 }, hooks: { stageS: 120 }, hunter: { pickupS: 4, hookS: 3 } }]];
   if (bigMap) maps.push([bigMap.id, bigMap, 8]);
   const seen = {};
   for (const [name, map, n, config] of maps) {

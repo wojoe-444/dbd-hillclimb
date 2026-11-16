@@ -27,6 +27,7 @@ export function playOne({ seed, hunterParams, survivorParams, config }) {
     mapId: map.id,
     kills: res.kills,
     escapes: res.escapes,
+    timeouts: res.timeouts,
     gensDone: res.gensDone,
     hooks: res.hooks,
     durationS: res.durationS,

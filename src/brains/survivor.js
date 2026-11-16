@@ -22,6 +22,7 @@ export const survivorSpace = {
   sneakMaxS:     [3, 60, 15],    // give up sneaking (go back to work despite terror) after this long
   protectHoldS:  [0, 10, 0],     // after unhook: hold off conspicuous actions (repair/heal/rescue/gate) for this many of the 10 protected seconds
   mendRiskDist:  [0, 40, 16],    // only mend Deep Wound if the hunter isn't seen within this
+  holdMaxS:      [0, 20, 4],     // max time to hold at a loop anchor while the hunter isn't pressing us (seen + approaching)
 };
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -59,6 +60,7 @@ export function makeSurvivor(P) {
     const dismissed = [-1, -1, -1, -1]; // lastSeen.t values we already found stale
     let fleePoint = null, fleeT = -99;
     let sneakStart = -1;
+    let idleHoldT = 0;            // time spent holding at an anchor without being pressed
 
     const anchorUsable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] !== 'broken');
     const crossable = (a, obs) => (a.kind === 'w' ? !obs.blockedWindows.includes(a.id) : obs.pallets[a.i] === 'dropped');
@@ -85,6 +87,10 @@ export function makeSurvivor(P) {
       if (anchor) {
         const ms = side(anchor, me), hs = side(anchor, hp);
         const dhm = d2(hp, me);
+        // hold an anchor only while the hunter is actually pressing us (seen, close, closing in); otherwise give up the loop
+        const pressing = h && dhm < 16 && ((h.vx * (me.x - h.x) + h.vz * (me.z - h.z)) / Math.max(0.1, dhm)) > 1.0;
+        idleHoldT = pressing ? 0 : idleHoldT + api.dt * (ctx.config.decisionEvery || 1);
+        if (idleHoldT > P.holdMaxS) { anchor = null; idleHoldT = 0; return null; }
         if (anchor.kind === 'p' && obs.pallets[anchor.i] === 'up') {
           const p = anchor.p;
           const near = rectDist(me.x, me.z, p.x0, p.z0, p.x1, p.z1) <= 1.1;
@@ -136,7 +142,7 @@ export function makeSurvivor(P) {
         if (mode === 'chase') {
           const a = chase(obs, api, me, h);
           if (a) return a;
-          mode = 'sneak';
+          mode = 'sneak'; sneakStart = obs.t;
         }
         const walk = P.walkWhenTR > 0.5 && obs.terror !== null;
 
