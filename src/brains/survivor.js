@@ -43,11 +43,31 @@ export const survivorSpace = {
   avoidHeading:  [0, 1, 0.6],    // >0.5: skip anchors the hunter is heading toward (it would cut us off)
   chaseToMatesW: [-1, 1, 0],     // in a chase: >0 run toward teammates known to be repairing, <0 lead the hunter away from them
   edgeAvoidW:    [-1, 1, 0],     // in a chase: >0 avoid loops / flee points within 16 m of the map's outer wall, <0 prefer them
+  followFleeW:   [-1, 1, 0],     // fleeing (chase flee point / loop anchor / hide spot): >0 run the same way as a visible teammate who's fleeing the hunter, <0 diverge
+  genClusterW:   [-1, 1, 0],     // fleeing (flee point / loop anchor / hide spot): >0 toward the tightest cluster of unfinished gens I've perceived, <0 away
   weakPalletM:   [0, 20, 8],     // a pallet whose hunter detour is below this is "weak"...
   weakDropDist:  [1.5, 8, 4],    // ...and gets dropped as soon as the hunter is this close (no holding for a stun)
+  // ---- hiding while the hunter is NOT visible (own belief map about the hunter: hunterbelief.js) ----
+  hbSpread:      [0.3, 1.2, 0.8],  // belief: how fast the hunter's possible area grows, as a fraction of hunter speed
+  hideThreat:    [0.05, 1.05, 1.05],// hide when P(hunter within hideThreatR, soft) >= this (> 1 = never; default off: A/B vs the default hunter cost gens)
+  hideThreatR:   [8, 32, 16],      // radius (m) of that threat estimate
+  hideOnLayer:   [0, 3.5, 0],      // also hide while hearing a terror layer >= this (layer 1 = outermost; < 1 = off)
+  hideOnClosing: [0, 1, 0.3],      // >0.5: also hide when the terror layer got closer within the last 4 s
+  hideProgSlack: [0, 1, 0.3],      // while repairing: raise the threat threshold by this x my generator's progress
+  hideStayS:     [0, 15, 3],       // keep hiding this long after the trigger clears (hysteresis)
+  hideMaxS:      [5, 60, 20],      // give up a hide after this long (then no new unseen-hunter hide for 10 s)
+  hideMoveMaxM:  [0, 30, 12],      // how far I'll move to a hiding spot (0 = freeze where I am)
+  coverW:        [0, 3, 1],        // hiding-spot score: weight of the spot's cover (vs its threat and the walk there)
+  exposeW:       [0, 3, 1.5],      // hiding-spot score: penalty for line of sight from where my belief puts the hunter
+  hideGenFear:   [0, 2, 0.5],      // hide-spot exposure: weight of the gen I was on as a hunter viewpoint (x the belief's top mass)
+  coverRun:      [0, 1, 0.3],      // >0.5: run to the hiding spot (faster, scratch marks); else walk
+  hideNerveM:    [0, 30, 8],       // hiding and the hunter shows up without seeing me: stay frozen unless it comes closer than this
+  genCoverW:     [-1, 2, 0],       // generator choice: prefer gens with well-covered repair slots
+  genThreatW:    [0, 3, 0.5],      // generator choice: avoid gens where my belief puts the hunter (P within 24 m)
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
+import { HunterBelief } from './hunterbelief.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
@@ -144,6 +164,123 @@ export function makeSurvivor(P) {
       return best;
     }
 
+    // ---- hiding from an UNSEEN hunter: own belief map + static cover ----
+    const belief = new HunterBelief(ctx, { spread: P.hbSpread });
+    const beliefOn = P.hideThreat <= 1 || P.genThreatW > 0;   // otherwise only the terror trend is tracked
+    let hide = null;              // { start, lastTrig, spot, spotT }
+    let hideCooldownUntil = -99;
+    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0 };   // diagnostics (read by scripts via brain.stats)
+    let wasChased = false, lastHideTickT = -99;
+    let genCover = null;          // per gen: mean cover of its repair slots (lazy)
+    const genCoverOf = (i) => {
+      if (!genCover) genCover = gens.map((g) => { const sl = g.slots && g.slots.length ? g.slots : [g]; return sl.reduce((a, s) => a + belief.coverAt(s.x, s.z), 0) / sl.length; });
+      return genCover[i];
+    };
+    let thrCache = { v: -1, x: 0, z: 0, val: 0 };
+    const myThreat = (me) => {   // threatAt(me), recomputed only when the belief changed or I moved > 1 m
+      if (thrCache.v !== belief.version || Math.abs(me.x - thrCache.x) + Math.abs(me.z - thrCache.z) > 1) thrCache = { v: belief.version, x: me.x, z: me.z, val: belief.threatAt(me, P.hideThreatR) };
+      return thrCache.val;
+    };
+    function hideTrigger(obs, me, hysteresis) {
+      const layer = obs.terror ? obs.terror.layer : 0;
+      if (P.hideOnLayer >= 1 && layer >= P.hideOnLayer) return true;
+      if (P.hideOnClosing > 0.5 && layer > 0 && belief.trend(obs.t, 4) > 0) return true;
+      if (P.hideThreat <= 1) {
+        let thr = P.hideThreat;
+        if (me.act === 'repair' && genTarget >= 0) thr += P.hideProgSlack * obs.gens[genTarget].progress;
+        if (hysteresis) thr *= 0.7;
+        if (myThreat(me) >= thr) return true;
+      }
+      return false;
+    }
+    // visible teammates fleeing the hunter (fast, moving away from its known / estimated position, or HUD-chased):
+    // their unit velocities. alignTo(c) = mean cos(angle between (c - me) and those velocities).
+    function fleeingMates(obs, me) {
+      if (P.followFleeW === 0 || !obs.teammates.length) return [];
+      let hp = obs.hunter;
+      if (!hp && obs.lastHunter && obs.t - obs.lastHunter.t < 10) hp = obs.lastHunter;
+      if (!hp && beliefOn) hp = belief.expectedPos();
+      if (!hp) hp = obs.lastHunter;
+      const out = [];
+      for (const t of obs.teammates) {
+        const v = Math.hypot(t.vx || 0, t.vz || 0);
+        if (v < 2.5) continue;
+        const chased = obs.hud && obs.hud[t.id] && obs.hud[t.id].chased;
+        const away = hp && (t.vx * (t.x - hp.x) + t.vz * (t.z - hp.z)) > 0;
+        if (chased || away) out.push({ x: t.vx / v, z: t.vz / v });
+      }
+      return out;
+    }
+    // tightest group of up to 3 unfinished generators this survivor has actually perceived (seenT >= 0); never uses
+    // positions of gens it hasn't seen. < 2 known: the nearest known one. Recomputed when the known/done set changes.
+    let clusterKey = '', clusterC = null;
+    function genCluster(obs, me) {
+      const known = [];
+      for (let i = 0; i < obs.gens.length; i++) { const g = obs.gens[i]; if (g.seenT >= 0 && !g.done) known.push(g); }
+      if (known.length < 2) return known.length ? known[0] : null;
+      const key = known.map((g) => g.id).join(',');
+      if (key === clusterKey) return clusterC;
+      clusterKey = key;
+      const k = Math.min(3, known.length);
+      let best = null, bs = Infinity;
+      for (let a = 0; a < known.length; a++) for (let b = a + 1; b < known.length; b++) {
+        if (k === 2) { const sum = d2(known[a], known[b]); if (sum < bs) { bs = sum; best = [known[a], known[b]]; } continue; }
+        for (let c = b + 1; c < known.length; c++) {
+          const sum = d2(known[a], known[b]) + d2(known[a], known[c]) + d2(known[b], known[c]);
+          if (sum < bs) { bs = sum; best = [known[a], known[b], known[c]]; }
+        }
+      }
+      clusterC = { x: best.reduce((t, g) => t + g.x, 0) / best.length, z: best.reduce((t, g) => t + g.z, 0) / best.length };
+      return clusterC;
+    }
+    const clusterAt = (cc, c) => (cc ? Math.max(0, 40 - d2(c, cc)) / 40 : 0);
+    const alignTo = (fl, me, c) => {
+      if (!fl.length) return 0;
+      const dx = c.x - me.x, dz = c.z - me.z, L = Math.hypot(dx, dz);
+      if (L < 0.5) return 0;
+      let a = 0; for (const u of fl) a += (dx * u.x + dz * u.z) / L;
+      return a / fl.length;
+    };
+
+    function pickHideSpot(obs, api, me) {
+      const fl = fleeingMates(obs, me);
+      const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
+      const R = P.hideMoveMaxM, W = M.w, Hh = M.h;
+      const here = { x: me.x, z: me.z };
+      if (R < 1.5) return here;
+      const cands = [{ pt: here, d: 0 }];
+      for (let rr = 2; rr <= R; rr += 2) {
+        const n = Math.min(16, 6 + 2 * rr);
+        for (let k = 0; k < n; k++) {
+          const a = ((k + (rr % 4 ? 0.5 : 0)) / n) * 2 * Math.PI, x = me.x + Math.cos(a) * rr, z = me.z + Math.sin(a) * rr;
+          const i = Math.floor(x), j = Math.floor(z);
+          if (i < 0 || j < 0 || i >= W || j >= Hh || !belief.fine[j * W + i]) continue;
+          cands.push({ pt: { x: i + 0.5, z: j + 0.5 }, d: rr });
+        }
+      }
+      // cheap pre-score (cover - straight-line walk), then threat + path distance for the best few
+      for (const c of cands) c.s = P.coverW * belief.coverAt(c.pt.x, c.pt.z) - 0.5 * c.d / R;
+      cands.sort((a, b) => b.s - a.s);
+      const top = beliefOn && P.exposeW > 0 ? belief.topCells(12) : null;
+      // the hunter will come to check the generator I was working on: count it as a likely viewpoint too
+      if (top && hide && hide.gen >= 0) { const g = gens[hide.gen], m = top.reduce((a, c) => a + c.p, 0); top.push({ x: g.x, z: g.z, p: m * P.hideGenFear }); }
+      let best = here, bs = -Infinity;
+      let tried = 0;
+      for (const c of cands) {
+        if (tried >= 6) break;
+        if (c.d && !api.walkClear(me, c.pt)) continue;    // straight-line reachable only (cheap; no A*)
+        tried++;
+        const d = c.d;
+        let s = P.coverW * belief.coverAt(c.pt.x, c.pt.z) - 0.5 * d / R - 2 * belief.threatAt(c.pt, P.hideThreatR);
+        if (top) s -= P.exposeW * belief.exposure(api, c.pt, top);
+        if (fl.length) s += P.followFleeW * 10 * alignTo(fl, me, c.pt);
+        if (cc) s += P.genClusterW * 10 * clusterAt(cc, c.pt);
+        if (hide && hide.spot && d2(c.pt, hide.spot) < 1.5) s += 0.1;     // keep the current spot unless clearly worse
+        if (s > bs) { bs = s; best = c.pt; }
+      }
+      return best;
+    }
+
     function matesOnGens(obs) {
       const out = [];
       if (!obs.hud) return out;
@@ -171,6 +308,8 @@ export function makeSurvivor(P) {
 
     function chase(obs, api, me, h) {
       const mates = P.chaseToMatesW !== 0 ? matesOnGens(obs) : [];
+      const fl = fleeingMates(obs, me);
+      const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
       const nav = api.nav;
       const hp = h ?? obs.lastHunter;
       if (!hp) return null;
@@ -187,7 +326,7 @@ export function makeSurvivor(P) {
           if (!(dm < P.loopRange && dm < P.loopRace * dh)) continue;
           // the hunter is heading for it: it would cut us off there
           if (h && P.avoidHeading > 0.5) { const tx = a.c.x - h.x, tz = a.c.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dh < d2(me, a.c) + 4) continue; }
-          const sc = dm - P.loopQualityW * Math.min(30, a.detour) - P.chaseToMatesW * 10 * mateCloseness(mates, a.c) + P.edgeAvoidW * 10 * edgeness(a.c);
+          const sc = dm - P.loopQualityW * Math.min(30, a.detour) - P.chaseToMatesW * 10 * mateCloseness(mates, a.c) + P.edgeAvoidW * 10 * edgeness(a.c) - P.followFleeW * 10 * alignTo(fl, me, a.c) - P.genClusterW * 10 * clusterAt(cc, a.c);
           if (sc < bd) { bd = sc; best = a; }
         }
         anchor = best;
@@ -221,7 +360,7 @@ export function makeSurvivor(P) {
         let bs = -Infinity;
         const cands = [...gens, ...M.hooks, ...anchors.filter((a) => anchorUsable(a, obs)).map((a) => ({ x: a.c.x, z: a.c.z, q: a.detour }))];
         for (const c of cands) {
-          const s = d2(c, hp) - 0.6 * d2(c, me) + P.loopQualityW * Math.min(30, c.q ?? 0) + P.chaseToMatesW * 10 * mateCloseness(mates, c) - P.edgeAvoidW * 10 * edgeness(c);
+          const s = d2(c, hp) - 0.6 * d2(c, me) + P.loopQualityW * Math.min(30, c.q ?? 0) + P.chaseToMatesW * 10 * mateCloseness(mates, c) - P.edgeAvoidW * 10 * edgeness(c) + P.followFleeW * 10 * alignTo(fl, me, c) + P.genClusterW * 10 * clusterAt(cc, c);
           if (d2(c, hp) < d2(me, hp)) continue;
           if (s > bs) { bs = s; fleePoint = { x: c.x, z: c.z }; }
         }
@@ -231,11 +370,17 @@ export function makeSurvivor(P) {
     }
 
     return {
+      stats,
+      belief,
       decide(obs, api) {
         const me = obs.self, h = obs.hunter, nav = api.nav;
         // hooked brains are called now (minimal obs): take the Resolve self-unhook when offered (was automatic before)
         if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
         if (me.state === 'carried') return { act: 'wiggle' };
+        belief.update(obs, api, 2.0, beliefOn);   // heavy belief step every 2 s (sightings, hooks, auras, layer changes apply at once)
+        stats.decides++;
+        if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; }   // chase on me began within 5 s of hiding
+        wasChased = !!me.chased;
         if (me.state === 'downed') {
           // crawl out through an open gate if one is close
           if (obs.gates) for (const g of obs.gates) {
@@ -266,6 +411,11 @@ export function makeSurvivor(P) {
         const dh = h ? d2(h, me) : Infinity;
         // a teammate is healing me: stand still (healing needs an idle patient) unless the hunter is close
         if (hud && hud[me.id] && hud[me.id].beingHealed && !(h && dh < 10)) return {};
+        // hiding and the hunter appears but can't see me (and isn't close): don't bolt (running is what starts a chase)
+        if (hide && h && !me.chased && dh >= P.hideNerveM && !hunterCouldSee(api, h, me)) {
+          hide.lastTrig = obs.t; stats.hideTicks++; lastHideTickT = obs.t;
+          return {};
+        }
         if (h && dh < P.fleeSeenDist) { mode = 'chase'; lastThreatT = obs.t; }
         else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
           if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
@@ -286,6 +436,25 @@ export function makeSurvivor(P) {
           const a = chase(obs, api, me, h);
           if (a) { if (me.chased && obs.t - chaseSentT > 30) { chaseSentT = obs.t; return say(a, 'chasingMe'); } return a; }
           mode = 'sneak'; sneakStart = obs.t;
+        }
+
+        // ---- hide from an unseen hunter that my belief / the terror radius says is close or closing in ----
+        if (mode === 'chase' || h || me.chased || obs.gatesPowered) {
+          hide = null;
+        } else {
+          const trig = hideTrigger(obs, me, !!hide);
+          if (trig && !hide && obs.t >= hideCooldownUntil) { hide = { start: obs.t, lastTrig: obs.t, spot: null, spotT: -99, gen: me.act === 'repair' || (genTarget >= 0 && d2(me, gens[genTarget]) < 4) ? genTarget : -1 }; stats.hides++; }
+          if (hide) {
+            if (trig) hide.lastTrig = obs.t;
+            if (obs.t - hide.lastTrig > P.hideStayS) hide = null;
+            else if (obs.t - hide.start > P.hideMaxS) { hide = null; hideCooldownUntil = obs.t + 10; }
+          }
+          if (hide) {
+            stats.hideTicks++; lastHideTickT = obs.t;
+            if (!hide.spot || obs.t - hide.spotT >= 2) { hide.spot = pickHideSpot(obs, api, me); hide.spotT = obs.t; }
+            if (d2(me, hide.spot) > 0.6) return { moveTo: hide.spot, walk: P.coverRun <= 0.5 };
+            return {};
+          }
         }
         const walk = P.walkWhenTR > 0.5 && obs.terror !== null;
 
@@ -387,6 +556,8 @@ export function makeSurvivor(P) {
             if (hpos) s -= P.farFromHunterW * Math.min(60, d2(gens[i], hpos)) / 20;
             s += P.genJitter * jitter[i];
             if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(gens[i], obs.lastHunter)) / 10;
+            if (P.genCoverW !== 0) s -= P.genCoverW * 3 * genCoverOf(i);
+            if (P.genThreatW > 0 && beliefOn) s += P.genThreatW * 3 * belief.pHunterWithin(gens[i], 24);
             if (i === genTarget) s -= 0.5; // hysteresis
             if (s < bs) { bs = s; bi = i; }
           }
