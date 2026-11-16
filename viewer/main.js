@@ -289,7 +289,7 @@ async function loadMeta() {
     const txt = await (await fetch(`../runs/${name}/evo.jsonl`)).text();
     meta = txt.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((e) => ({
       gen: e.gen, side: 'population', accepted: false, evo: e,
-      after: { kills: e.outcome.kills, escapes: e.outcome.escapes, gensDone: e.outcome.gensDone },
+      after: { kills: e.outcome.kills, escapes: e.outcome.escapes, gensDone: e.outcome.gensDone, hookStages: e.outcome.hookStages },
       champ: { hunter: e.hunters.ranking[0].params, survivor: e.survivors.ranking[0].params },
     }));
   } else if (name) {
@@ -341,7 +341,9 @@ function drawChart() {
     meta.forEach((r, i) => (i ? g.lineTo(X(i), Y(r.after[key], max)) : g.moveTo(X(i), Y(r.after[key], max))));
     g.stroke();
   };
-  line('kills', 4, '#e55');
+  // hunter line: average hook stages (0..12) for population runs; kills (0..4) for old climb runs
+  const stages = meta[0].after.hookStages !== undefined;
+  line(stages ? 'hookStages' : 'kills', stages ? 12 : 4, '#e55');
   line('gensDone', 5, '#5be');
   meta.forEach((r, i) => {
     if (!r.accepted) return;
@@ -350,7 +352,8 @@ function drawChart() {
   });
   const sel = +$('gen').value;
   if (sel > 0) { g.strokeStyle = '#fff8'; g.beginPath(); g.moveTo(X(sel - 1), pad); g.lineTo(X(sel - 1), H - pad); g.stroke(); }
-  g.fillStyle = '#888'; g.font = '18px system-ui'; g.fillText('4', 2, Y(4, 4) + 5); g.fillText('0', 2, Y(0, 4) + 5);
+  g.fillStyle = '#888'; g.font = '18px system-ui'; g.fillText(stages ? '12' : '4', 2, Y(4, 4) + 5); g.fillText('0', 2, Y(0, 4) + 5);
+  $('hunterLegend').textContent = stages ? '■ hunter: avg hook stages (0–12)' : '■ avg kills (0–4)';
   drawKnobChart();
 }
 
