@@ -39,12 +39,12 @@ export const gasHeavenLayout = {
     },
     inner8: {
       decay: 1,
-      tiles: { 'dead-empty': 2, 'dead-gen': 1.5, 'dead-tree': 2, 'dead-rocks': 1.5, 'dead-car': 1, 'dead-tallrock': 1,
+      tiles: { 'dead-empty': 2, 'dead-gen': 1.5, 'dead-tree': 2, 'dead-rocks': 1.5, 'dead-car': 1, 'dead-tallrock': 4, 'dead-tallrock2': 2,   // user: more sight-blocking, non-loopable rocks
         'small-lowl': 0.7, 'small-rock': 0.7, 'small-tree': 0.7, 'small-car': 0.7 },
     },
     ring8: {
       decay: 0.95,
-      tiles: { 'dead-empty': 3, 'dead-gen': 1.5, 'dead-tree': 3, 'dead-rocks': 2, 'dead-car': 2, 'dead-tallrock': 2,
+      tiles: { 'dead-empty': 3, 'dead-gen': 1.5, 'dead-tree': 3, 'dead-rocks': 2, 'dead-car': 2, 'dead-tallrock': 4, 'dead-tallrock2': 2,
         'small-lowl': 0.35, 'small-tree': 0.35, 'small-rock': 0.35 },
     },
   },

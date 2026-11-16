@@ -434,6 +434,10 @@ tile({
   id: 'dead-tallrock', name: 'Dead zone: tall rock (no pallet)', size: 8, category: 'dead', rate: deadRate,
   rows: ['........', '........', '...RR...', '...RR...', '........', '......H.', '........', '........'],
 });
+tile({
+  id: 'dead-tallrock2', name: 'Dead zone: two small tall rocks (no pallet, set apart)', size: 8, category: 'dead', rate: deadRate,
+  rows: ['........', '.RR.....', '.RR.....', '........', '......H.', '.....RR.', '.....RR.', '........'],
+});
 tile({ id: 'gate', name: 'Exit gate area', size: 8, category: 'gate', rate: deadRate, rows: filled(8) });
 
 export const TILES = Object.fromEntries(T.map(t => [t.id, t]));
