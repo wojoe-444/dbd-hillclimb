@@ -4,25 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>dbd-hillclimb viewer</title>
-<style>
-  :root { color-scheme: dark; font: 13px/1.35 system-ui, sans-serif; }
-  body { margin: 0; display: grid; grid-template-columns: 1fr 340px; height: 100vh; background: #111; color: #ddd; }
-  #view { position: relative; overflow: hidden; }
-  #view canvas { display: block; }
-  #hud { position: absolute; left: 10px; top: 10px; background: #000a; padding: 8px 10px; border-radius: 6px; pointer-events: none; min-width: 220px; }
-  #hud .row { display: flex; gap: 8px; align-items: center; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-  #side { overflow-y: auto; padding: 10px 12px; background: #1a1a1a; border-left: 1px solid #333; }
-  h2 { font-size: 13px; margin: 14px 0 6px; color: #9ab; text-transform: uppercase; letter-spacing: .05em; }
-  button, select, input { background: #2a2a2a; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 3px 7px; font: inherit; }
-  button.on { background: #3b5; color: #000; }
-  .bar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-  #log { font: 11px/1.3 ui-monospace, monospace; max-height: 180px; overflow-y: auto; white-space: pre; color: #aaa; }
-  #params { font: 11px/1.3 ui-monospace, monospace; white-space: pre; color: #bbb; }
-  #chart { width: 100%; height: 150px; background: #151515; border: 1px solid #333; border-radius: 4px; }
-  #genInfo { color: #aaa; }
-  .legend span { margin-right: 8px; }
-</style>
+<link rel="stylesheet" href="./viewer.css">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -31,44 +13,172 @@
 </script>
 </head>
 <body>
-<div id="view"><div id="hud"></div></div>
-<div id="side">
-  <h2>Match</h2>
-  <div class="bar">
-    <button id="play">Pause</button>
-    <span>speed</span>
-    <select id="speed"><option>1</option><option>2</option><option selected>4</option><option>8</option><option>16</option><option>32</option></select>
-    <button id="cam">Top-down</button>
-    <label title="where the hunter believes survivors are"><input type="checkbox" id="heat" checked> hunter belief</label>
+<div id="toolbar">
+  <div class="grp">
+    <button id="play" title="Space">Pause</button>
+    <span class="lbl">speed</span>
+    <select id="speed" title="[ / ]"><option>1</option><option>2</option><option selected>4</option><option>8</option><option>16</option><option>32</option></select>
   </div>
-  <div class="bar" style="margin-top:6px">
-    <span>seed</span><input id="seed" type="number" value="1" style="width:80px">
-    <button id="restart">Restart</button><button id="random">Random seed</button>
+  <div class="grp">
+    <span class="lbl">seed</span><input id="seed" type="number" value="1" style="width:84px">
+    <button id="restart" title="R">Restart</button><button id="random" title="N">Random</button>
   </div>
-  <div class="bar" style="margin-top:6px"><span>map</span><select id="map" style="flex:1"></select></div>
-  <div class="legend" style="margin-top:6px">pallets: <span style="color:#f2d24b">■ upright (tall board)</span><span style="color:#ff5a1f">■ dropped (slab)</span><span style="color:#8a6d50">■ broken (splinters)</span></div>
-  <div class="legend">hunter glow: <span style="color:#d33">■ lunging</span><span style="color:#7a8fcc">■ attack cooldown (slowed)</span><span style="color:#cc3">■ stunned</span></div>
+  <div class="grp"><span class="lbl">map</span><select id="map" style="max-width:250px"></select></div>
+  <div class="grp"><span class="lbl">run</span><select id="run" style="max-width:190px"></select></div>
+  <div class="grp">
+    <span class="lbl">gen</span><input id="gen" type="range" min="0" max="0" value="0" style="width:150px">
+    <span id="genLabel">defaults</span>
+    <label title="play the selected generation's champions (else default params)"><input type="checkbox" id="useChamp" checked> champs</label>
+  </div>
+  <div class="grp">
+    <button id="cam" title="T">Top-down</button>
+    <label title="hunter belief layer: where it thinks survivors are (H) — all layers: Layers tab (L)"><input type="checkbox" id="heat" checked> belief</label>
+  </div>
+  <div class="spacer"></div>
+  <div class="grp"><a href="duel.html" style="color:var(--ink2)" title="1 hunter vs 1 survivor shack duels (visual chase debugging)">Shack duel ↗</a></div>
+  <div class="grp">
+    <button id="fsBtn" title="Full-screen 3D view (F) — Esc to return">⛶ Full screen <kbd>F</kbd></button>
+  </div>
+</div>
 
-  <h2>Meta (hill-climb run)</h2>
-  <div class="bar"><select id="run" style="max-width:100%"></select></div>
-  <canvas id="chart" width="600" height="300"></canvas>
-  <div id="knobBox" style="display:none;margin-top:6px">
-    <div class="bar"><span>knob</span><select id="knob" style="flex:1"></select></div>
-    <canvas id="knobChart" width="600" height="300" style="width:100%;height:150px;background:#151515;border:1px solid #333;border-radius:4px;margin-top:4px"></canvas>
+<div id="main">
+  <div id="view">
+    <div id="hud"></div>
+    <div id="viewBtns">
+      <button id="fsBtn2" title="Full screen (F)">⛶</button>
+    </div>
+    <div id="layerFloat"></div>
+    <div id="fsHint"><kbd>Esc</kbd> / <kbd>F</kbd> exit full screen · <kbd>L</kbd> layers · <kbd>Space</kbd> pause · <kbd>T</kbd> top-down</div>
   </div>
-  <div class="legend"><span style="color:#e55" id="hunterLegend">■ avg kills</span><span style="color:#5be">■ gens done</span><span style="color:#999">▲ accepted (red=hunter, blue=surv)</span></div>
-  <div class="bar" style="margin-top:6px">
-    <span>generation</span><input id="gen" type="range" min="0" max="0" value="0" style="flex:1">
-  </div>
-  <div id="genInfo"></div>
-  <div class="bar" style="margin-top:4px">
-    <label><input type="checkbox" id="useChamp" checked> play this generation's champions</label>
-  </div>
-  <h2>Champion params</h2>
-  <div id="params"></div>
+  <div id="resizer" title="drag to resize · double-click to reset"></div>
+  <div id="dock">
+    <div id="tabs">
+      <button data-tab="match" class="active">Match<kbd>1</kbd></button>
+      <button data-tab="evo">Evolution<kbd>2</kbd></button>
+      <button data-tab="knobs">Knobs<kbd>3</kbd></button>
+      <button data-tab="map">Map<kbd>4</kbd></button>
+      <button data-tab="champ">Champion<kbd>5</kbd></button>
+      <button data-tab="layers">Layers<kbd>6</kbd></button>
+      <button data-tab="keys">?</button>
+      <span class="spacer"></span>
+      <button class="dockctl" id="dockPos" title="move the stats dock to the bottom / right (B)">⇵</button>
+      <button class="dockctl" id="dockHide" title="hide the stats dock (D)">✕</button>
+    </div>
 
-  <h2>Events</h2>
-  <div id="log"></div>
+    <!-- MATCH -->
+    <section class="pane active" id="pane-match">
+      <div class="tiles" id="tiles"></div>
+      <h3>Generators</h3>
+      <div class="gens" id="gensBar"></div>
+      <h3>Survivors</h3>
+      <div class="cards" id="survCards"></div>
+      <h3>Hunter</h3>
+      <div class="cards" id="hunterCard"></div>
+      <h3>Match timeline</h3>
+      <div class="charts" id="timeline">
+        <div class="chartbox"><div class="ttl">Generator progress <span class="lg">(gens, of needed)</span></div><canvas class="chart" id="tlGens"></canvas></div>
+        <div class="chartbox"><div class="ttl">Hook stages consumed <span class="lg">(0–12)</span></div><canvas class="chart" id="tlStages"></canvas></div>
+        <div class="chartbox"><div class="ttl">Survivors still in the trial</div><canvas class="chart" id="tlAlive"></canvas></div>
+      </div>
+      <h3>Events</h3>
+      <div class="ctl">
+        <select id="logMode"><option value="key">key events</option><option value="all">all events</option></select>
+        <input id="logFilter" placeholder="filter (e.g. hook, S2)" style="flex:1;min-width:120px">
+        <label><input type="checkbox" id="logFollow" checked> follow</label>
+      </div>
+      <div id="log"></div>
+    </section>
+
+    <!-- EVOLUTION -->
+    <section class="pane" id="pane-evo">
+      <div id="evoInfo" class="muted"></div>
+      <h3>Progress over generations <span class="muted" style="text-transform:none;letter-spacing:0">— click / drag a chart to pick a generation</span></h3>
+      <div class="charts" id="evoCharts"></div>
+      <h3 id="rankTitle">Rankings</h3>
+      <div class="two" id="rankings"></div>
+    </section>
+
+    <!-- KNOBS -->
+    <section class="pane" id="pane-knobs">
+      <div id="knobEmpty" class="muted">Knob distributions need a population run (evo.jsonl) — pick one in the toolbar.</div>
+      <div id="knobBody">
+        <div class="ctl">
+          <span class="muted">knob</span><select id="knob" style="min-width:200px"></select>
+          <span class="muted" id="knobRange"></span>
+        </div>
+        <div class="two">
+          <div class="chartbox" style="grid-column: span 2"><div class="ttl" id="knobTitle"></div><canvas class="chart tall" id="knobChart"></canvas>
+            <div class="legend" style="margin-top:4px"><span><span class="sq" style="background:#3987e566"></span>middle 50%</span><span><span class="sw" style="background:#9cc4f5"></span>median</span><span><span class="sq" style="background:#ffd24a"></span>best individual</span><span><span class="sq" style="background:#3987e533"></span>individuals</span><span><span class="sw" style="background:#898781"></span>default</span></div>
+          </div>
+        </div>
+        <div class="two" style="margin-top:10px">
+          <div class="chartbox"><div class="ttl" id="histTitle">Distribution at selected generation</div><canvas class="chart" id="knobHist"></canvas></div>
+          <div class="chartbox"><div class="ttl">Population spread (sd) over generations</div><canvas class="chart" id="knobSd"></canvas></div>
+        </div>
+        <h3>All knobs at the selected generation</h3>
+        <div class="ctl">
+          <select id="knobSide"><option value="all">both sides</option><option value="hunter">hunter</option><option value="survivor">survivor</option></select>
+          <input id="knobSearch" placeholder="search knobs" style="min-width:120px">
+          <label title="≥ half the population (or the median / best) sits at the edge of the allowed range"><input type="checkbox" id="knobEdge"> pinned at range edge only</label>
+          <span class="muted" id="knobCount"></span>
+        </div>
+        <table id="knobTable"></table>
+      </div>
+    </section>
+
+    <!-- MAP -->
+    <section class="pane" id="pane-map">
+      <div class="two">
+        <div><canvas id="minimap"></canvas>
+          <div class="legend" style="margin-top:6px">
+            <span><span class="sq" style="background:#f2d24b"></span>pallet up</span><span><span class="sq" style="background:#ff5a1f"></span>dropped</span><span><span class="sq" style="background:#8a6d50"></span>broken</span>
+            <span><span class="sq" style="background:#6fc8e8"></span>window</span><span><span class="sq" style="background:#c98500"></span>generator</span><span><span class="sq" style="background:#99232f"></span>hook</span><span><span class="sq" style="background:#8866cc"></span>exit gate</span>
+          </div>
+        </div>
+        <div>
+          <h3>Variant</h3>
+          <table id="mapInfo"></table>
+          <h3>3D legend</h3>
+          <div class="legend">pallets: <span style="color:#f2d24b">■ upright (tall board)</span><span style="color:#ff5a1f">■ dropped (slab)</span><span style="color:#8a6d50">■ broken (splinters)</span></div>
+          <div class="legend" style="margin-top:4px">hunter glow: <span style="color:#d33">■ lunging</span><span style="color:#7a8fcc">■ attack cooldown (slowed)</span><span style="color:#cc3">■ stunned</span></div>
+          <div class="legend" style="margin-top:4px">overlays: <span style="color:#ff6a40">■ hunter vision cone</span><span style="color:#ff3030">○ terror radius</span><span style="color:#ffb040">■ belief heat (toggle: belief / H)</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAMPION -->
+    <section class="pane" id="pane-champ">
+      <div id="champInfo" class="muted"></div>
+      <div class="ctl" style="margin-top:8px">
+        <label><input type="checkbox" id="champChanged"> changed from default only</label>
+        <input id="champSearch" placeholder="search params">
+      </div>
+      <div class="two" id="champTables"></div>
+    </section>
+
+    <!-- LAYERS -->
+    <section class="pane" id="pane-layers"><div id="layerPanel"></div></section>
+
+    <!-- KEYS -->
+    <section class="pane" id="pane-keys">
+      <h3>Keyboard</h3>
+      <table class="help">
+        <tr><td><kbd>F</kbd></td><td>toggle full-screen 3D view (stats hidden, minimal HUD)</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>leave full screen</td></tr>
+        <tr><td><kbd>Space</kbd></td><td>pause / play</td></tr>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>slower / faster</td></tr>
+        <tr><td><kbd>R</kbd> / <kbd>N</kbd></td><td>restart match / random seed</td></tr>
+        <tr><td><kbd>T</kbd></td><td>top-down camera</td></tr>
+        <tr><td><kbd>H</kbd></td><td>hunter belief layer on / off</td></tr>
+        <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>Match · Evolution · Knobs · Map · Champion · Layers tabs</td></tr>
+        <tr><td><kbd>L</kbd></td><td>Layers (in full screen: floating layers panel)</td></tr>
+        <tr><td><kbd>D</kbd></td><td>hide / show the stats dock (3D fills the window, toolbar stays)</td></tr>
+        <tr><td><kbd>B</kbd></td><td>dock on the right / at the bottom</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>previous / next generation (plays its champions)</td></tr>
+      </table>
+      <p class="muted">Drag the bar between the 3D view and this dock to resize it (double-click resets). Layout is remembered.</p>
+    </section>
+  </div>
 </div>
 <script type="module" src="./main.js"></script>
 </body>

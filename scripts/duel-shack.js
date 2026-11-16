@@ -22,6 +22,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+// shared duel setup (geometry, setup grid, harness); no imports of its own, so --src still picks the sim + brains
+import { inside, OPEN, nearestOpening, situation, NEUTRALIZE, buildGrid as buildDuelGrid, createDuel, pushFix } from '../src/duel/shack.js';
 
 const a = {};
 const argv = process.argv.slice(2);
@@ -41,27 +43,6 @@ if (!['assist', 'strong', 'brain'].includes(HUNTER_MODE)) throw new Error('--hun
 const JITTER = a.jitter === undefined ? 0.5 : +a.jitter;   // seeded start-position jitter (m), hunter; survivor gets 0.6x
 const map = JSON.parse(readFileSync(a.map ?? 'maps/duel-shack.json', 'utf8'));
 
-// ---------------------------------------------------------------- geometry of the shack (see maps/duel-shack.json)
-const BOX = { x0: 11, z0: 11, x1: 21, z1: 21 };           // outer walls (cells 11..20)
-const inside = (x, z) => x > 12 && x < 20 && z > 12 && z < 20;   // interior cells 12..19 (body centre)
-const OPEN = {
-  northDoor: { x: 14.0, z: 11.5 },
-  window: { x: 20.5, z: 14.5 },
-  palletDoor: { x: 18.0, z: 20.5 },
-};
-const nearestOpening = (x, z) => { let best = null, bd = Infinity; for (const [k, p] of Object.entries(OPEN)) { const d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = k; } } return { k: best, d: bd }; };
-const boxDist = (x, z) => { const dx = Math.max(BOX.x0 - x, 0, x - BOX.x1), dz = Math.max(BOX.z0 - z, 0, z - BOX.z1); return Math.hypot(dx, dz); };
-
-const SPOTS = {
-  inside: { x: 15.5, z: 16.5 },         // middle of the shack
-  northDoor: { x: 14.0, z: 11.5 },      // standing in the open north doorway
-  palletDoor: { x: 18.0, z: 21.6 },     // just outside the south pallet door
-  window: { x: 21.6, z: 14.5 },         // outside, next to the east window
-  outside: { x: 7.5, z: 16.5 },         // open ground 3.5 m west of the shack
-};
-const DUMMY_POS = [{ x: 38.5, z: 12.5 }, { x: 38.5, z: 18.5 }, { x: 38.5, z: 24.5 }];   // pocket strip x = 38
-const dummy = () => ({ decide() { return {}; } });
-
 // ---------------------------------------------------------------- brains
 const B = getBrains('param', 'param');
 // Duel neutralisation of generator-driven hunter knobs: the gens sit in the unreachable pocket, and with
@@ -69,7 +50,7 @@ const B = getBrains('param', 'param');
 // abandons every chase where the survivor is farther from the pocket than itself (ignored for 15 s). --noNeutralize keeps it.
 // --hp key=val,key=val: hunter knob overrides (on top of the neutralisation), e.g. --hp reverseChance=0.5,predictLeadS=0.5
 const HP_OVERRIDES = Object.fromEntries((a.hp ? String(a.hp).split(',') : []).map((kv) => { const [k, v] = kv.split('='); if (!(k in B.hunter.space)) throw new Error('unknown hunter knob ' + k); return [k, +v]; }));
-const HUNTER_OVERRIDES = { ...(a.noNeutralize ? {} : { clusterActivate: 0 }), ...HP_OVERRIDES };
+const HUNTER_OVERRIDES = { ...(a.noNeutralize ? {} : NEUTRALIZE), ...HP_OVERRIDES };
 // --sp key=val,key=val: survivor knob overrides on top of default / champion knobs (sensitivity checks)
 const SP_OVERRIDES = Object.fromEntries((a.sp ? String(a.sp).split(',') : []).map((kv) => { const [k, v] = kv.split('='); if (!(k in B.survivor.space)) throw new Error('unknown survivor knob ' + k); return [k, +v]; }));
 const loadParams = (champ) => {
@@ -78,93 +59,15 @@ const loadParams = (champ) => {
   return { name: champ, hp: { ...clampParams(B.hunter.space, c.hunter), ...HUNTER_OVERRIDES }, sp: { ...clampParams(B.survivor.space, c.survivor), ...SP_OVERRIDES } };
 };
 
-// ---------------------------------------------------------------- setup grid
-const place = (o, x, z, face) => { o.x = x; o.z = z; o.vx = o.vz = 0; if (face !== undefined) o.face = face; };
-function hunterSpots(spot) {
-  // candidate hunter positions 8 / 12 / 16 m away at 8 angles, on free open ground, with line of sight to the survivor
-  const m = createMatch({ map, seed: 1, hunter: dummy, survivors: dummy });
-  const out = [];
-  for (const r of [8, 12, 16]) for (let k = 0; k < 8; k++) {
-    const ang = (k * Math.PI) / 4 + (r === 12 ? Math.PI / 8 : 0);
-    const x = Math.floor(spot.x + r * Math.cos(ang)) + 0.5;     // cell centres
-    const z = Math.floor(spot.z + r * Math.sin(ang)) + 0.5;
-    if (x < 1.5 || z < 1.5 || x > 30.5 || z > 30.5) continue;
-    if (boxDist(x, z) < 1.5) continue;                                       // not inside / hugging the shack
-    const c = Math.floor(z) * m.W + Math.floor(x);
-    if (m.md.kind[c] !== 0) continue;
-    if (!m.hunter.api.los({ x, z }, spot)) continue;
-    out.push({ x, z, r, deg: Math.round((ang * 180) / Math.PI) });
-  }
-  return out;
-}
-function buildGrid() {
-  const grid = [];
-  for (const [spotName, spot] of Object.entries(SPOTS)) {
-    if (a.spot && a.spot !== spotName) continue;
-    const hs = hunterSpots(spot);
-    // up to 4 hunter positions spread over the valid ones (by angle), mixing distances
-    hs.sort((p, q) => p.deg - q.deg || p.r - q.r);
-    const pick = [];
-    const want = Math.min(4, hs.length);
-    for (let i = 0; i < want; i++) pick.push(hs[Math.floor((i * hs.length) / want + (i % 3) * 0.34 * (hs.length / want)) % hs.length]);
-    for (const health of ['healthy', 'injured']) {
-      if (a.health && a.health !== health) continue;
-      for (const h of pick) grid.push({ spot: spotName, s: spot, h, health, id: `${spotName}/${health}/h${h.r}m@${h.deg}` });
-    }
-  }
-  return grid;
-}
+// ---------------------------------------------------------------- setup grid (src/duel/shack.js)
+const buildGrid = () => buildDuelGrid(map, createMatch, { spot: a.spot, health: a.health });
 
 // ---------------------------------------------------------------- one duel
 function duel(setup, seed, P, opts = {}) {
   const trace = [];
-  const sBrainFactory = B.survivor.make(P.sp);
-  const acts = [];   // survivor actions (decide calls)
-  const wrapped = (ctx) => {
-    const br = sBrainFactory(ctx);
-    return { ...br, decide(obs, api) { const act = br.decide(obs, api); acts.push({ t: obs.t, act }); if (acts.length > 400) acts.splice(0, 200); return act; }, get stats() { return br.stats; } };
-  };
-  // hunter: the param brain always decides (its state stays consistent); in 'assist' mode, once it has NOT seen the
-  // real survivor for ASSIST_AFTER s, its action is replaced by "path to the survivor's true position" (a stand-in for
-  // perfect scratch-mark tracking; short occlusions stay the brain's own): the brain's search / belief patrol stalls
-  // next to the shack on this tiny map (see docs/research/shack-duel.md).
-  const hFactory = B.hunter.make(P.hp);
-  let hAct = {}, S = null, assistTicks = 0, lastSeenT = 0, breakAssists = 0;
-  const hWrapped = (ctx) => {
-    const br = hFactory(ctx);
-    return { ...br, decide(obs, api) {
-      hAct = br.decide(obs, api) || {};
-      const sees = obs.survivors.some((s) => s.id === 0 && (s.state === 'healthy' || s.state === 'injured'));
-      if (sees) lastSeenT = obs.t;
-      if (HUNTER_MODE !== 'brain' && S && S.st <= 1 && !sees && obs.t - lastSeenT >= ASSIST_AFTER) {
-        hAct = { moveTo: { x: S.x, z: S.z }, assisted: true }; assistTicks++;
-      }
-      // 'strong' adds pallet discipline: a dropped shack pallet within 3 m gets broken (walk up + break), unless the
-      // survivor is in swing range on my side (the brain's attack wins then)
-      if (HUNTER_MODE === 'strong' && obs.pallets[0] === 'dropped' && !obs.self.carrying && !(hAct.act === 'attack')) {
-        const pl = ctx.map.pallets[0], dp = Math.hypot(pl.cx - obs.self.x, pl.cz - obs.self.z);
-        if (dp <= 3) { hAct = { moveTo: { x: pl.cx, z: pl.cz }, act: 'breakPallet', target: pl.id, assisted: true }; breakAssists++; }
-      }
-      return hAct;
-    } };
-  };
-  const m = createMatch({ map, seed, hunter: hWrapped, survivors: [wrapped, dummy, dummy, dummy] });
-  S = m.survivors[0];
-  const H = m.hunter;
-  for (let i = 0; i < 3; i++) place(m.survivors[i + 1], DUMMY_POS[i].x, DUMMY_POS[i].z);
-  // seeded jitter of both start positions (kept on free cells with line of sight; else unjittered)
-  let js = (seed * 2654435761) >>> 0;
-  const jr = () => { js = (js * 1664525 + 1013904223) >>> 0; return js / 4294967296 - 0.5; };
-  let hx = setup.h.x, hz = setup.h.z, sx = setup.s.x, sz = setup.s.z;
-  if (JITTER > 0) {
-    const free = (x, z) => m.md.kind[Math.floor(z) * m.W + Math.floor(x)] === 0 && m.md.kind[Math.floor(z - 0.4) * m.W + Math.floor(x)] !== 1 && m.md.kind[Math.floor(z + 0.4) * m.W + Math.floor(x)] !== 1 && m.md.kind[Math.floor(z) * m.W + Math.floor(x - 0.4)] !== 1 && m.md.kind[Math.floor(z) * m.W + Math.floor(x + 0.4)] !== 1;
-    const hx2 = hx + 2 * JITTER * jr(), hz2 = hz + 2 * JITTER * jr(), sx2 = sx + 1.2 * JITTER * jr(), sz2 = sz + 1.2 * JITTER * jr();
-    if (free(hx2, hz2) && free(sx2, sz2) && H.api.los({ x: hx2, z: hz2 }, { x: sx2, z: sz2 })) { hx = hx2; hz = hz2; sx = sx2; sz = sz2; }
-  }
-  place(H, hx, hz, Math.atan2(sz - hz, sx - hx));
-  place(S, sx, sz, Math.atan2(hz - sz, hx - sx));              // survivor (body + camera) faces the hunter
-  S.camYaw = S.face; S.camX = sx; S.camZ = sz; S.camTick = -1;
-  if (setup.health === 'injured') S.st = 1;
+  // match + harness (survivor 0 vs hunter; dummies parked; seeded start jitter; hunter assist / strong modes): src/duel/shack.js
+  const D = createDuel({ map, createMatch, B, setup, seed, P, hunterMode: HUNTER_MODE, assistAfter: ASSIST_AFTER, jitter: JITTER });
+  const { m, S, H, acts } = D, { sx, sz } = D.start;
 
   const r = {
     id: setup.id, spot: setup.spot, health: setup.health, hunterR: setup.h.r, hunterDeg: setup.h.deg, seed,
@@ -185,21 +88,14 @@ function duel(setup, seed, P, opts = {}) {
     const op = nearestOpening(S.x, S.z);
     const pal = m.ps[0];
     const recentBreak = r.palletBreakT !== null && t - r.palletBreakT < 8;
-    let c;
-    if (midVault) c = 'mid-vault';
-    else if (recentBreak) c = 'after-pallet-break';
-    else if (op.d < 2.2 && op.k === 'window') c = 'at-window';
-    else if (op.d < 2.2 && op.k === 'palletDoor') c = pal === 0 ? 'at-pallet-up' : 'at-pallet-door';
-    else if (op.d < 2.2) c = 'at-north-door';
-    else if (inside(S.x, S.z)) c = 'inside-shack';
-    else if (boxDist(S.x, S.z) < 2.5) c = 'along-wall';
-    else c = 'open-ground';
+    const c = situation(S.x, S.z, { midVault, recentBreak, palletUp: pal === 0 });
     return { t, c, x: +S.x.toFixed(1), z: +S.z.toFixed(1), hx: +H.x.toFixed(1), hz: +H.z.toFixed(1), d: +Math.hypot(H.x - S.x, H.z - S.z).toFixed(2),
       bloodlust: m.blTier, pallet: ['up', 'dropped', 'broken'][pal], winBlocked: m.winBlockT[0] > m.t, opening: op.k, opD: +op.d.toFixed(1) };
   };
 
   while (!m.over && m.t < CAP - 1e-9) {
     m.step();
+    const hAct = D.hAct();
     const t = +m.t.toFixed(2);
     // events
     for (; evI < m.events.length; evI++) {
@@ -211,13 +107,8 @@ function duel(setup, seed, P, opts = {}) {
         if (e.state === 'downed') { r.tDown = t; r.aliveS = t; r.cause = cl.c; }
       } else if (e.type === 'palletDrop' && e.by === 0) {
         r.palletDropT = t; r.palletStun = !!e.stun;
-        // engine gap: the push-out only moves actors whose CENTRE is inside the footprint; a hunter whose body circle
-        // overlaps it (centre within R of the footprint edge) is left overlapping a solid cell and can then get stuck
-        // for good along the shack wall. PUSH_FIX applies the intended push-out to the hunter here.
-        const pl = m.md.pallets[0], R = m.R;
-        const ov = pl.axis === 'z' ? (H.x > pl.x0 - R && H.x < pl.x1 + R && H.z > pl.z0 - R && H.z < pl.z1 + R)
-                                   : (H.z > pl.z0 - R && H.z < pl.z1 + R && H.x > pl.x0 - R && H.x < pl.x1 + R);
-        if (ov) { r.pushOverlap = (r.pushOverlap || 0) + 1; if (PUSH_FIX && !H.vault) { if (pl.axis === 'z') H.z = H.z < pl.cz ? pl.z0 - 0.5 : pl.z1 + 0.5; else H.x = H.x < pl.cx ? pl.x0 - 0.5 : pl.x1 + 0.5; } }
+        // engine gap (pallet push-out misses a hunter overlapping the footprint): see pushFix in src/duel/shack.js
+        if (pushFix(m, PUSH_FIX)) r.pushOverlap = (r.pushOverlap || 0) + 1;
       }
       else if (e.type === 'palletBreak') { r.palletBreakT = t; const pl = m.md.pallets[0]; r.survDistAtBreak = +Math.hypot(S.x - pl.cx, S.z - pl.cz).toFixed(2); r.windowDistAtBreak = +Math.hypot(S.x - OPEN.window.x, S.z - OPEN.window.z).toFixed(2); }
       else if (e.type === 'bloodlust') r.maxBloodlust = Math.max(r.maxBloodlust, e.tier);
@@ -269,7 +160,7 @@ function duel(setup, seed, P, opts = {}) {
   r.laps = +(r.passes.length / 2).toFixed(1);
   r.passVia = r.passes.reduce((o, p) => { o[p.via] = (o[p.via] || 0) + 1; return o; }, {});
   r.hunterBlindS = +r.hunterBlindS.toFixed(1); r.hunterStuckS = +r.hunterStuckS.toFixed(1); r.insideS = +r.insideS.toFixed(1); r.survStillNearS = +r.survStillNearS.toFixed(1);
-  r.assistS = +(assistTicks * m.dt).toFixed(1); r.breakAssistS = +(breakAssists * m.dt).toFixed(1);
+  r.assistS = +(D.counters.assistTicks * m.dt).toFixed(1); r.breakAssistS = +(D.counters.breakAssists * m.dt).toFixed(1);
   r.hunterEndPos = { x: +H.x.toFixed(1), z: +H.z.toFixed(1) };
   r.overEarly = m.over ? m.result().endReason : null;   // should stay null (dummies keep the match alive)
   return { r, trace };
