@@ -254,7 +254,7 @@ function hud() {
   }).join('');
   const H = m.hunter;
   const hs = H.vault ? 'vaulting' : H.stunT > 0 ? 'stunned' : H.windT > 0 ? 'lunging' : H.cdT > 0 ? 'cooldown' : H.curAct ?? (H.carrying >= 0 ? `carrying S${H.carrying}` : 'hunting');
-  $('hud').innerHTML = `<b>${fmtT(m.t)}</b> · gens ${m.gensDone}/${m.gensNeeded}${m.gatesPowered ? ` · <b>GATES</b> ${m.endgameT > 0 ? fmtT(m.endgameT) : ''}` : ''}
+  $('hud').innerHTML = `<div style="color:#9ab">${(map.id || map._path || '').replace('gas-heaven-', 'variant ')}</div><b>${fmtT(m.t)}</b> · gens ${m.gensDone}/${m.gensNeeded}${m.gatesPowered ? ` · <b>GATES</b> ${m.endgameT > 0 ? fmtT(m.endgameT) : ''}` : ''}
     ${m.over ? ` · <b>OVER</b> (${m.result().kills}K / ${m.result().escapes}E)` : ''}
     <div class="row" style="margin-top:4px"><span class="dot" style="background:#d8313b"></span>Hunter ${hs}</div>${rows}`;
 }
@@ -274,6 +274,7 @@ function log() {
 // ---------------------------------------------------------------- meta runs
 let meta = [];
 let runKinds = {};
+let variantPool = [];
 let champ = { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
 async function loadRuns() {
   const runs = await (await fetch('/api/runs')).json().catch(() => []);
@@ -394,7 +395,9 @@ function drawKnobChart() {
 // ---------------------------------------------------------------- loop
 let paused = false, acc = 0, last = performance.now();
 async function newMatch() {
-  const want = $("map").value;
+  // "auto": the variant the evolution workers would use for this seed (pool sorted like loadMapPool: v000..v031; seed % n)
+  let want = $("map").value;
+  if (want === "auto") want = variantPool.length ? variantPool[(+$("seed").value || 1) % variantPool.length] : "maps/gas-heaven.json";
   if (want && want !== map._path) { map = await loadMap(want); map._path = want; buildStatic(map); }
   const seed = +$('seed').value || 1;
   const use = $('useChamp').checked ? champ : { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
@@ -420,6 +423,7 @@ function frame(now) {
 
 $('play').onclick = () => { paused = !paused; $('play').textContent = paused ? 'Play' : 'Pause'; };
 $('restart').onclick = newMatch;
+$('seed').onchange = newMatch;
 $('random').onclick = () => { $('seed').value = Math.floor(Math.random() * 1e6); newMatch(); };
 $('run').onchange = loadMeta;
 $('knob').onchange = drawKnobChart;
@@ -436,8 +440,9 @@ $('cam').onclick = () => {
 buildStatic(map);
 map._path = "maps/gas-heaven.json";
 const mapList = await (await fetch("/api/maps")).json().catch(() => ["maps/gas-heaven.json"]);
-$("map").innerHTML = mapList.map((m) => `<option>${m}</option>`).join("");
-$("map").value = "maps/gas-heaven.json";
+variantPool = mapList.filter((m) => m.startsWith('maps/gas-heaven/v') && m.endsWith('.json')).sort();
+$("map").innerHTML = `<option value="auto">auto: variant by seed (what the bots train on)</option>` + mapList.map((m) => `<option>${m}</option>`).join("");
+$("map").value = variantPool.length ? "auto" : "maps/gas-heaven.json";
 $("map").onchange = newMatch;
 await loadRuns();
 newMatch();
