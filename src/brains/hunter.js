@@ -554,6 +554,16 @@ export function makeHunter(P0) {
         if (patrolGen >= 0) return sweep(api, me, gens[patrolGen], obs.t, P.lookSweepDeg, P.lookPeriodS, P.glanceS);
         return {};
       },
+      // ---- viewer debug layers (viewer/layers.js): read-only snapshot of existing state as plain copies; never called by
+      // the sim and mutates nothing.
+      debug() {
+        return {
+          target, chaseStart, goto: goto ? { ...goto } : null, hookTarget: hookTarget ? { ...hookTarget } : null, patrolGen,
+          camp: camp ? { x: camp.x, z: camp.z, until: camp.until, mode: camp.mode } : null, ignoreUntil: ignoreUntil.slice(),
+          mind: mind.mode ? { ...mind.mode } : null,
+          belief: { W: belief.W, H: belief.H, cs: belief.cs, state: belief.state.slice(), p: belief.p.map((a) => Float32Array.from(a)) },
+        };
+      },
     };
   };
 }

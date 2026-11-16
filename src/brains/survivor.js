@@ -996,6 +996,26 @@ export function makeSurvivor(P) {
         if (genTarget === -2 && exploreTo) return { moveTo: exploreTo, walk };
         return {};
       },
+      // ---- viewer debug layers (viewer/layers.js): read-only snapshot of existing state as plain copies; never called by
+      // the sim, mutates nothing a decision reads (the opt-in parts only fill deterministic lazy memos). t = match time.
+      debug(t = 0, opts = {}) {
+        const cp = (o) => (o ? { ...o } : null);
+        const goal = circ ? loops.sidePt[circ.seq[circ.i]] : fleePoint;
+        const out = {
+          id: ctx.id, mode, genTarget, exploreTo: cp(exploreTo), fleePoint: cp(fleePoint), fleeT, routeT, brk: cp(brk), hide: hide ? { ...hide, spot: cp(hide.spot) } : null,
+          circ: circ ? { ...circ, seq: circ.seq.slice(), pts: circ.seq.map((x) => [loops.sidePt[x], loops.sidePt[x ^ 1]]), anchors: circ.seq.map((x) => loops.anchors[x >> 1].id) } : null,
+          myVault: myVault ? { t: myVault.t, c: myVault.c } : null, goal: cp(goal),
+          route: goal ? { W: routes.W, cells: routes.path(goal.x, goal.z) } : null,
+          know: { W: know.W, H: know.H, cs: know.cs, open: Uint8Array.from(know.open), seen: Uint8Array.from(know.seen), fraction: know.fraction(),
+            anchors: loops.anchors.map((a, k) => ({ id: a.id, kind: a.kind, x: a.c.x, z: a.c.z, known: !!know.anchorKnown[k] })) },
+          hb: { W: belief.W, H: belief.H, cs: belief.cs, heat: belief.heat(), lastSeen: cp(belief.lastSeen), seenNow: belief.seenNow },
+          mates: [0, 1, 2, 3].map((j) => (j === ctx.id ? null : { ...rescue.tracker.est(j, t), state: rescue.tracker.state[j], intent: cp(rescue.tracker.intent[j]) })),
+        };
+        if (opts.fields) out.fields = { W: routes.W, H: routes.H, fS: Int32Array.from(routes.fS), fH: Int32Array.from(routes.fH) };
+        if (opts.cover) { const W = belief.W, H = belief.H, c = new Float32Array(W * H); for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) c[j * W + i] = belief.walk[j * W + i] ? belief.coverAt((i + 0.5) * belief.cs, (j + 0.5) * belief.cs) : -1; out.cover = { W, H, cs: belief.cs, v: c }; }
+        if (opts.loops) out.loops = loops.anchors.map((a, k) => ({ id: a.id, kind: a.kind, x: a.c.x, z: a.c.z, held: loops.detour(k) }));
+        return out;
+      },
     };
   };
 }

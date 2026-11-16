@@ -71,6 +71,25 @@ test('determinism: same seed => identical result, different seed differs', () =>
   ok(JSON.stringify(a.record.frames).length / a.ticks < 400, `frames stay light (${(JSON.stringify(a.record.frames).length / a.ticks) | 0} bytes/tick)`);
 });
 
+test('brain debug() snapshots (viewer layers) never change a match', () => {
+  const map = bigMap || smallMap, B = getBrains('param', 'param');
+  const run = (poll) => {
+    const m = createMatch({ map, seed: 7, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(defaults(B.survivor.space)) });
+    let polls = 0;
+    while (!m.over && m.tick < 2400) {
+      m.step();
+      if (!poll || m.tick % 2) continue;
+      m.hunter.brain.debug();
+      for (const s of m.survivors) s.brain.debug(m.t, { fields: true, cover: m.tick % 600 === 0, loops: m.tick === 40 });
+      polls++;
+    }
+    return { r: JSON.stringify(m.result()), polls };
+  };
+  const off = run(false), on = run(true);
+  ok(on.polls > 100, `debug polled ${on.polls} times`);
+  ok(on.r === off.r, 'match with debug polling every 2nd tick is byte-identical to one without');
+});
+
 test('setup: 7 of 11 generator candidates chosen (seeded), distinct per-agent rng/ctx/obs objects', () => {
   const ctxs = [];
   const m = createMatch({
