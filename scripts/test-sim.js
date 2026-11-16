@@ -14,6 +14,8 @@ import { LoopModel } from '../src/brains/loops.js';
 import { MapKnowledge } from '../src/brains/mapknow.js';
 import { RouteEval } from '../src/brains/routes.js';
 import { RouteLookahead } from '../src/brains/lookahead.js';
+import { generateOutline, checkOutlineCells, outlineToCells, OUTLINE_FAMILIES, generateFromLayout, gasHeavenLayout, makeRng, outlineInset, TILES } from '../src/mapgen/index.js';
+import { analyzeMap } from './validate-map.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = p => JSON.parse(fs.readFileSync(path.resolve(root, p), 'utf8'));
@@ -1801,6 +1803,131 @@ test('determinism with the new hunter knobs (endgame / pallet respect / hook cho
   for (let i = 0; i < seeds.length; i++) ok(fwd[i].key === rev[i].key, 'seed ' + seeds[i] + ' identical forward vs reverse order');
   ok(go(seeds[0]).key === fwd[0].key, 'same seed run again: identical');
   ok(fwd.some(x => x.powered), 'at least one of these matches reaches the endgame (gates powered)');
+});
+
+// ---------------------------------------------------------------- map shapes (src/mapgen/outline.js)
+const cellsOf = (o) => outlineToCells(o, 8);
+const cellArea = (g) => g.cells.reduce((a, c) => a + c, 0);
+function connected4(g) {
+  const { cw, ch, cells } = g, start = cells.indexOf(1), seen = new Uint8Array(cells.length), q = [start];
+  seen[start] = 1; let n = 0;
+  while (q.length) {
+    const c = q.pop(); n++; const i = c % cw, j = (c - i) / cw;
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = i + di, b = j + dj, k = b * cw + a; if (a >= 0 && b >= 0 && a < cw && b < ch && cells[k] && !seen[k]) { seen[k] = 1; q.push(k); } }
+  }
+  return n === cellArea(g);
+}
+// independent min-width check: every inside cell lies in a 4x4 block of inside cells
+function minWidth4(g) {
+  const { cw, ch, cells } = g, at = (i, j) => i >= 0 && j >= 0 && i < cw && j < ch && cells[j * cw + i];
+  const sq = (i, j) => { for (let b = 0; b < 4; b++) for (let a = 0; a < 4; a++) if (!at(i + a, j + b)) return false; return true; };
+  for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) if (cells[j * cw + i]) {
+    let ok2 = false;
+    for (let b = -3; b <= 0 && !ok2; b++) for (let a = -3; a <= 0 && !ok2; a++) ok2 = sq(i + a, j + b);
+    if (!ok2) return false;
+  }
+  return true;
+}
+test('map outlines: area 144-153 tiles, 8 m tile alignment, connected, min width 4 tiles, aspect <= 1.6, deterministic', () => {
+  const seen = new Set();
+  for (const fam of OUTLINE_FAMILIES) for (let s = 0; s < 10; s++) {
+    const o = generateOutline(makeRng(9000 + s), { family: fam }), tag = fam + ' seed ' + s;
+    const g = cellsOf(o.outline), area = cellArea(g);
+    ok(area >= 144 && area <= 153 && area === o.area, tag + ': area ' + area + ' tiles (' + area * 64 + ' m2)');
+    ok(o.outline.every(([x, z]) => x % 8 === 0 && z % 8 === 0), tag + ': vertices on the 8 m tile grid');
+    ok(o.outline.every((p, i) => { const q = o.outline[(i + 1) % o.outline.length]; return (p[0] === q[0]) !== (p[1] === q[1]); }), tag + ': edges axis-aligned');
+    ok(Math.min(...o.outline.map(p => p[0])) === 0 && Math.min(...o.outline.map(p => p[1])) === 0, tag + ': bbox starts at 0,0');
+    ok(connected4(g), tag + ': connected');
+    ok(minWidth4(g), tag + ': min width 4 tiles');
+    ok(checkOutlineCells(g) === null, tag + ': passes checkOutlineCells (' + checkOutlineCells(g) + ')');
+    ok(Math.max(g.cw, g.ch) / Math.min(g.cw, g.ch) <= 1.6, tag + ': aspect ' + g.cw + 'x' + g.ch);
+    ok(JSON.stringify(generateOutline(makeRng(9000 + s), { family: fam }).outline) === JSON.stringify(o.outline), tag + ': deterministic');
+    seen.add(JSON.stringify(o.outline));
+  }
+  ok(seen.size >= 30, 'outlines vary by seed / family (' + seen.size + ' distinct of 40)');
+  // the checker rejects what the owner ruled out
+  const grid = (rows) => ({ cw: rows[0].length, ch: rows.length, cells: Uint8Array.from(rows.join('').split('').map(c => (c === '#' ? 1 : 0))) });
+  const rect = (n, m) => Array.from({ length: m }, () => '#'.repeat(n));
+  ok(checkOutlineCells(grid(rect(12, 12))) === null, 'checker: 12x12 square is valid');
+  ok(checkOutlineCells(grid(rect(9, 16))) === 'aspect', 'checker: 9x16 rejected (aspect > 1.6)');
+  ok(checkOutlineCells(grid(rect(11, 11))) === 'area 121', 'checker: 11x11 rejected (area)');
+  const corridor = [...rect(12, 6), '###.........', '###.........', ...rect(12, 6)];
+  const cr = checkOutlineCells(grid(corridor), { minCells: 0 });
+  ok(cr === 'thin part' || cr === 'neck', 'checker: 3-wide corridor rejected (' + cr + ')');
+  const diag = [...Array.from({ length: 4 }, () => '####....'), ...Array.from({ length: 4 }, () => '...#####').map(r => r.slice(0, 8))];
+  ok(checkOutlineCells(grid(diag), { minCells: 0, maxAspect: 9 }) !== null, 'checker: blocks joined by a 1-tile neck rejected');
+  const holed = rect(12, 12).map((r, j) => (j === 5 ? '#####..#####' : r));
+  ok(checkOutlineCells(grid(holed), { minCells: 0 }) !== null, 'checker: hole rejected');
+});
+
+test('shaped variants: content inside the outline, gens >= 6 m from the wall, gates, hooks, fixed pieces present (kept or moved)', () => {
+  const L = gasHeavenLayout, C = 8;
+  for (const [k, fam] of OUTLINE_FAMILIES.entries()) {
+    let r = null, seed = 0;
+    for (let a = 0; a < 12 && !(r && r.ok); a++) { seed = 7100 + k * 50 + a; r = generateFromLayout(L, seed, { shaped: true, family: fam }); }
+    ok(r && r.ok, fam + ': a shaped variant generates');
+    if (!r || !r.ok) continue;
+    const map = r.map, tag = fam + ' seed ' + seed;
+    const res = analyzeMap(map);
+    ok(res.errors.length === 0, tag + ': validator clean (' + res.errors.slice(0, 2).join('; ') + ')');
+    const sh = map.mapgen.shape;
+    ok(sh && sh.family === fam && sh.areaM2 >= 9216 && sh.areaM2 <= 9792, tag + ': shape recorded, area ' + (sh && sh.areaM2));
+    const g = cellsOf(map.outline);
+    const inTile = (x, z) => { const i = Math.floor(x / C), j = Math.floor(z / C); return i >= 0 && j >= 0 && i < g.cw && j < g.ch && g.cells[j * g.cw + i] === 1; };
+    const tiles = map.mapgen.tiles;
+    ok(tiles.every(t => { for (let z = t.z; z < t.z + t.size; z += C) for (let x = t.x; x < t.x + t.size; x += C) if (!inTile(x, z)) return false; return true; }), tag + ': every tile inside the outline');
+    const pts = [...map.obstacles.flatMap(o => [[o.x, o.z], [o.x + o.w - 0.5, o.z + o.d - 0.5]]), ...map.windows.map(w => [w.x, w.z]), ...map.pallets.map(p => [p.x, p.z]),
+      ...map.generators.map(p => [p.x, p.z]), ...map.hooks.map(p => [p.x, p.z]), ...map.exitGates.flatMap(e => [[e.lever.x, e.lever.z], [e.exit.x, e.exit.z]])];
+    ok(pts.every(([x, z]) => inTile(x, z)), tag + ': obstacles / windows / pallets / gens / hooks / gates inside the outline');
+    ok(map.generators.every(p => outlineInset(p.x, p.z, map.outline) >= 6), tag + ': generators >= 6 m from the outer wall');
+    const eg = map.exitGates;
+    ok(eg.length === 2 && Math.hypot(eg[0].exit.x - eg[1].exit.x, eg[0].exit.z - eg[1].exit.z) >= L.gates.minDistance, tag + ': 2 exit gates far apart');
+    ok(res.maxHookDistance <= L.hooks.radius, tag + ': hook coverage ' + res.maxHookDistance + ' m <= ' + L.hooks.radius);
+    for (const id of ['tl-wall', 'shack', 'infinite-loop']) ok(tiles.some(t => t.tile === id), tag + ': fixed piece ' + id + ' present');
+    ok(tiles.filter(t => t.category === 'maze').length >= 3 && tiles.some(t => t.tile === 'jgv1') && tiles.some(t => t.tile === 'jgv2') && tiles.some(t => t.category === 'carpile'),
+      tag + ': mazes, both jungle gyms and the car pile present');
+    const shack = tiles.find(t => t.tile === 'shack');
+    ok(shack && shack.mirror === false, tag + ': shack never mirrored');
+    // a landmark only moves when its own slot does not fit (outside the outline, or taken by an earlier piece)
+    for (const mv of sh.moved.filter(m => m.from)) {
+      const n = TILES[mv.piece] ? TILES[mv.piece].size : 16;
+      let fitsHome = true;
+      for (let z = mv.from[1]; z < mv.from[1] + n; z += C) for (let x = mv.from[0]; x < mv.from[0] + n; x += C) if (!inTile(x, z)) fitsHome = false;
+      const taken = tiles.some(t => t.role !== 'gate' && t.category !== 'filler' && t.category !== 'dead' && t.role !== 'loop' && !(t.x === mv.to[0] && t.z === mv.to[1])
+        && t.x < mv.from[0] + n && mv.from[0] < t.x + t.size && t.z < mv.from[1] + n && mv.from[1] < t.z + t.size);
+      ok(!fitsHome || taken || sh.moved.some(m => m.piece === 'overlays'), tag + ': ' + mv.piece + ' moved only because its slot does not fit');
+    }
+    const r2 = generateFromLayout(L, seed, { shaped: true, family: fam });
+    ok(JSON.stringify(r2.map) === JSON.stringify(map), tag + ': deterministic');
+    if (k === 0) {
+      const B = getBrains('param', 'param');
+      const m = runMatch({ map, seed: 5, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(defaults(B.survivor.space)) });
+      ok(m.durationS > 0 && m.kills + m.escapes === 4, tag + ': a full param-brain match runs on the shaped map (' + m.kills + ' kills, ' + m.escapes + ' escapes)');
+    }
+  }
+  // refitting to the layout's own outline moves nothing, and the base path keeps every landmark slot
+  const same = generateFromLayout(L, 4242, { outline: L.outline });
+  ok(same.ok && same.map.mapgen.shape.moved.length === 0, 'own outline: no fixed piece moves');
+  const base = generateFromLayout(L, 4242);
+  ok(base.ok && !base.map.mapgen.shape, 'base outline: no shape record');
+  if (base.ok) for (const lm of L.landmarks) ok(base.map.mapgen.tiles.some(t => t.x === lm.x && t.z === lm.z && (!lm.tile || t.tile === lm.tile)), 'base outline: landmark ' + (lm.tile ?? lm.pool) + ' at its exact slot ' + lm.x + ',' + lm.z);
+});
+
+test('shipped variant pool: odd variants shaped (all families, 9216-9792 m2, aspect <= 1.6), even ones keep the base outline', () => {
+  const dir = path.resolve(root, 'maps/gas-heaven');
+  const files = fs.readdirSync(dir).filter(f => /^v\d{3}\.json$/.test(f)).sort();
+  const fams = new Set();
+  for (const f of files) {
+    const m = load('maps/gas-heaven/' + f), idx = +f.slice(1, 4), sh = m.mapgen && m.mapgen.shape;
+    if (idx % 2 === 0) { ok(!sh && JSON.stringify(m.outline) === JSON.stringify(gasHeavenLayout.outline), f + ': base outline'); continue; }
+    ok(!!sh, f + ': shaped');
+    if (!sh) continue;
+    fams.add(sh.family);
+    const g = cellsOf(m.outline), area = cellArea(g);
+    ok(area * 64 >= 9216 && area * 64 <= 9792, f + ': area ' + area * 64 + ' m2');
+    ok(Math.max(g.cw, g.ch) / Math.min(g.cw, g.ch) <= 1.6 && minWidth4(g) && connected4(g), f + ': aspect / min width / connected');
+  }
+  ok(fams.size === OUTLINE_FAMILIES.length, 'all outline families in the pool: ' + [...fams].join(' '));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
