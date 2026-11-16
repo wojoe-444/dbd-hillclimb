@@ -190,7 +190,8 @@ export function generateFromLayout(layout, seed) {
 
   // ---- 5. generator candidates from tile slots ------------------------------------------------------
   const genSlotList = instances.flatMap(inst => inst.genSlots.map(([x, z]) => ({ x, z, inst })))
-    .filter(s => plainFloor(s.x, s.z) && !nearFeature(s.x, s.z, 1) && DIRS4.every(([dx, dz]) => walk(s.x + dx, s.z + dz)));
+    .filter(s => plainFloor(s.x, s.z) && !nearFeature(s.x, s.z, 1) && DIRS4.every(([dx, dz]) => walk(s.x + dx, s.z + dz)))
+    .filter(s => outlineInset(s.x + 0.5, s.z + 0.5, layout.outline) >= (layout.gens.minEdgeM ?? 0));   // user: gens never hug the outer wall
   const [gMin, gMax] = layout.gens.count;
   const genTarget = gMin + rng.int(gMax - gMin + 1);
   const gens = [];

@@ -1,0 +1,217 @@
+{
+ "id": "duel-shack",
+ "name": "Duel: killer shack only (1v1 research map)",
+ "notes": "Main field x 0..32, z 0..32 with the standard 'shack' tile (src/mapgen/tiles.js) placed with tile origin (8,8): shack outer box x 11..20, z 11..20. North door x 13-14 (z 11), east window (20,14) axis x, south pallet door x 17-18 (z 20) axis z length 2. A tall wall at x 32 seals off the pocket x 33..37 (unreachable from the field, never visible): it holds the 10 generator candidates, the exit gate and the survivor spawn anchor so 3 idle dummy survivors can park there (scripts/duel-shack.js). Intentionally fails the validator's single-region rule.",
+ "size": {
+  "w": 38,
+  "h": 32
+ },
+ "outline": [
+  [
+   0,
+   0
+  ],
+  [
+   38,
+   0
+  ],
+  [
+   38,
+   32
+  ],
+  [
+   0,
+   32
+  ]
+ ],
+ "eyeHeight": 1.6,
+ "obstacles": [
+  {
+   "id": "shack-n1",
+   "x": 11,
+   "z": 11,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "shack-n2",
+   "x": 15,
+   "z": 11,
+   "w": 6,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "shack-w",
+   "x": 11,
+   "z": 12,
+   "w": 1,
+   "d": 8,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "shack-e1",
+   "x": 20,
+   "z": 12,
+   "w": 1,
+   "d": 2,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "shack-e2",
+   "x": 20,
+   "z": 15,
+   "w": 1,
+   "d": 5,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "shack-s1",
+   "x": 11,
+   "z": 20,
+   "w": 6,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "shack-s2",
+   "x": 19,
+   "z": 20,
+   "w": 2,
+   "d": 1,
+   "height": 3,
+   "kind": "wall"
+  },
+  {
+   "id": "pocket-wall",
+   "x": 32,
+   "z": 0,
+   "w": 1,
+   "d": 32,
+   "height": 3.5,
+   "kind": "wall"
+  }
+ ],
+ "windows": [
+  {
+   "id": "w-shack",
+   "x": 20,
+   "z": 14,
+   "axis": "x"
+  }
+ ],
+ "pallets": [
+  {
+   "id": "p-shack",
+   "x": 17,
+   "z": 20,
+   "axis": "z",
+   "length": 2
+  }
+ ],
+ "generators": [
+  {
+   "id": "g-pocket-1",
+   "x": 36.5,
+   "z": 1.5
+  },
+  {
+   "id": "g-pocket-2",
+   "x": 36.5,
+   "z": 4.5
+  },
+  {
+   "id": "g-pocket-3",
+   "x": 36.5,
+   "z": 7.5
+  },
+  {
+   "id": "g-pocket-4",
+   "x": 36.5,
+   "z": 10.5
+  },
+  {
+   "id": "g-pocket-5",
+   "x": 36.5,
+   "z": 13.5
+  },
+  {
+   "id": "g-pocket-6",
+   "x": 36.5,
+   "z": 16.5
+  },
+  {
+   "id": "g-pocket-7",
+   "x": 36.5,
+   "z": 19.5
+  },
+  {
+   "id": "g-pocket-8",
+   "x": 36.5,
+   "z": 22.5
+  },
+  {
+   "id": "g-pocket-9",
+   "x": 36.5,
+   "z": 25.5
+  },
+  {
+   "id": "g-pocket-10",
+   "x": 36.5,
+   "z": 28.5
+  }
+ ],
+ "hooks": [
+  {
+   "id": "h-field",
+   "x": 2.5,
+   "z": 2.5
+  }
+ ],
+ "exitGates": [
+  {
+   "id": "gate-pocket",
+   "lever": {
+    "x": 37.5,
+    "z": 17.5
+   },
+   "exit": {
+    "x": 37.5,
+    "z": 18.5
+   }
+  }
+ ],
+ "spawns": {
+  "hunter": [
+   {
+    "x": 4.5,
+    "z": 27.5
+   }
+  ],
+  "survivors": [
+   {
+    "x": 34.5,
+    "z": 16.5
+   }
+  ]
+ },
+ "labels": [
+  {
+   "text": "shack",
+   "x": 15.5,
+   "z": 15.5
+  },
+  {
+   "text": "pocket (dummies)",
+   "x": 35,
+   "z": 16
+  }
+ ]
+}

@@ -52,7 +52,7 @@ export const gasHeavenLayout = {
 
   pallets: { min: 14, max: 24 },
   gates: { minDistance: 75 },
-  gens: { count: [11, 12], minSpacing: 20, require: [] },
+  gens: { count: [11, 12], minSpacing: 20, require: [], minEdgeM: 6 },   // minEdgeM: no generator within 6 m of the outer wall
   hooks: { min: 16, max: 20, radius: 26, slotBonus: 25, jitter: 15 },   // radius was 20; the walled MID enclosure lengthens walks
   // perimeter spawns: survivor anchors (engine scatters 4 survivors within 15 m) + hunter points
   spawns: { survivorAnchors: 10, hunter: 10, inset: [4, 8], anchorOpenRadius: 15, anchorOpenFraction: 0.75 },
