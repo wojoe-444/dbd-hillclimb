@@ -1422,6 +1422,18 @@ test('determinism with the param brains: same seed, same result regardless of ca
   for (let i = 0; i < seeds.length; i++) ok(fwd[i] === rev[i], 'seed ' + seeds[i] + ' identical forward vs reverse order');
 });
 
+test('nav.dist from a point inside a solid cell is Infinity whether the target field is cached or not', () => {
+  const gh = load('maps/gas-heaven.json');
+  const m = createMatch({ map: gh, seed: 3, hunter: hunterBrain, survivors: survivorBrain });
+  const nav = m.survivors[0].nav, md = nav.md;
+  let from = null;
+  for (let c = 0; c < md.N && !from; c++) if (md.kind[c] === 1 && md.nbMask[c]) from = { x: (c % md.w) + 0.5, z: Math.floor(c / md.w) + 0.5 };
+  const to = { x: 40.3, z: 40.7 };   // an arbitrary non-feature point (A* when cold, a field after repeated queries)
+  const cold = nav.dist(from, to);
+  for (let i = 0; i < 6; i++) nav.dist({ x: 41.5 + i, z: 41.5 }, to);
+  ok(from && cold === Infinity && nav.dist(from, to) === Infinity, 'solid start: cold ' + cold + ', warm ' + nav.dist(from, to));
+});
+
 test('all-down rule (user): no survivor standing => instant hunter win, the rest die (allDown); escaped stay escaped', () => {
   // 2 hooked + 1 downed + 1 dead
   { const { m } = mk({ config: { antiCamp: { enabled: false } } }); const S = m.survivors;
