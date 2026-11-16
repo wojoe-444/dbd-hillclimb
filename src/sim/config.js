@@ -13,7 +13,7 @@ export const defaultConfig = {
   sight: {
     semiTransparency: 0.6,  // each low obstacle / window / pallet / generator crossed multiplies visibility by this
     visThreshold: 0.5,      // a target is "seen" iff in range/cone and visibility >= this (deterministic, no RNG)
-    range: 48,              // m, both roles
+    range: 75,              // m, both roles (user: the hunter sees ~75 m wherever it looks)
     hunterFovDeg: 100,      // hunter forward cone
     perceptionEvery: 2,     // ticks between hunter/teammate visibility refreshes (reaction latency 0.2 s)
     staticPerceptionEvery: 2, // ticks between generator/pallet visibility refreshes (survivors, staggered; cheap: cached per cell)

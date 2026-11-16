@@ -35,7 +35,7 @@ What a survivor can learn (everything else is hidden):
 | **hook notifications** | `{type:'hooked', who, hookId, x, z, t}` when a teammate is hooked (when + where; a 3rd-hook sacrifice also sends it, followed by `died`), `{type:'unhooked', who, by: id\|'self', t}`, `{type:'died', who, t}` (any cause). Sent to every other survivor still in the game, not to the subject, not to the hunter. |
 | **downed auras** (`obs.downedAuras`) | `[{id, x, z}]` live positions of all downed teammates (not carried, not yourself). |
 | **chase** | `hud[j].chased` and `self.chased` (chase music) from the engine chase state (below). |
-| teammate positions | otherwise only if seen by the same sight model used for the hunter (360°, range 48 m, semi-transparency): `teammates` = position + visible state. `obs.lastSeen[j]` is the survivor's own memory of the last sighting (HUD/aura info does not update it). |
+| teammate positions | otherwise only if seen by the same sight model used for the hunter (360°, range 75 m, semi-transparency): `teammates` = position + visible state. `obs.lastSeen[j]` is the survivor's own memory of the last sighting (HUD/aura info does not update it). |
 | generators | progress, *who is working* and `regressing` only for gens currently seen (or within `sight.adjacentReach` = 2 m); otherwise the last-seen value (`visible:false`, `workers:null`, `regressing:null`, `seenT`). Initial memory = progress 0. `blocked` (unfinished gen after the gates are powered) is public. (The HUD's `repairing` tells you *that* a gen is being worked on, not its progress.) |
 | exit gates | `powered`/`open` are public; lever `progress` only while you perceive the lever (same sight rule, or within 2 m); open gates report `progress: 1`. |
 | pallets | state (`up/dropped/broken`) only for pallets currently seen/adjacent, else last-seen (initially `up`). |
@@ -180,7 +180,7 @@ Hunter `obs`:
 ```js
 { t, tick,
   self: { x,z,vx,vz,facing,fx,fz,carrying: id|null,cooldownS,windupS,stunS,vaulting,act,progress },
-  survivors: [{ id,x,z,vx,vz,facing,state,hookCount,vaulting }],     // in the 100° cone, range 48 m, visibility ≥ 0.5
+  survivors: [{ id,x,z,vx,vz,facing,state,hookCount,vaulting }],     // in the 100° cone, range 75 m, visibility ≥ 0.5
   lastSeen: [ {x,z,state,t}|null ×4 ],
   grunts: [{x,z,t}],            // injured survivors within 10 m, ±2 m noise, no identity, kept 2 s
   scratches: [{x,z,t,dx,dz}],   // sprint marks of the last 10 s inside the cone (≤ 30 m, visible)
@@ -216,7 +216,7 @@ Obs objects are freshly allocated every call and owned by the receiving brain.
 * Health: healthy → injured → downed (bleeds out in 240 s while downed; paused while carried/hooked).
 * **Sight**: tall obstacles (height ≥ eyeHeight) and cells outside the outline are opaque. Low obstacles, windows, pallets (up/dropped/broken) and
   generators are semi-transparent: each distinct one a ray crosses multiplies visibility by `sight.semiTransparency` (0.6; a multi-cell obstacle counts once;
-  start/end cells excluded). **A target is "seen" iff in range (48 m), in the cone (hunter 100°; survivors 360°) and visibility ≥ `sight.visThreshold` (0.5)** —
+  start/end cells excluded). **A target is "seen" iff in range (75 m), in the cone (hunter 100°; survivors 360°) and visibility ≥ `sight.visThreshold` (0.5)** —
   deterministic, no RNG. So one semi-transparent obstacle is see-through, two are not. Dynamic sight (hunter↔survivors↔survivors) refreshes every
   `perceptionEvery` = 2 ticks; generators/pallets use per-cell cached visibility masks (from the cell centre), shared across matches.
 
