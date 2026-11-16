@@ -78,6 +78,8 @@ import { RouteEval } from './routes.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
+// a point r m short of a teammate, on my side (never walk onto a teammate: bodies collide; heal reach is 1.6 m)
+const approach = (t, me, r = 1.2) => { const dx = me.x - t.x, dz = me.z - t.z, L = Math.hypot(dx, dz) || 1; return { x: t.x + (dx / L) * r, z: t.z + (dz / L) * r }; };
 function rectDist(x, z, x0, z0, x1, z1) {
   const dx = x < x0 ? x0 - x : (x > x1 ? x - x1 : 0);
   const dz = z < z0 ? z0 - z : (z > z1 ? z - z1 : 0);
@@ -470,12 +472,34 @@ export function makeSurvivor(P) {
       return { moveDir: { x: me.x - hp.x, z: me.z - hp.z } };
     }
 
+    // body-blocked by a teammate (moving, no progress, a teammate within 1.2 m) for 0.6 s: sidestep for 0.5 s
+    let blockedT = 0, sideUntil = -99, sideDir = null;
+    function unblock(obs, a) {
+      const me = obs.self;
+      if (obs.t < sideUntil && sideDir) return { moveDir: sideDir };
+      const mt = a && a.moveTo;
+      const mate = obs.teammates.find((t) => d2(t, me) < 1.2 && (t.state === 'healthy' || t.state === 'injured'));
+      if (!mt || a.act || d2(mt, me) < 1 || !mate || Math.hypot(me.vx, me.vz) > 0.3) { blockedT = 0; return a; }
+      blockedT += (ctx.config.decisionEvery || 1) / (ctx.config.tickHz || 10);
+      if (blockedT < 0.6) return a;
+      blockedT = 0; sideUntil = obs.t + 0.5;
+      const gx = mt.x - me.x, gz = mt.z - me.z, L = Math.hypot(gx, gz) || 1;
+      const sgn = ((mate.x - me.x) * -gz + (mate.z - me.z) * gx) > 0 ? -1 : 1;   // step to the side away from the teammate
+      sideDir = { x: (-gz / L) * sgn + (gx / L) * 0.3, z: (gx / L) * sgn + (gz / L) * 0.3 };
+      return { moveDir: sideDir };
+    }
+
     return {
       stats,
       know,
       loops,
       belief,
       decide(obs, api) {
+        const a = this.decideInner(obs, api);
+        const st = obs.self.state;
+        return st === 'healthy' || st === 'injured' ? unblock(obs, a) : a;
+      },
+      decideInner(obs, api) {
         const me = obs.self, h = obs.hunter, nav = api.nav;
         // hooked brains are called now (minimal obs): take the Resolve self-unhook when offered (was automatic before)
         if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
@@ -640,8 +664,8 @@ export function makeSurvivor(P) {
         if (me.state === 'injured' && P.seekHeal > 0.5 && !h) {
           const mate = obs.teammates.filter((t) => t.state === 'healthy').sort((a, b) => d2(a, me) - d2(b, me))[0];
           if (mate && d2(mate, me) < P.healDist) {
-            if (d2(mate, me) <= 1.4) return obs.t - helpSentT > 20 ? (helpSentT = obs.t, say({}, 'help')) : {};
-            return { moveTo: { x: mate.x, z: mate.z } };
+            if (d2(mate, me) <= 1.5) return obs.t - helpSentT > 20 ? (helpSentT = obs.t, say({}, 'help')) : {};
+            return { moveTo: approach(mate, me) };
           }
         }
 
@@ -652,8 +676,8 @@ export function makeSurvivor(P) {
           for (const tm of cands) {
             if (hud && hud[tm.id] && hud[tm.id].beingHealed && !(me.act === 'heal')) continue;   // someone's on it
             if ((tm.state === 'injured' || tm.state === 'downed') && d2(tm, me) < P.healDist) {
-              if (d2(tm, me) <= 1.4 && !holdProtection) return { act: 'heal', target: tm.id };
-              return { moveTo: { x: tm.x, z: tm.z } };
+              if (d2(tm, me) <= 1.5) return holdProtection ? {} : { act: 'heal', target: tm.id };
+              return { moveTo: approach(tm, me) };
             }
           }
         }
@@ -672,7 +696,14 @@ export function makeSurvivor(P) {
             if (!g.known || g.done || g.blocked) continue;
             let s = P.genDistW * nav.dist(me, g) / 20 - P.genProgW * g.progress * 3;
             const others = g.workers ? g.workers.filter((w) => w !== me.id).length : 0;   // only for gens currently seen
-            s += P.spreadW * others;
+            // visible teammates standing at it (not yet repairing) or running toward it: they'll take it
+            let headed = 0;
+            for (const t of obs.teammates) {
+              if (g.workers && g.workers.includes(t.id)) continue;
+              const dx = g.x - t.x, dz = g.z - t.z, dg = Math.hypot(dx, dz), v = Math.hypot(t.vx || 0, t.vz || 0);
+              if (dg < 4 || (dg < 40 && v > 1 && (t.vx * dx + t.vz * dz) > 0.9 * v * dg && dg < d2(g, me) + 6)) headed++;
+            }
+            s += P.spreadW * (others + headed);
             const hpos = h ?? (obs.lastHunter && obs.t - obs.lastHunter.t < 90 ? obs.lastHunter : null);
             if (hpos) s -= P.farFromHunterW * Math.min(60, d2(g, hpos)) / 20;
             s += P.genJitter * jitter[i];
@@ -684,7 +715,7 @@ export function makeSurvivor(P) {
           }
           // explore option: always when no gen is known; otherwise a propensity that grows with the gens still unfound
           if (exploreLeft && (bi < 0 || P.exploresMap > 0)) {
-            if (!exploreTo) { exploreTo = know.pickTarget(me, P.exploreRadM, (c) => exploreJit[c]); exploreT = obs.t; }
+            if (!exploreTo) { exploreTo = know.pickTarget(me, P.exploreRadM, (c) => exploreJit[c] - (obs.teammates.some((t) => Math.hypot(know.cx[c] - t.x, know.cz[c] - t.z) < Math.hypot(know.cx[c] - me.x, know.cz[c] - me.z) - 2) ? 0.3 : 0)); exploreT = obs.t; }
             if (exploreTo) {
               let se = P.genDistW * d2(me, exploreTo) / 20 + 1.5 - P.exploresMap * (1 + 3 * unknownGens / gens.length);
               if (genTarget === -2) se -= 0.5;

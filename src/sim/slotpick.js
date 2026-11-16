@@ -6,9 +6,11 @@
 //   (survivors: pass obs.gens[gi] of a found gen — it carries id + slots; ctx.map.generators is hunter-only)
 //
 // Engine rule (README): repair needs the survivor within reach.repairSlot (0.6 m) of a slot point that no other survivor
-// is repairing from. Slot choice: keep the current slot; else the nearest one not in obs.gens[gi].slotsTaken (when the
-// gen is perceived) and not recently failed; a slot is marked failed when repair doesn't start within ~1 s of standing
-// on it, or when we stop getting closer to it for ~1.5 s (body-blocked). When every slot has failed, the list resets.
+// is repairing from. Slot choice: keep the current slot; else the nearest one not taken and not recently failed. Taken =
+// in obs.gens[gi].slotsTaken (someone repairs there; only when the gen is perceived) or a visible standing teammate
+// within 0.9 m of the slot point (about to repair there / standing on it). A slot is marked failed when repair doesn't
+// start within ~1 s of standing on it, or when we stop getting closer to it for ~0.8 s (body-blocked). When every slot
+// has failed, the list resets.
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 
@@ -17,13 +19,15 @@ export function makeSlotPicker(reach = 0.6) {
   let failed = [];
   const within = reach - 0.05;
 
+  const occupied = (obs, s) => (obs.teammates || []).some(t => (t.state === 'healthy' || t.state === 'injured') && hyp(t.x - s.x, t.z - s.z) < 0.9);
+
   function pick(obs, gi, g, me) {
     const taken = obs.gens[gi].slotsTaken;   // null when the gen isn't perceived
     let best = null, bd = Infinity;
     for (let pass = 0; pass < 3 && !best; pass++) {
       for (const s of g.slots) {
         if (pass < 2 && failed.includes(s.side)) continue;
-        if (pass < 1 && taken && taken.includes(s.side)) continue;
+        if (pass < 1 && ((taken && taken.includes(s.side)) || occupied(obs, s))) continue;
         const d = hyp(s.x - me.x, s.z - me.z);
         if (d < bd) { bd = d; best = s; }
       }
@@ -42,7 +46,7 @@ export function makeSlotPicker(reach = 0.6) {
       let s = side ? g.slots.find(x => x.side === side) : null;
       const repairing = me.act === 'repair';
       // our slot became known-taken by someone else (and we're not the one repairing there): re-pick
-      if (s && !repairing && obs.gens[gi].slotsTaken && obs.gens[gi].slotsTaken.includes(s.side) && hyp(s.x - me.x, s.z - me.z) > within) { failed.push(s.side); s = null; }
+      if (s && !repairing && hyp(s.x - me.x, s.z - me.z) > within && ((obs.gens[gi].slotsTaken && obs.gens[gi].slotsTaken.includes(s.side)) || occupied(obs, s))) { failed.push(s.side); s = null; }
       if (!s) s = pick(obs, gi, g, me);
       if (!s) return {};
       const d = hyp(s.x - me.x, s.z - me.z);
@@ -55,7 +59,7 @@ export function makeSlotPicker(reach = 0.6) {
       }
       if (d > 2.5) { bestD = Infinity; bestT = obs.t; }   // still en route (paths may curve away): no stall check
       else if (d < bestD - 0.1) { bestD = d; bestT = obs.t; }
-      else if (obs.t - bestT > 1.5) { failed.push(s.side); side = null; }
+      else if (obs.t - bestT > 0.8) { failed.push(s.side); side = null; }
       return { moveTo: { x: s.x, z: s.z }, walk: !!opt.walk };
     },
   };
