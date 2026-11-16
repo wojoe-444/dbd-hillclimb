@@ -19,9 +19,19 @@ export function withPalletGone(obs, i) {
   return { ...obs, pallets };
 }
 
-// Is a standing pallet's crossing c (side P = my entry) on the hunter's side? The pallet sits between the two side
-// points; if the hunter is nearer (path) to my entry P than I am and not farther from P than from the far side Q,
-// running to P meets it there: don't start that crossing (pick another entry / the other direction).
-export function entryOnHunterSide(dMeP, dHP, dHQ, lungeM) {
-  return dHP <= dHQ && dHP < dMeP + lungeM;
+// Would a crossing land me on the hunter's side? Its landing point Q: the hunter (path distance, incl. its busy time
+// as metres) gets there no later than I do plus its swing reach. Running a loop the other way / picking a crossing
+// into the hunter (shack: the pallet door when the hunter comes from the south) ends in a hit at the pallet.
+export function landingOnHunterSide(dMeQ, dHQ, reachM) {
+  return dHQ < dMeQ + reachM;
+}
+
+// The hunter's body (circle r 0.4, + my 0.4) blocks a crossing lane: it stands on the crossing axis within the anchor's
+// side points (centre +-1.6 m) and less than 0.9 m off the axis. Pushing into it gets nowhere (seen: a survivor kept
+// walking into the hunter in front of its dropped pallet for 2 s until it was hit).
+export function laneBlockedBy(h, a) {
+  const s0 = a.s[0], s1 = a.s[1], ax = s1.x - s0.x, az = s1.z - s0.z, L = Math.hypot(ax, az) || 1;
+  const ux = ax / L, uz = az / L, dx = h.x - a.c.x, dz = h.z - a.c.z;
+  const along = dx * ux + dz * uz, lat = Math.abs(-dx * uz + dz * ux);
+  return Math.abs(along) <= L / 2 + 0.2 && lat < 0.9;
 }

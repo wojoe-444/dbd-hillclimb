@@ -81,7 +81,7 @@ import { HunterBelief } from './hunterbelief.js';
 import { LoopModel } from './loops.js';
 import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
-import { palletBreakInfo, withPalletGone } from './tileplay.js';
+import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
@@ -433,6 +433,11 @@ export function makeSurvivor(P) {
     // entry race on the route fields (prepared by chooseRoute): path lengths around walls + the hunter's busy time
     // (pallet break), same loopRace margin; the Euclidean race above misjudges entries behind a wall
     const racePath = (Pt) => { const ds = routes.sDist(Pt.x, Pt.z), dh = routes.hDist(Pt.x, Pt.z); return ds < Infinity && ds < P.loopRace * dh; };
+    // crossing c would land me on the hunter's side (path distances; nav.dist counts the hunter's vault / pallet costs)
+    const landsBad = (api, me, hp, c) => {
+      const Qt = loops.sidePt[c ^ 1];
+      return landingOnHunterSide(api.nav.dist(me, Qt), api.nav.dist(hp, Qt) + (brk ? routes.vH0 * brk.remainS : 0), routes.reach);
+    };
     function chooseCircuit(obs, api, me, hp, h, extra) {
       const vl = vaultsLeft(obs), ps = palletState(obs), R = P.loopTravelMaxM;
       const cands = [];
@@ -442,6 +447,7 @@ export function makeSurvivor(P) {
           const c = 2 * a.k + d, Pt = loops.sidePt[c];
           const dmE = d2(me, Pt), dhP = d2(hp, Pt);
           if (dmE > R || !(dmE < P.loopRace * dhP) && !racePath(Pt)) continue;
+          if (dmE > 1.5 && landsBad(api, me, hp, c)) continue;
           // the hunter is heading for it: it would cut us off there
           if (h && P.avoidHeading > 0.5) { const tx = Pt.x - h.x, tz = Pt.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dhP < dmE + 4) continue; }
           let best = null, be = 0;
@@ -541,6 +547,9 @@ export function makeSurvivor(P) {
       // (tileplay.js); a break that just started forces a re-plan instead of waiting behind the pallet
       brk = palletBreakInfo(obs, M, ctx.config);
       if (brk) { obs = withPalletGone(obs, brk.i); if (brkSeenT < obs.t - 0.25) routeT = -99; brkSeenT = obs.t; }
+      // the visible hunter's body stands in a dropped pallet's lane (bodies collide: I can't get through it):
+      // busy for now (not standing pallets: a hunter there is what a stun drop is for; windows: A/B'd worse)
+      if (h && !h.vaulting) for (const a of anchors) if (a.kind === 'p' && obs.pallets[a.i] === 'dropped' && laneBlockedBy(h, a)) { occupiedUntil.set(a.k, Math.max(occupiedUntil.get(a.k) ?? -1, obs.t + 0.5)); if (circ && circ.seq.some((x) => (x >> 1) === a.k)) routeT = -99; }
       const mates = P.chaseToMatesW !== 0 ? matesOnGens(obs) : [];
       const fl = fleeingMates(obs, me);
       const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
@@ -569,7 +578,7 @@ export function makeSurvivor(P) {
         }
         // the hunter is nearer my next entry than I am (it cut ahead / is on the far side): run the loop the other way
         const hP = api.nav.dist(hp, Pt), hQ = api.nav.dist(hp, Qt);   // path distances (fields to fixed points get cached)
-        if (circ.phase === 'toP' && obs.t >= circ.lockT && hP + 0.5 < api.nav.dist(me, Pt) && hQ > hP && circ.seq.length > 1) { reverseCirc(obs); return chase(obs, api, me, h, depth + 1); }
+        if (circ.phase === 'toP' && obs.t >= circ.lockT && hP + 0.5 < api.nav.dist(me, Pt) && hQ > hP && circ.seq.length > 1) { reverseCirc(obs); if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; } return chase(obs, api, me, h, depth + 1); }
         if (circ.phase === 'toP') {
           // running crossing (a real leg leads into it): keep the momentum for a fast vault while the hunter is on us;
           // hold crossing (zero leg: mind-game at one anchor): wait at the entry until the hunter is close
@@ -592,7 +601,7 @@ export function makeSurvivor(P) {
           if (!onMySide && obs.t >= circ.lockT && circ.seq.length > 1) {
             const k = circ.seq.length;
             const revNext = circ.seq[(circ.i - 1 + k) % k] ^ 1;
-            if (loops.sidePt[revNext] !== Pt) { reverseCirc(obs); return chase(obs, api, me, h, depth + 1); }
+            if (loops.sidePt[revNext] !== Pt) { reverseCirc(obs); if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; } return chase(obs, api, me, h, depth + 1); }
           }
           // vault safety (real attack envelope): go while a vault is still safe; a hold ends before it stops being
           // safe (the hunter 0.3 s closer); a window the hunter cleared moments ago (clearance) is not re-vaulted
