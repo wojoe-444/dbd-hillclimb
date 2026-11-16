@@ -27,6 +27,7 @@ export const BP = {
     rescueEndgame: 2000,       // endgame collapse running
     safeRescue: 1250,          // rescued survivor not hit within safeRescueS
     safeRescueS: 10,
+    rescueHoldS: 10,           // [user, option D] the base rescue BP is only paid if neither the rescuer nor the rescued survivor goes down within this
     // Boldness
     chasedPerSecond: 50,
     // --- our deviations (chase splitting): reward taking a real chase, not dipping into someone else's ---
@@ -112,7 +113,9 @@ export function scoreBloodpoints(res) {
       case 'mend': surv[e.who].survival += S.fullyMended; break;
       case 'heal': surv[e.by].altruism += S.heal; break;
       case 'rescue': {
-        surv[e.by].altruism += e.t >= egcT ? S.rescueEndgame : e.t >= gatesT ? S.rescueAfterGens : S.rescue;
+        // option D: no base rescue points if the rescue traded badly (rescuer or rescued downed within rescueHoldS)
+        const downedSoon = ev.some((x) => x.t > e.t && x.t <= e.t + S.rescueHoldS && ((x.type === 'hit' && x.state === 'downed') || x.type === 'deepWoundDown') && (x.who === e.by || x.who === e.who));
+        if (!downedSoon && e.t + S.rescueHoldS <= end) surv[e.by].altruism += e.t >= egcT ? S.rescueEndgame : e.t >= gatesT ? S.rescueAfterGens : S.rescue;
         const hitSoon = hits.some((h) => h.who === e.who && h.t > e.t && h.t <= e.t + S.safeRescueS);
         if (!hitSoon && e.t + S.safeRescueS <= end) surv[e.by].altruism += S.safeRescue;
         break;

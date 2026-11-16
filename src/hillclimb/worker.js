@@ -44,7 +44,9 @@ export function playOne({ seed, hunterParams, survivorParams, config }) {
   const bp = scoreBloodpoints(res);
   return {
     seed,
-    survivorBP: bp.survivorBP, hunterBP: bp.hunterBP, survivorFit: bp.survivorFit,
+    survivorBP: bp.survivorBP, hunterBP: bp.hunterBP,
+    // survivor fitness [user]: half normalised bloodpoints, half (12 - hook stages the hunter got) / 12
+    survivorFit: 0.5 * bp.survivorFit + 0.5 * (12 - Math.min(12, hookStagesTotal(res))) / 12,
     // hunter fitness = the user's outcome table (0..100 -> 0..1); hunterBP is kept for reference only
     hunterScore100: hunterTableScore(res), hookStages: hookStagesTotal(res), hunterFit: hunterTableScore(res) / 100,
     survivorCats: bp.survivorCats, hunterCats: bp.hunterCats,

@@ -1,6 +1,6 @@
 // Population evolution: a population of hunters and a population of survivor teams (each team = one parameter set
 // playing all four survivors). Every generation each hunter plays `--rounds` matches against randomly paired survivor
-// teams (and vice versa); fitness: survivors = mean own bloodpoints (bloodpoints.js, normalised to [0,1]),
+// teams (and vice versa); fitness: survivors = 0.5 x normalised bloodpoints (bloodpoints.js) + 0.5 x (12 - hook stages) / 12,
 // hunter = mean of the user's outcome table (hunterscore.js, /100). The top `--elite`
 // fraction of each population survives unchanged; the rest is refilled with children of tournament-selected parents
 // (uniform crossover + gaussian mutation). Every generation logs the whole population's knob distributions, so a
