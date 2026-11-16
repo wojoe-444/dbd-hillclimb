@@ -4,7 +4,7 @@ import { loadMapPool } from './maps.js';
 import { createMatch } from '../sim/index.js';
 import { getBrains } from '../brains/index.js';
 import { scoreBloodpoints, BP } from './bloodpoints.js';
-import { hunterTableScore, hookStagesTotal } from './hunterscore.js';
+import { hunterTableScore, hookStagesTotal, survivalTimeScore } from './hunterscore.js';
 
 const maps = loadMapPool(workerData.mapPath);
 const brains = getBrains(workerData.hunterBrain, workerData.survivorBrain);
@@ -45,8 +45,8 @@ export function playOne({ seed, hunterParams, survivorParams, config }) {
   return {
     seed,
     survivorBP: bp.survivorBP, hunterBP: bp.hunterBP,
-    // survivor fitness [user]: half normalised bloodpoints, half (12 - hook stages the hunter got) / 12
-    survivorFit: 0.5 * bp.survivorFit + 0.5 * (12 - Math.min(12, hookStagesTotal(res))) / 12,
+    // survivor fitness [user]: half normalised bloodpoints, half time-weighted survival (hunterscore.js survivalTimeScore)
+    survivorFit: 0.5 * bp.survivorFit + 0.5 * survivalTimeScore(res), survivalTime: survivalTimeScore(res),
     // hunter fitness = the user's outcome table (0..100 -> 0..1); hunterBP is kept for reference only
     hunterScore100: hunterTableScore(res), hookStages: hookStagesTotal(res), hunterFit: hunterTableScore(res) / 100,
     survivorCats: bp.survivorCats, hunterCats: bp.hunterCats,

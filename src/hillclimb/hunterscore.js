@@ -12,3 +12,33 @@ export function hunterTableScore(res) {
   const st = Math.min(11, hookStagesTotal(res));
   return st === 0 ? 0 : 10 + 8 * (st - 1);
 }
+
+// Survivor survival score with a time gradient (user-approved 2026-11-16): 1 - (hook stages held, integrated over time)
+// / (12 x horizon). A survivor's stage count steps up at each hook / struggle event and goes to 3 at death; after the
+// match ends it stays at its final value (dead = 3, per hookStagesTotal) until the horizon, while an escaped survivor
+// drops to 0 from the moment it escapes. So a 4k at 900 s scores better than a 4k at 300 s, and an escape beats both.
+export function survivalTimeScore(res, horizonS = 1200) {
+  const H = Math.max(horizonS, res.durationS || 0);
+  const ev = res.events || [];
+  let burden = 0;
+  res.survivors.forEach((s, i) => {
+    let stage = 0, last = 0, acc = 0, escT = null;
+    for (const e of ev) {
+      if (e.who !== i) continue;
+      let next = null;
+      if (e.type === 'hook' || e.type === 'hookStage') next = Math.min(3, e.stage);
+      else if (e.type === 'death') next = 3;
+      else if (e.type === 'escape') { escT = e.t; break; }
+      if (next !== null && next !== stage) { acc += stage * (e.t - last); stage = next; last = e.t; }
+    }
+    if (escT !== null) { acc += stage * (escT - last); }
+    else {
+      const end = res.durationS || last;
+      acc += stage * (end - last);
+      const tail = s.outcome === 'dead' ? 3 : Math.min(3, Math.max(stage, s.hookStages ?? 0));
+      acc += tail * (H - end);
+    }
+    burden += acc;
+  });
+  return Math.max(0, Math.min(1, 1 - burden / (12 * H)));
+}

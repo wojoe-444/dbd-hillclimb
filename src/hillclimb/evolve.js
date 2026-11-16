@@ -1,6 +1,6 @@
 // Population evolution: a population of hunters and a population of survivor teams (each team = one parameter set
 // playing all four survivors). Every generation each hunter plays `--rounds` matches against randomly paired survivor
-// teams (and vice versa); fitness: survivors = 0.5 x normalised bloodpoints (bloodpoints.js) + 0.5 x (12 - hook stages) / 12,
+// teams (and vice versa); fitness: survivors = 0.5 x normalised bloodpoints (bloodpoints.js) + 0.5 x time-weighted survival (hunterscore.js),
 // hunter = mean of the user's outcome table (hunterscore.js, /100). The top `--elite`
 // fraction of each population survives unchanged; the rest is refilled with children of tournament-selected parents
 // (uniform crossover + gaussian mutation). Every generation logs the whole population's knob distributions, so a
@@ -118,7 +118,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
 
   const agg = (n) => Array.from({ length: n }, () => ({ fit: 0, bp: 0, n: 0, kills: 0, escapes: 0, gens: 0 }));
   const H = agg(hunters.length), S = agg(survivors.length);
-  const tot = { kills: 0, escapes: 0, gensDone: 0, genProgress: 0, hunterScore100: 0, hookStages: 0, hunterBP: 0, survivorBP: 0, durationS: 0, hooks: 0 };
+  const tot = { survivalTime: 0, kills: 0, escapes: 0, gensDone: 0, genProgress: 0, hunterScore100: 0, hookStages: 0, hunterBP: 0, survivorBP: 0, durationS: 0, hooks: 0 };
   for (const r of results) {
     const h = H[r.h], s = S[r.s];
     h.fit += r.hunterFit; h.bp += r.hunterBP; h.n++; h.kills += r.kills;
