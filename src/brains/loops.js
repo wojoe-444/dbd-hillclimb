@@ -7,7 +7,8 @@
 // Per-pass gain of a crossing (seconds, x hunter speed = metres of hunter running):
 //   hunter: its cheapest way from P's side to Q's side: window vault 1.7 s; pallet (dropped by the survivor) break
 //           2.34 s + walk through 3.2 m; or walk around (the anchor's detour path, all anchors solid).
-//   survivor: window fast vault 0.5 s (needs >= 2.5 m of run-up, else medium 0.9 s); pallet: walk the gap + drop
+//   survivor: window fast vault 0.5 s (needs >= 2.5 m of straight run-up, else medium 0.9 s; with a lineup point the
+//           price is the tier the brain's approach will produce, incl. the extra run-up path: tsIn); pallet: walk the gap + drop
 //           (0.8 + 0.3 s) or vault a dropped one (1.1 s).
 // Circuit = cyclic sequence of crossings joined by walking legs (Q_i -> P_{i+1}, <= legMax m, all anchors solid).
 // Per crossing + following leg:
@@ -36,6 +37,23 @@ export class LoopModel {
     this.sPalVault = (cfg.survivor && cfg.survivor.palletVaultFastS) || 1.1;
     this.sDrop = (cfg.survivor && cfg.survivor.palletDropS) || 0.3;
     this.runup = (cfg.survivor && cfg.survivor.fastVaultRunupM) || 2.5;
+    // fast-vault run-up geometry: the engine starts a window vault when the body is within radius + 0.3 m of the window
+    // cell (0.5 + 0.4 + 0.3 = 1.2 m from its centre); a fast vault needs >= runup m of straight running by then, so the
+    // final straight must start >= runNeed m out on the window's axis (+ 0.2 m steering slack)
+    this.trig = 0.5 + (cfg.radius ?? 0.4) + 0.3;
+    this.runNeed = this.trig + this.runup + 0.2;
+    // lineup (survivor knobs vaultLineup / vaultApproachM / vaultDetourW / vaultFunnelDeg / vaultAngleW): a running
+    // crossing lines up in front of the window (<= approachM out) and runs straight in when the extra path x detourW is
+    // worth the fast-vault saving; off (default) = no lineup points, the pre-lineup pricing (tsOf), routes.js unchanged
+    this.lineupOn = !!opts.lineup && (opts.approachM ?? 4) >= this.runNeed;
+    this.approachM = opts.approachM ?? 4;
+    this.detourW = opts.detourW ?? 1;
+    this.tierW = opts.tierW ?? 1;            // weight of the executed tier's cost over a fast vault in circuit pricing (1 = as executed)
+    // funnel: the straight-in run may start up to funnelDeg off the axis (the engine allows fastVaultAngleDeg; the brain
+    // steers that run itself, moveDir, since the nav would detour via the approach cell centre beyond ~13 deg)
+    const cone = (cfg.survivor && cfg.survivor.fastVaultAngleDeg) || 25;
+    this.funnelTan = Math.tan((Math.min(opts.funnelDeg ?? 20, cone - 1) * Math.PI) / 180);
+    this.aimU = 0.5 + (cfg.radius ?? 0.4);   // body centre when it touches the window cell face (where the vault starts)
     this.legMax = opts.legMax ?? 16;
     this.fieldR = opts.fieldR ?? 34;        // Dijkstra radius (m); farther = "far" (capped)
     this.maxK = opts.maxK ?? 4;             // crossings per circuit
@@ -101,7 +119,36 @@ export class LoopModel {
       for (let t = 0; t < this.nSides; t++) { const q = this.sidePt[t]; if ((p.x - q.x) ** 2 + (p.z - q.z) ** 2 <= this.legMax * this.legMax) list.push(t); }
       this.near.push(list);
     }
-    this.fields = new Array(this.nSides).fill(null);   // lazy: Float32Array(nSides) walk distances from side s
+    // lineup per crossing c (windows only; null when no straight run-up fits or lineup is off): options = straight-in
+    // runs at 9 angles across the funnel (lateral slope t = w / (u - aimU)), each with the farthest start point D
+    // (<= approachM, >= runNeed out) whose straight line to the aim point is clear for the body; main = the most
+    // central option (its cell is where the walk fields measure the lineup distance)
+    this.lineup = new Array(this.nSides).fill(null);
+    this.laneCells = new Array(this.nSides).fill(0);   // free cells straight out from the window on P's side (lane room, m)
+    for (let c = 0; c < this.nSides; c++) {
+      const a = anchors[c >> 1];
+      if (a.kind !== 'w') continue;
+      const P0 = a.s[c & 1], ux = (P0.x - a.c.x) / 1.6, uz = (P0.z - a.c.z) / 1.6, ci = Math.floor(a.c.x), cj = Math.floor(a.c.z);
+      let k = 0;
+      for (; k < 12; k++) {
+        const i = ci + Math.round(ux) * (k + 1), j = cj + Math.round(uz) * (k + 1);
+        if (i < 0 || j < 0 || i >= W || j >= H || solid[j * W + i]) break;
+      }
+      this.laneCells[c] = k;
+      if (!this.lineupOn) continue;
+      const aim = this.aimPt(c), opts = [], tm = 0.85 * this.funnelTan;
+      for (let q = -4; q <= 4; q++) {
+        const t = (tm * q) / 4;
+        for (let D = Math.min(this.approachM, 8); D >= this.runNeed - 1e-9; D -= 0.25) {
+          const x = a.c.x + ux * D - uz * t * (D - this.aimU), z = a.c.z + uz * D + ux * t * (D - this.aimU);
+          if (this.clearRun(x, z, aim.x, aim.z)) { opts.push({ t, D, x, z, cell: Math.floor(z) * W + Math.floor(x) }); break; }
+        }
+      }
+      if (!opts.length) continue;
+      let main = opts[0]; for (const o of opts) if (Math.abs(o.t) < Math.abs(main.t) - 1e-9) main = o;
+      this.lineup[c] = { ...main, opts };
+    }
+    this.fields = new Array(this.nSides).fill(null);   // lazy: Float32Array(2 nSides) walk distances from side s (to sides, then to lineup points)
     this.dist = new Int32Array(W * H).fill(-1);          // Dijkstra scratch (x10 units)
     this.memo = new Map();                               // start crossing -> top circuits
     this.cap = this.fieldR + 6;
@@ -114,9 +161,78 @@ export class LoopModel {
     if (!f) f = this.fields[s] = this.field(s);
     return f[t];
   }
+  // walking distance from side s to crossing c's lineup point (cap if none / far)
+  LA(s, c) {
+    let f = this.fields[s];
+    if (!f) f = this.fields[s] = this.field(s);
+    return f[this.nSides + c];
+  }
+  // crossing c's lane frame: u = distance out from the window centre on P's side, w = signed lateral offset
+  laneUW(c, pt) {
+    const a = this.anchors[c >> 1], P0 = a.s[c & 1], ux = (P0.x - a.c.x) / 1.6, uz = (P0.z - a.c.z) / 1.6;
+    return { u: (pt.x - a.c.x) * ux + (pt.z - a.c.z) * uz, w: -(pt.x - a.c.x) * uz + (pt.z - a.c.z) * ux, ux, uz };
+  }
+  // the aim point of a straight-in run (body touching the window face, on the lane centre)
+  aimPt(c) { const a = this.anchors[c >> 1], P0 = a.s[c & 1], k = this.aimU / 1.6; return { x: a.c.x + (P0.x - a.c.x) * k, z: a.c.z + (P0.z - a.c.z) * k }; }
+  // a straight run from (x0,z0) to (x1,z1) stays clear of walls / anchors for the body (static grid, ~0.36 m radius)
+  clearRun(x0, z0, x1, z1) {
+    const W = this.W, H = this.H, solid = this.solid, L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.ceil(L / 0.2)), r = 0.36;
+    for (let k = 0; k <= n; k++) {
+      const x = x0 + ((x1 - x0) * k) / n, z = z0 + ((z1 - z0) * k) / n;
+      for (let q = 0; q < 5; q++) {
+        const px = x + (q === 1 ? r : q === 2 ? -r : 0), pz = z + (q === 3 ? r : q === 4 ? -r : 0), i = Math.floor(px), j = Math.floor(pz);
+        if (i < 0 || j < 0 || i >= W || j >= H || solid[j * W + i]) return false;
+      }
+    }
+    return true;
+  }
+  // is pt inside crossing c's fast-vault funnel: >= runNeed out on P's side, within funnelTan of the axis as seen from
+  // the aim point, with a clear straight line to it: running straight at the aim point from here gives a fast vault
+  inFunnel(c, pt) {
+    const { u, w } = this.laneUW(c, pt);
+    if (u < this.runNeed - 0.1 || u > 12 || Math.abs(w) > this.funnelTan * (u - this.aimU)) return false;
+    const ap = this.aimPt(c);
+    return this.clearRun(pt.x, pt.z, ap.x, ap.z);
+  }
+  // still on a straight-in run (lined up earlier): out in front of the window, roughly in the funnel, clear line
+  straightIn(c, pt) {
+    const { u, w } = this.laneUW(c, pt);
+    if (u <= this.aimU + 0.15 || u > 12 || Math.abs(w) > this.funnelTan * (u - this.aimU) + 0.3) return false;
+    const ap = this.aimPt(c);
+    return this.clearRun(pt.x, pt.z, ap.x, ap.z);
+  }
+  // where to line up for crossing c when coming from `from`: the lineup option angled toward `from` (up to the
+  // funnel's edge: a shorter detour than the axis point), and the extra path vs taking the entry point:
+  //   ext = d(from -> target) + d(target -> aim point) - d(from -> P) - d(P -> aim point)
+  // dA / dP: path distances from `from` to the main lineup point / to P (walls); the option's offset from the main
+  // point is credited at its Euclidean saving. Returns null without a lineup.
+  lineupExt(c, from, dA, dP) {
+    const lu = this.lineup[c];
+    if (!lu) return null;
+    const { u, w } = this.laneUW(c, from), ap = this.aimPt(c);
+    // the option whose angle is nearest my side of the funnel (from beside / behind the window: the widest on my side)
+    const want = u > this.aimU + 0.5 ? w / (u - this.aimU) : Math.sign(w) * 9;
+    let o = lu.opts[0]; for (const q of lu.opts) if (Math.abs(q.t - want) < Math.abs(o.t - want) - 1e-9) o = q;
+    const eT = Math.hypot(from.x - o.x, from.z - o.z);
+    const dT = Math.max(eT, dA - Math.hypot(from.x - lu.x, from.z - lu.z) + eT);
+    const ext = dT + Math.hypot(o.x - ap.x, o.z - ap.z) - dP - (1.6 - this.aimU);
+    return { x: o.x, z: o.z, ext: Math.max(0, ext), dT };
+  }
+  // lining up is worth it when the extra path x detourW costs less than a fast vault saves (same rule in the brain)
+  lineupWorth(ext) { return (ext / this.vS) * this.detourW < this.sMed - this.sFast; }
+  // survivor time for crossing c entered from side `from` (the previous crossing's landing side) with legIn m of walk,
+  // as executed: with a lineup point, fast + the extra run-up path if lining up is worth it (extra / vS x detourW <
+  // medium - fast), else medium; x tierW (knob vaultAngleW: 1 = priced as executed, 0 = every window as a fast vault);
+  // without a lineup the incoming leg's geometry decides (natural straight run-up or not; the pre-lineup pricing)
+  tsIn(c, from, legIn) {
+    const x = this.lineupExt(c, this.sidePt[from], this.LA(from, c), legIn);
+    if (!x) return this.tsOf(c, legIn, this.sidePt[from]);
+    const t = this.lineupWorth(x.ext) ? this.sFast + x.ext / this.vS : this.sMed;
+    return this.sFast + this.tierW * (t - this.sFast);
+  }
 
   field(s) {
-    const out = new Float32Array(this.nSides).fill(this.cap);
+    const out = new Float32Array(2 * this.nSides).fill(this.cap);
     const c0 = this.sideCell[s];
     if (c0 < 0) return out;
     const W = this.W, H = this.H, solid = this.solid, dist = this.dist, R = this.fieldR * 10;
@@ -151,6 +267,8 @@ export class LoopModel {
         // cell-centre distance + the small offsets of the real points (keeps L(s,t) ~ euclid when in the open)
         out[t] = Math.max(Math.hypot(a.x - bpt.x, a.z - bpt.z), dist[ct] / 10);
       }
+      const lu = this.lineup[t];
+      if (lu && dist[lu.cell] >= 0) { const a = this.sidePt[s]; out[this.nSides + t] = Math.max(Math.hypot(a.x - lu.x, a.z - lu.z), dist[lu.cell] / 10); }
     }
     for (const c of touched) dist[c] = -1;
     return out;
@@ -196,7 +314,7 @@ export class LoopModel {
       const So = 3.2 / vS + leg / vS, Ho = Math.min(3.2 / vH + leg / vH, cut), open = (Ho - So) * vH;
       if (this.anchors[c >> 1].kind === 'p' && palSeen.has(c >> 1)) { lap += open; palOpen += open; palGain += open; continue; }
       const legIn = this.L(this.qSide(prev), this.pSide(c));
-      const S = this.tsOf(c, legIn, this.sidePt[this.qSide(prev)]) + leg / vS;
+      const S = this.tsIn(c, this.qSide(prev), legIn) + leg / vS;
       const H = Math.min(this.thOf(c) + leg / vH, cut);
       const g = (H - S) * vH;
       lap += g;
