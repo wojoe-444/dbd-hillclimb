@@ -2,6 +2,7 @@
 // Add new hand-written brains here (an empty space {} means "no tunable knobs").
 import { hunterSpace, makeHunter } from './hunter.js';
 import { survivorSpace, makeSurvivor } from './survivor.js';
+import { survivorCtxSpace, makeSurvivorCtx } from './survivor-ctx.js';
 import { hunterBrain as testHunter, survivorBrain as testSurvivor } from '../sim/testbrains.js';
 
 export const hunters = {
@@ -10,6 +11,7 @@ export const hunters = {
 };
 export const survivors = {
   param: { space: survivorSpace, make: makeSurvivor },
+  ctx: { space: survivorCtxSpace, make: makeSurvivorCtx },   // research: param + context-conditioned knobs (survivor-ctx.js)
   test: { space: {}, make: () => testSurvivor },
 };
 
