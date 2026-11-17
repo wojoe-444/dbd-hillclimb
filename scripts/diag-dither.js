@@ -2,7 +2,7 @@
 // between two goals each tick) — the "camera spinning back and forth" look. Reports counts per role and the first
 // few streaks with time, position and the brain's action, so the culprit branch can be found.
 //
-// Usage: node scripts/diag-dither.js [--n 12] [--map maps/gas-heaven] [--champ runs/<run>/champions.json] [--streak 3]
+// Usage: node scripts/diag-dither.js [--n 12] [--map maps/gas-heaven] [--champ runs/<run>/champions.json] [--streak 3] [--hp knob=v,...]
 import { readFileSync } from 'node:fs';
 import { createMatch } from '../src/sim/index.js';
 import { getBrains } from '../src/brains/index.js';
@@ -16,6 +16,7 @@ const maps = loadMapPool(a.map ?? 'maps/gas-heaven');
 const B = getBrains();
 let hp = defaults(B.hunter.space), sp = defaults(B.survivor.space);
 if (a.champ) ({ hunter: hp, survivor: sp } = JSON.parse(readFileSync(a.champ, 'utf8')).champ);
+if (a.hp) for (const p of a.hp.split(',')) { const [k, v] = p.split('='); hp[k] = +v; }   // hunter knob overrides, e.g. --hp holdVaultP=0
 const n = +(a.n ?? 12), minStreak = +(a.streak ?? 3);
 const FLIP = 2.5; // rad
 

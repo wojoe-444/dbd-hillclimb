@@ -13,6 +13,14 @@
 //                  where it is now.
 // A "pass" starts when the loop situation begins (survivor near an anchor of a real circuit, both of us on that tile,
 // hunter close) and again at each vault the survivor starts; at most one roll per 2 s.
+// Why these rarely paid (docs/research/hunter-window-play.md): a pass needs the survivor RUNNING round the tile
+// (|omega| > 0.1, speed > 1), so neither ever fires at a window hold (the survivor stands still); a stand-off against a
+// running survivor just gives up distance (it never vaults back into me: survivors only vault away from my side); and
+// reversals are kill-neutral (reverseChance 1 vs 0, n=256: 3.29 vs 3.27; ~80 % of reversal ticks are out of sight,
+// and evolved survivors read them: loopReverseDist ~9 m, loopReactS 0 in evo-v16), so the GA dropped them.
+//
+// Window holds (holdVaultP < 1; see the section below): the counter-play to a survivor standing at a window on the
+// far side -- zone / fake / walk round instead of vaulting into it.
 import { LoopModel } from './loops.js';
 
 const TAU = 2 * Math.PI;
@@ -96,6 +104,7 @@ export function makeLoopMind(ctx, P) {
   // called for the chased, visible survivor `s` at distance d when no attack / pallet break is due; returns an action
   // or null (then hunter.js moves to aim()).
   function step(obs, api, me, s, d) {
+    if (holdOn) { const ha = holdStep(obs, api, me, s, d); if (ha) return ha; }
     if (!on) return null;
     if (!loops) loops = new LoopModel(ctx);
     seenT = obs.t;
@@ -161,6 +170,7 @@ export function makeLoopMind(ctx, P) {
   // the survivor went out of sight (behind the tile -- a reversal runs away from where it was seen): keep the committed
   // reversal / stand-off going for up to 3 s unseen (within its own time limit); null = do the normal search
   function unseen(obs, api, me) {
+    if (holdOn && hold) { const ha = holdUnseen(obs, api, me); if (ha) return ha; }
     if (!mode || !curTile) return null;
     if (obs.t >= mode.until || obs.t - seenT > 3) { mode = null; return null; }
     if (mode.kind === 'stand') { stats.standTicks++; return { moveDir: { x: 0, z: 0 }, face: mode.face }; }
@@ -170,5 +180,198 @@ export function makeLoopMind(ctx, P) {
     return { moveTo: pt };
   }
 
-  return { step, unseen, aim, predict, stats, get mode() { return mode; } };
+  // ================= window holds: the chased survivor waits at a window on the far side from me =================
+  // It vaults away from whichever side I come round to; vaulting into it hands it my 1.7 s vault to run (diag-holds.js:
+  // the old hunter did that in ~half the holds). Per hold episode one plan, drawn once (no RNG draw at all while
+  // holdVaultP is 1 = the old behaviour, bit-identical):
+  //   vault  (holdVaultP)            path straight at it (the engine vaults the window) -- the old behaviour;
+  //   zone   (holdZoneP of the rest) stand on my side holdDepthM out from the window and zoneW along the wall toward the
+  //                                  shorter way round: a vault toward me lands in my reach (so it won't), and if it runs
+  //                                  off on its side I'm already part-way round;
+  //   fake   (holdFakeP of the rest) walk round (same detour cap) for holdFakeFrac of the detour, then come back to the
+  //                                  zone spot (a survivor that commits to the vault-back as I come round lands by me);
+  //   around (the rest)              walk round the shorter way, never through the window (detour <= holdAroundMaxM, else
+  //                                  zone): it has to vault toward my old side (a medium vault from standing; it counts
+  //                                  toward the entity blocker) or be hit.
+  // After holdPatienceS on a plan that has not ended the hold, holdThen picks: < 1/3 vault (old behaviour); < 2/3 walk
+  // round (once; holdPatienceS or the walk + 1 s; detour cap as above, else vault); else break the chase off (hunter.js
+  // ignores this survivor for 10 s). Legit info only: the survivor seen standing at the window, the static map.
+  const W0 = M.windows || [];
+  const holdOn = P.holdVaultP < 1;
+  let hold = null;                  // { wi, sid, plan, t0, seenT, sgnS, D0, zone, fakeBack, done, last: {x, z} (last seen) }
+  const aroundF = new Map();        // side index (2 wi + (u > 0)) -> Int32Array walk distance (x10 m, -1 = unreached)
+  Object.assign(stats, { holds: 0, hVault: 0, hZone: 0, hFake: 0, hAround: 0, hTicks: 0, hUnseenTicks: 0, hPatience: 0, hBreak: 0,
+    hThenAround: 0, hTooFar: 0, hEndSide: 0, hEndMoved: 0, hEndVault: 0, hEndLost: 0 });
+  const winGeo = (wi) => {
+    const w = W0[wi], c = { x: w.x + 0.5, z: w.z + 0.5 }, ax = w.axis === 'x' ? { x: 1, z: 0 } : { x: 0, z: 1 };
+    return { c, u: (p) => (p.x - c.x) * ax.x + (p.z - c.z) * ax.z, l: (p) => -(p.x - c.x) * ax.z + (p.z - c.z) * ax.x,
+      at: (u, l) => ({ x: c.x + ax.x * u - ax.z * l, z: c.z + ax.z * u + ax.x * l }) };
+  };
+  // walk distance field (all anchors solid: never through a window / pallet) to window wi's side point at sign sg
+  // (anchor k = wi: LoopModel lists the windows first; side 0 is at u = -1.6, side 1 at u = +1.6)
+  function fieldTo(wi, sg) {
+    const key = 2 * wi + (sg > 0 ? 1 : 0);
+    let f = aroundF.get(key);
+    if (f) return f;
+    const Wd = loops.W, Hd = loops.H, solid = loops.solid;
+    f = new Int32Array(Wd * Hd).fill(-1);
+    aroundF.set(key, f);
+    const c0 = loops.sideCell[key];
+    if (c0 < 0) return f;
+    const R = 600, buckets = [[c0]]; f[c0] = 0;
+    for (let b = 0; b < buckets.length && b <= R; b++) {
+      const bk = buckets[b]; if (!bk) continue;
+      for (let q = 0; q < bk.length; q++) {
+        const c = bk[q]; if (f[c] !== b) continue;
+        const i = c % Wd, j = (c / Wd) | 0;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          if (!di && !dj) continue;
+          const ni = i + di, nj = j + dj;
+          if (ni < 0 || nj < 0 || ni >= Wd || nj >= Hd) continue;
+          const n = nj * Wd + ni;
+          if (solid[n] || (di && dj && (solid[j * Wd + ni] || solid[nj * Wd + i]))) continue;
+          const nd = b + (di && dj ? 14 : 10);
+          if (nd > R || (f[n] >= 0 && f[n] <= nd)) continue;
+          f[n] = nd;
+          (buckets[nd] || (buckets[nd] = [])).push(n);
+        }
+      }
+    }
+    return f;
+  }
+  // p's cell in field f, or the best reached neighbour (p may stand on a cell the anchor grid calls solid: an up pallet)
+  function cellIn(f, p) {
+    const Wd = loops.W, i0 = Math.floor(p.x), j0 = Math.floor(p.z);
+    let best = -1, bv = Infinity;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const i = i0 + di, j = j0 + dj;
+      if (i < 0 || j < 0 || i >= Wd || j >= loops.H) continue;
+      const c = j * Wd + i, v = f[c];
+      if (v < 0) continue;
+      const vv = v + ((di || dj) ? 10 : 0);
+      if (vv < bv) { bv = vv; best = c; }
+    }
+    return { c: best, v: bv };
+  }
+  const fieldM = (f, p) => { const r = cellIn(f, p); return r.c < 0 ? Infinity : r.v / 10; };
+  // next point to walk to along field f: descent, string-pulled to the farthest cell reachable in a straight line
+  function descend(api, f, me) {
+    const Wd = loops.W, solid = loops.solid;
+    let c = cellIn(f, me).c;
+    if (c < 0) return null;
+    const path = [c];
+    for (let k = 0; k < 14 && f[c] > 0; k++) {
+      const i = c % Wd, j = (c / Wd) | 0;
+      let bn = -1, bv = f[c];
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= Wd || nj >= loops.H) continue;
+        const n = nj * Wd + ni;
+        if (f[n] < 0 || (di && dj && (solid[j * Wd + ni] || solid[nj * Wd + i]))) continue;
+        if (f[n] < bv) { bv = f[n]; bn = n; }
+      }
+      if (bn < 0) break;
+      c = bn; path.push(c);
+    }
+    const ctr = (cc) => ({ x: cc % Wd + 0.5, z: ((cc / Wd) | 0) + 0.5 });
+    for (let k = path.length - 1; k >= 1; k--) { const pt = ctr(path[k]); if (api.walkClear(me, pt)) return pt; }
+    return ctr(path[Math.min(1, path.length - 1)]);
+  }
+  // the zone spot: my side, holdDepthM out, zoneW along the wall toward the shorter way round (shrunk until walkable)
+  function zoneSpot(api, me, G, sgnMe, f) {
+    let side = 0;
+    if (P.zoneW > 0.05) {
+      const da = fieldM(f, G.at(sgnMe * P.holdDepthM, P.zoneW)), db = fieldM(f, G.at(sgnMe * P.holdDepthM, -P.zoneW));
+      side = da < db ? 1 : db < da ? -1 : (G.l(me) >= 0 ? 1 : -1);
+    }
+    for (let k = 0; k <= 4; k++) {
+      const z = G.at(sgnMe * P.holdDepthM, side * P.zoneW * (1 - k / 4));
+      if (cellIn(f, z).c >= 0 && Number.isFinite(api.nav.dist(me, z))) return z;
+    }
+    return G.at(sgnMe * 1.6, 0);
+  }
+  function endHold(why) { stats[why]++; hold = null; }
+
+  function holdStep(obs, api, me, s, d) {
+    const spd = Math.hypot(s.vx || 0, s.vz || 0);
+    if (hold && obs.t - hold.seenT > 3.5) hold = null;   // stale (the chase moved on while it was out of sight)
+    if (hold) {
+      const G = winGeo(hold.wi), us = G.u(s), um = G.u(me);
+      if (hold.sid !== s.id) endHold('hEndLost');
+      else if (s.vaulting) endHold('hEndVault');
+      else if (Math.sign(um) === Math.sign(us) && Math.abs(um) > 0.6) endHold('hEndSide');
+      else if (Math.hypot(us, G.l(s)) > 3.6 || spd > 2.5 || Math.sign(us) !== hold.sgnS) endHold('hEndMoved');
+      else if (hold.done) return null;     // patience ran out on this hold: the old behaviour until it ends
+    }
+    if (!hold) {
+      // a hold: s (seen now) standing still in front of a window, me on the other side, not too far off
+      if (s.vaulting || spd > 1.0 || d > 16 || !(s.state === 'healthy' || s.state === 'injured')) return null;
+      let wi = -1, bd = 3.0;
+      for (let i = 0; i < W0.length; i++) {
+        const G = winGeo(i), us = G.u(s), ls = G.l(s);
+        if (Math.abs(ls) > 1.2 || Math.abs(us) < 0.7 || Math.abs(us) > 3.0) continue;
+        const um = G.u(me);
+        if (Math.sign(um) === Math.sign(us) || Math.abs(um) < 0.6) continue;
+        const dd = Math.hypot(us, ls);
+        if (dd < bd) { bd = dd; wi = i; }
+      }
+      if (wi < 0) return null;
+      if (!loops) loops = new LoopModel(ctx);
+      const sgnS = Math.sign(winGeo(wi).u(s));
+      hold = { wi, sid: s.id, plan: 'vault', t0: obs.t, seenT: obs.t, sgnS, D0: 0, zone: null, fakeBack: false, done: false };
+      stats.holds++;
+      const r = ctx.rng.next();
+      if (r >= P.holdVaultP) {
+        const r2 = (r - P.holdVaultP) / (1 - P.holdVaultP);
+        hold.plan = r2 < P.holdZoneP ? 'zone' : r2 < P.holdZoneP + (1 - P.holdZoneP) * P.holdFakeP ? 'fake' : 'around';
+        if (hold.plan !== 'zone') {
+          hold.D0 = fieldM(fieldTo(wi, sgnS), me);
+          if (!(hold.D0 <= P.holdAroundMaxM)) { hold.plan = 'zone'; stats.hTooFar++; }   // too far round: zone instead
+        }
+      }
+      stats[{ vault: 'hVault', zone: 'hZone', fake: 'hFake', around: 'hAround' }[hold.plan]]++;
+    }
+    hold.seenT = obs.t; hold.last = { x: s.x, z: s.z };
+    return holdAct(obs, api, me, s);
+  }
+
+  function holdAct(obs, api, me, s) {
+    const H = hold;
+    if (H.plan === 'vault') return null;
+    if (obs.t - H.t0 > (H.then ? Math.max(P.holdPatienceS, H.D0 / 4 + 1) : P.holdPatienceS)) {
+      stats.hPatience++;
+      if (P.holdThen >= 2 / 3) { stats.hBreak++; hold = null; return { breakOff: true }; }
+      if (P.holdThen >= 1 / 3 && !H.then && H.plan !== 'around') {
+        H.then = true; H.t0 = obs.t;
+        H.D0 = fieldM(fieldTo(H.wi, H.sgnS), me);
+        if (H.D0 <= P.holdAroundMaxM) { H.plan = 'around'; stats.hThenAround++; return holdAct(obs, api, me, s); }
+      }
+      H.done = true; return null;
+    }
+    stats.hTicks++;
+    const G = winGeo(H.wi), f = fieldTo(H.wi, H.sgnS);
+    if (H.plan === 'fake' && !H.fakeBack && fieldM(f, me) <= (1 - P.holdFakeFrac) * H.D0) H.fakeBack = true;
+    if (H.plan === 'around' || (H.plan === 'fake' && !H.fakeBack)) {
+      const pt = descend(api, f, me);
+      if (pt) return { moveTo: pt, face: H.last };      // keep it in view while I go round
+      H.done = true; return null;
+    }
+    if (!H.zone) H.zone = zoneSpot(api, me, G, -H.sgnS, f);
+    const face = s ? { x: s.x, z: s.z } : G.c;
+    if (Math.hypot(me.x - H.zone.x, me.z - H.zone.z) > 0.5) return { moveTo: H.zone, face };
+    return { moveDir: { x: 0, z: 0 }, face };
+  }
+
+  // out of sight during a hold plan (walking round puts the wall between us): keep it going for up to 3 s
+  function holdUnseen(obs, api, me) {
+    if (hold.done || hold.plan === 'vault' || obs.t - hold.seenT > 3) { hold = null; return null; }
+    const um = winGeo(hold.wi).u(me);   // round on its side and it's gone: the normal search takes over
+    if (Math.sign(um) === hold.sgnS && Math.abs(um) > 0.6) { endHold('hEndSide'); return null; }
+    stats.hUnseenTicks++;
+    return holdAct(obs, api, me, null);
+  }
+
+  return { step, unseen, aim, predict, stats, get mode() { return mode; },
+    get still() { return !!(hold && !hold.done && hold.zone); }, get hold() { return hold; } };
 }

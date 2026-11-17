@@ -1536,6 +1536,75 @@ test('loop mind games: predictLeadS extrapolates the survivor along walkable spa
   ok(p2.x > 0.4 && api.walkClear(s2, p2), 'running into a wall: prediction stays on walkable ground (' + p2.x.toFixed(2) + ',' + p2.z.toFixed(2) + ')');
 });
 
+test('window holds (hunter): plans never vault into the held window; knobs at today\'s values are inert; deterministic', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  ok(B.hunter.space.holdVaultP[2] === 1, 'holdVaultP default 1 = always vault into a hold (the old behaviour)');
+  const m = createMatch({ map: gh, seed: 7, hunter: hunterBrain, survivors: survivorBrain });
+  const api = m.hunter.api, ctx = { map: m.hunter.ctx.map, config: m.cfg };
+  const W = gh.windows.find((w) => w.id === 'w-tl-t');
+  const c = { x: W.x + 0.5, z: W.z + 0.5 }, ax = W.axis === 'x' ? { x: 1, z: 0 } : { x: 0, z: 1 };
+  const at = (u) => ({ x: c.x + ax.x * u, z: c.z + ax.z * u }), uOf = (p) => (p.x - c.x) * ax.x + (p.z - c.z) * ax.z;
+  // find the window's open sides: survivor stands 1.6 m out on one side, the hunter 5 m out on the other
+  let sg = 1;
+  if (!Number.isFinite(api.nav.dist(at(1.6), at(5))) || !api.walkClear(at(-1.6), at(-5))) sg = -1;
+  const sv = { id: 1, ...at(1.6 * sg), vx: 0, vz: 0, vaulting: false, state: 'healthy' };
+  const P0 = { reverseChance: 0, standOffChance: 0, predictLeadS: 0, holdVaultP: 0, holdZoneP: 0, holdFakeP: 0, holdFakeFrac: 0.5, zoneW: 2,
+    holdDepthM: 2.2, holdAroundMaxM: 40, holdPatienceS: 30, holdThen: 0 };
+  const play = (P, r, maxT) => {
+    const mind = makeLoopMind({ ...ctx, rng: { next: () => r } }, P);
+    let me = { ...at(-5 * sg) }, t = 0, acts = [], crossed = false, through = false;
+    for (; t < maxT; t += 0.1) {
+      const d = Math.hypot(me.x - sv.x, me.z - sv.z);
+      const a = mind.step({ t }, api, me, sv, d);
+      acts.push(a);
+      if (!a || a.breakOff) break;
+      if (!a.moveTo) continue;
+      const wp = api.nav.nextWaypoint(me, a.moveTo) || a.moveTo;   // steer like the engine does
+      const dx = wp.x - me.x, dz = wp.z - me.z, L = Math.hypot(dx, dz);
+      if (L < 0.05) break;
+      const q = { x: me.x + dx / L * Math.min(L, 0.46), z: me.z + dz / L * Math.min(L, 0.46) };
+      if (Math.floor(q.x) === W.x && Math.floor(q.z) === W.z) through = true;   // in the window cell = vaulting it
+      me = q;
+      if (Math.sign(uOf(me)) === sg && Math.abs(uOf(me)) > 0.6) { crossed = true; break; }
+    }
+    return { mind, acts, crossed, through, me };
+  };
+  // vault plan (holdVaultP 1): the mind says nothing -> hunter.js paths straight at the survivor (the engine vaults)
+  { const r = play({ ...P0, holdVaultP: 1 }, 0.5, 1); ok(r.acts[0] === null && r.mind.stats.holds === 0, 'holdVaultP 1: no hold logic (' + JSON.stringify(r.acts[0]) + ')'); }
+  { const r = play({ ...P0, holdVaultP: 0.6 }, 0.5, 1); ok(r.acts[0] === null && r.mind.stats.hVault === 1, 'roll below holdVaultP: vault plan'); }
+  // around: walks round on walkable ground (never a step into the window) and arrives on the survivor's side
+  { const r = play(P0, 0.99, 30);
+    ok(r.mind.stats.hAround === 1 && r.crossed && !r.through, 'around: reaches its side by walking round, never through (' + JSON.stringify(r.mind.stats) + ', at ' + r.me.x.toFixed(1) + ',' + r.me.z.toFixed(1) + ')'); }
+  // zone: stands on my side, holdDepthM out, at most zoneW along the wall, facing the survivor
+  { const r = play({ ...P0, holdZoneP: 1 }, 0.99, 10);
+    const z = r.mind.hold && r.mind.hold.zone, last = r.acts[r.acts.length - 1];
+    ok(r.mind.stats.hZone === 1 && z && Math.sign(uOf(z)) === -sg && Math.abs(Math.abs(uOf(z)) - 2.2) < 1e-6, 'zone spot on my side, 2.2 m out (' + JSON.stringify(z) + ')');
+    ok(z && Math.hypot(z.x - (c.x + ax.x * uOf(z)), z.z - (c.z + ax.z * uOf(z))) <= 2 + 1e-6 && !r.through && !r.crossed, 'zone spot within zoneW of the window axis, walked to');
+    ok(last && last.face && last.face.x === sv.x && last.face.z === sv.z, 'zone: faces the survivor'); }
+  // fake: starts round, then turns back to the zone spot
+  { const r = play({ ...P0, holdFakeP: 1 }, 0.99, 30);
+    ok(r.mind.stats.hFake === 1 && r.mind.hold && r.mind.hold.fakeBack && !r.crossed && !r.through, 'fake: goes part-way round, comes back (' + JSON.stringify(r.mind.hold && { back: r.mind.hold.fakeBack, D0: r.mind.hold.D0 }) + ')'); }
+  // patience: vault after all, or break off
+  { const r = play({ ...P0, holdZoneP: 1, holdPatienceS: 1 }, 0.99, 3); ok(r.mind.stats.hPatience === 1 && r.acts[r.acts.length - 1] === null, 'patience out: back to the old behaviour (vault)'); }
+  { const r = play({ ...P0, holdZoneP: 1, holdPatienceS: 1, holdThen: 1 }, 0.99, 3); const l = r.acts[r.acts.length - 1]; ok(r.mind.stats.hBreak === 1 && l && l.breakOff, 'patience out + holdThen 1: break the chase off'); }
+  { const r = play({ ...P0, holdZoneP: 1, holdPatienceS: 1, holdThen: 0.5 }, 0.99, 30); ok(r.mind.stats.hThenAround === 1 && r.crossed && !r.through, 'patience out + holdThen 0.5: then walk round (' + JSON.stringify(r.mind.stats) + ')'); }
+  // full matches: defaults = no hold activity; on = holds + plans, identical forward vs reverse
+  const go = (seed, on) => {
+    let hb = null;
+    const hf = B.hunter.make({ ...defaults(B.hunter.space), ...(on ? { holdVaultP: 0 } : {}) });
+    const r = runMatch({ map: gh, seed, hunter: (cx) => (hb = hf(cx)), survivors: B.survivor.make(defaults(B.survivor.space)) });
+    return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), st: { ...hb.mind.stats } };
+  };
+  const off = go(1012, false);
+  ok(off.st.holds === 0 && off.st.hTicks === 0, 'defaults: no window-hold activity');
+  const seeds = [1000, 1001, 1002];
+  const fwd = seeds.map((s) => go(s, true)), rev = [...seeds].reverse().map((s) => go(s, true)).reverse();
+  for (let i = 0; i < seeds.length; i++) ok(fwd[i].key === rev[i].key, 'holds on: seed ' + seeds[i] + ' identical forward vs reverse order');
+  const sum = (k) => fwd.reduce((s, x) => s + (x.st[k] || 0), 0);
+  ok(sum('holds') > 0 && sum('hTicks') > 0 && sum('hZone') + sum('hFake') + sum('hAround') > 0, 'hunter window-hold plans happen (' + sum('holds') + ' holds)');
+});
+
 test('nav.dist from a point inside a solid cell is Infinity whether the target field is cached or not', () => {
   const gh = load('maps/gas-heaven.json');
   const m = createMatch({ map: gh, seed: 3, hunter: hunterBrain, survivors: survivorBrain });
