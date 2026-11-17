@@ -25,6 +25,8 @@ import os from 'node:os';
 import { rng as climbRng } from '../src/hillclimb/params.js';
 import { makePlayer } from '../src/hillclimb/play.js';
 import chaseMetric from '../src/hillclimb/metrics/chase.js';
+import { cmaInit, cmaAsk, cmaTell, toNorm, fromNorm } from '../src/hillclimb/cmaes.js';
+import { parsePanelSpec, buildPanel, hofAdd, spreadPick, makeSlots, slotJobs, raceStep, reliability, persistence } from '../src/hillclimb/selection.js';
 import { roundJobs, reevalJobs, benchJobs, groupBench, heldOutSeeds, HELDOUT_BASE, summarize, edgeReport, resolveParamSet } from '../src/hillclimb/evalplan.js';
 import { makeKillerProfile, profileSpace } from '../src/brains/killerprofile.js';
 
@@ -2705,6 +2707,86 @@ test('chase routing: a chased survivor next to the infinite-loop probe tile runs
     vaults += v; if (v >= 2) used++;
   }
   ok(n >= 3 && used >= n - 1, 'went to the probe tile and vaulted >= 2 of its windows in ' + used + '/' + n + ' starts (' + vaults + ' tile vaults)');
+});
+
+test('selection: panel spec, dedup, hall of fame thinning, slots = common random numbers', () => {
+  const space = { a: [0, 1, 0.5], b: [0, 10, 5] };
+  const spec = parsePanelSpec('cur:2,hof:2,default:1,mean:1');
+  ok(spec.length === 4 && spec[0].kind === 'cur' && spec[0].n === 2, 'spec parsed');
+  ok(parsePanelSpec(true).map(x => x.kind).join() === 'cur,hof,default', 'default spec');
+  const pop = [{ id: 'x0', params: { a: 0.5, b: 5 } }, { id: 'x1', params: { a: 0.1, b: 1 } }, { id: 'x2', params: { a: 0.6, b: 6 } }];
+  const hof = [{ gen: 5, id: 'x7', params: { a: 0.2, b: 2 } }, { gen: 10, id: 'x1', params: { a: 0.1, b: 1 } }];
+  const p = buildPanel(spec, { space, ranked: null, pop, hof, fixed: [{ name: 'v', params: { a: 1, b: 0 } }] });
+  ok(p.map(x => x.name).join() === 'cur:x0,cur:x1,hof:g5:x7,mean,fixed:v', 'duplicates dropped (x0 = default, hof x1 = cur x1); mean + fixed kept: ' + p.map(x => x.name).join());
+  ok(spreadPick([1, 2, 3, 4, 5, 6, 7], 3).join() === '1,4,7' && spreadPick([1, 2], 1).join() === '2', 'spread pick spans the archive');
+  let h = [];
+  for (let g = 1; g <= 30; g++) h = hofAdd(h, { gen: g, id: 'c' + g, params: { a: g / 30, b: 0 } }, 6);
+  ok(h.length === 6 && h[0].gen === 1 && h[5].gen === 30, 'hall of fame capped, keeps first and newest: ' + h.map(x => x.gen).join());
+  ok(hofAdd(h, { gen: 31, id: 'same', params: h[5].params }, 6) === h, 'unchanged champion not re-added');
+  const R = climbRng(4), sl = makeSlots(p, 7, R);
+  ok(sl.length === 7 && sl[5].opp === 0 && new Set(sl.map(x => x.seed)).size === 7, 'slots cycle the panel, fresh seeds');
+  const jobs = slotJobs({ side: 'survivor', pop, panel: p, idx: [0, 2], slots: sl.slice(0, 2) });
+  ok(jobs.length === 4 && jobs[0].seed === jobs[1].seed && jobs[0].hunterParams === jobs[1].hunterParams && jobs[1].survivorParams === pop[2].params, 'every individual plays the same (opponent, seed) slot');
+});
+
+test('selection: reliability estimate recovers a known ICC; slot-centring removes shared seed luck', () => {
+  const R = climbRng(11);
+  const g = () => { const u = Math.max(1e-12, R()); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * R()); };
+  // 40 individuals, true sd 0.1, match noise sd 0.2 (ICC 0.2), 32 matches, plus a shared per-slot effect sd 0.3
+  const slot = Array.from({ length: 32 }, () => 0.3 * g());
+  const S = Array.from({ length: 40 }, () => { const t = 0.1 * g(); return slot.map((e) => 0.5 + t + e + 0.2 * g()); });
+  const c = reliability(S, { centred: true }), u = reliability(S);
+  near(c.icc, 0.2, 0.08, 'centred ICC');
+  near(c.rel, 0.2 * 32 / (1 + 0.2 * 31), 0.08, 'reliability of a 32-match mean (Spearman-Brown)');
+  ok(u.icc < c.icc / 2, 'uncentred: shared slot luck counted as noise (' + u.icc + ' vs ' + c.icc + ')');
+  ok(c.split > 0.6 && c.need80 > 8 && c.need80 < 30, 'split-half and matches-for-0.8 consistent: ' + c.split + ', ' + c.need80);
+  const prev = [{ id: 'a', fit: 3 }, { id: 'b', fit: 2 }, { id: 'c', fit: 1 }, { id: 'z', fit: 0 }];
+  ok(persistence(prev, [{ id: 'a', fit: 0.9 }, { id: 'b', fit: 0.5 }, { id: 'c', fit: 0.1 }, { id: 'n', fit: 1 }]).rho === 1, 'rank persistence over survivors only');
+});
+
+test('selection: racing decides clear cases early, keeps near-cut contenders, always selects exactly keep', () => {
+  const R = climbRng(2);
+  const g = () => { const u = Math.max(1e-12, R()); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * R()); };
+  const truth = [1, 1, 0.52, 0.5, 0.48, 0, 0, 0];               // keep 3: two clear ins, three contenders, three clear outs
+  const F = truth.map(() => []);
+  const play = (idx, n) => { for (let k = 0; k < n; k++) { const e = g(); for (const i of idx) F[i].push(truth[i] + e + 0.1 * g()); } };
+  play(truth.map((_, i) => i), 8);
+  let st = raceStep(F, { inSet: [], outSet: [], alive: truth.map((_, i) => i) }, 3, 2);
+  ok(st.inSet.includes(0) && st.inSet.includes(1) && [5, 6, 7].every(i => st.outSet.includes(i)), 'clear cases decided after the first stage: ' + JSON.stringify(st));
+  ok(st.alive.length === 3 && st.alive.every(i => i >= 2 && i <= 4), 'near-cut individuals stay contenders');
+  for (let s = 0; s < 40 && st.alive.length; s++) { play(st.alive, 4); st = raceStep(F, st, 3, 2); }
+  ok(st.inSet.length === 3 && st.inSet.includes(2) && !st.inSet.includes(4), 'contenders resolved with more matches: ' + JSON.stringify(st));
+  ok(st.inSet.length + st.outSet.length + st.alive.length === 8, 'partition of the population');
+  const tie = raceStep([[1, 1, 1, 1], [1, 1, 1, 1], [0, 0, 0, 0]], { inSet: [], outSet: [], alive: [0, 1, 2] }, 1, 1.5);
+  ok(tie.outSet.includes(2) && tie.alive.length === 2, 'exact ties stay undecided');
+});
+
+test('sep-CMA-ES: deterministic, stays in bounds, converges on a noisy bounded objective', () => {
+  const space = Object.fromEntries(Array.from({ length: 20 }, (_, i) => ['k' + i, [-5, 15, 0]]));
+  const target = Object.keys(space).map((k, i) => (i % 3 === 0 ? 15 : 2 + i * 0.3));   // a third at the upper bound
+  const f = (p, R) => -Object.keys(space).reduce((a, k, i) => a + ((p[k] - target[i]) / 20) ** 2, 0) + 0.02 * (R() - 0.5);
+  const runCma = (seed) => {
+    const R = climbRng(seed);
+    let st = cmaInit(space, Object.fromEntries(Object.keys(space).map(k => [k, 0])), { lambda: 12, sigma0: 0.2, mirror: true });
+    let inBounds = true;
+    for (let g = 0; g < 120; g++) {
+      const c = cmaAsk(space, st, R);
+      inBounds &&= c.every(x => x.x.every(v => v >= 0 && v <= 1) && Object.entries(x.params).every(([k, v]) => v >= space[k][0] && v <= space[k][1]));
+      const fit = c.map(x => f(x.params, R));
+      st = cmaTell(st, c.map((x, i) => [fit[i], x.x]).sort((a, b) => b[0] - a[0]).map(p => p[1]));
+    }
+    return { st, inBounds };
+  };
+  const a = runCma(3), b = runCma(3);
+  ok(JSON.stringify(a.st) === JSON.stringify(b.st), 'same seed => identical state');
+  ok(a.inBounds && a.st.mean.every(v => v >= 0 && v <= 1), 'samples and mean inside the box');
+  const m = fromNorm(space, a.st.mean);
+  const err = Math.sqrt(Object.keys(space).reduce((s, k, i) => s + ((m[k] - target[i]) / 20) ** 2, 0) / 20);
+  ok(err < 0.05, 'mean within 5 % of range (rms) of the optimum: ' + err.toFixed(3));
+  const p0 = { k0: -5, k1: 15, k2: 5 }, sp = { k0: [-5, 15, 0], k1: [-5, 15, 0], k2: [-5, 15, 0] };
+  ok(JSON.stringify(fromNorm(sp, toNorm(sp, p0))) === JSON.stringify(p0), 'normalisation round trip');
+  const st = cmaInit(sp, p0, { lambda: 6, mirror: true }), c = cmaAsk(sp, st, climbRng(1));
+  ok(c.length === 6, 'lambda candidates');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
