@@ -4,7 +4,9 @@
 //   survivorFirst: the survivor vaults / leaves first (the hunter came round, or the hold timed out)
 //   hit          : the survivor is hit during the hold
 // plus the seconds the survivor gained per exchange (hunter vault time - survivor's next vault time).
-// node scripts/diag-holds.js [--n 24] [--map maps/gas-heaven] [--sp knob=v,...] [--champ file]
+// plus hits on that survivor within 3 s / 6 s after the hold ends (any ending), and the hunter's hold plans (loopmind.js
+// window-hold counters: hVault / hZone / hFake / hAround, patience run-outs, how holds ended).
+// node scripts/diag-holds.js [--n 24] [--map maps/gas-heaven] [--sp knob=v,...] [--hp knob=v,...] [--champ file]
 import { readFileSync } from 'node:fs';
 import { createMatch } from '../src/sim/index.js';
 import { getBrains } from '../src/brains/index.js';
@@ -17,18 +19,25 @@ const B = getBrains();
 let hp = defaults(B.hunter.space), sp = defaults(B.survivor.space);
 if (a.champ) { const c = JSON.parse(readFileSync(a.champ, 'utf8')).champ; hp = { ...hp, ...c.hunter }; sp = { ...sp, ...c.survivor }; }
 if (a.sp) for (const p of a.sp.split(',')) { const [k, v] = p.split('='); sp[k] = +v; }
+if (a.hp) for (const p of a.hp.split(',')) { const [k, v] = p.split('='); hp[k] = +v; }
 const n = +(a.n ?? 24);
 const out = { hunterVault: 0, survivorFirst: 0, hit: 0, holdS: 0 };
 let exch = 0, gain = 0;
+const after = { n: 0, hit3: 0, hit6: 0 }, mst = {};
 for (let i = 0; i < n; i++) {
   const seed = 5000 + i, map = maps[seed % maps.length];
   const m = createMatch({ map, seed, hunter: B.hunter.make(hp), survivors: B.survivor.make(sp) });
-  const ep = [null, null, null, null];
+  const ep = [null, null, null, null], post = [];
+  const close = (k, s) => { post.push({ k, t: m.t, hits: s.st }); after.n++; };
   const winC = m.md.windows.map((w) => ({ x: w.x + 0.5, z: w.z + 0.5, cell: w.cell }));
   let lastHV = null;
   while (!m.over) {
     m.step();
     const H = m.hunter, hv = H.vault && H.vault !== lastHV ? H.vault : null; lastHV = H.vault || null;
+    for (let q = post.length - 1; q >= 0; q--) {   // hits after a hold ended
+      const o = post[q], s = m.survivors[o.k];
+      if (s.st !== o.hits) { if (m.t - o.t <= 3) after.hit3++; after.hit6++; post.splice(q, 1); } else if (m.t - o.t > 6) post.splice(q, 1);
+    }
     m.survivors.forEach((s, k) => {
       const act = s.lastAction || {};
       const holding = m.chaseTgt === k && s.st <= 1 && !s.vault && Math.hypot(s.vx, s.vz) < 0.5 && act.face && act.moveTo && Math.hypot(act.moveTo.x - s.x, act.moveTo.z - s.z) < 0.8;
@@ -39,16 +48,21 @@ for (let i = 0; i < n; i++) {
       }
       if (!e) return;
       if (s.st !== e.hits || s.st > 1) { if (m.t - e.t0 >= 0.5) out.hit++; ep[k] = null; return; }
+      const fin = () => { if (m.t - e.t0 >= 0.5) close(k, s); ep[k] = null; };
       if (hv && hv.cell === e.w.cell) { if (m.t - e.t0 >= 0.5) { out.hunterVault++; out.holdS += m.t - e.t0; e.wait = { t: m.t }; } else ep[k] = null; if (!e.wait) ep[k] = null; return; }
       if (e.wait) {   // the hunter is vaulting toward me: did I vault back over the same window, and how fast?
-        if (s.vault && s.vault.cell === e.w.cell) { exch++; gain += (m.cfg.hunter.vaultS ?? 1.7) - s.vault.dur; ep[k] = null; }
-        else if (m.t - e.wait.t > 3) ep[k] = null;
+        if (s.vault && s.vault.cell === e.w.cell) { exch++; gain += (m.cfg.hunter.vaultS ?? 1.7) - s.vault.dur; fin(); }
+        else if (m.t - e.wait.t > 3) fin();
         return;
       }
-      if (!holding && (s.vault || Math.hypot(s.vx, s.vz) > 1)) { if (m.t - e.t0 >= 0.5) { out.survivorFirst++; out.holdS += m.t - e.t0; } ep[k] = null; }
+      if (!holding && (s.vault || Math.hypot(s.vx, s.vz) > 1)) { if (m.t - e.t0 >= 0.5) { out.survivorFirst++; out.holdS += m.t - e.t0; } fin(); }
     });
   }
+  const st = m.hunter.brain.mind && m.hunter.brain.mind.stats;
+  if (st) for (const k of Object.keys(st)) if (k[0] === 'h' && typeof st[k] === 'number') mst[k] = (mst[k] ?? 0) + st[k];
 }
 const tot = out.hunterVault + out.survivorFirst + out.hit;
 console.log(`hold episodes ${tot} (mean ${(out.holdS / Math.max(1, out.hunterVault + out.survivorFirst)).toFixed(2)} s): hunter vaults that window ${out.hunterVault} (${(100 * out.hunterVault / tot).toFixed(0)}%), survivor moves first ${out.survivorFirst}, hit while holding ${out.hit}`);
 console.log(`after the hunter's vault the survivor vaulted straight back ${exch} times, gaining ${(gain / Math.max(1, exch)).toFixed(2)} s (hunter vault - my vault) each`);
+console.log(`after a hold (${after.n} ended >= 0.5 s): that survivor hit within 3 s ${after.hit3} (${(100 * after.hit3 / Math.max(1, after.n)).toFixed(0)}%), within 6 s ${after.hit6} (${(100 * after.hit6 / Math.max(1, after.n)).toFixed(0)}%)`);
+if (mst.holds) console.log('hunter hold plans: ' + Object.entries(mst).map(([k, v]) => k + ' ' + v).join('  '));

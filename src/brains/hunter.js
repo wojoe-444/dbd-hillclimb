@@ -46,6 +46,18 @@ export const hunterSpace = {
   standOffChance:  [0, 1, 0],      // per loop pass (if not reversing): stop and wait, baiting a reversal / a vault back
   standOffMaxS:    [0.5, 4, 1.5],  // ...for at most this long
   predictLeadS:    [0, 1.5, 0],    // chase: aim at the survivor's position this far ahead (velocity, slid along walls)
+  // ---- window holds (loopmind.js): the chased survivor stands at a window on the far side, waiting to vault away from
+  // whichever side I come round to. One plan per hold, drawn once; holdVaultP 1 = always vault into it (the old
+  // behaviour, no RNG draw) ----
+  holdVaultP:      [0, 1, 1],      // P(vault the held window toward it) -- gives it my 1.7 s vault to run
+  holdZoneP:       [0, 1, 0.4],    // of the rest: P(zone): stand on my side covering the vault-back and the shorter way round
+  holdFakeP:       [0, 1, 0.3],    // of the rest after zone: P(fake): start round, come back to the zone spot; else walk round
+  holdFakeFrac:    [0.1, 0.9, 0.5],// fake: turn back after this fraction of the walk-round detour
+  zoneW:           [0, 6, 2],      // zone spot: this far along the wall toward the shorter way round...
+  holdDepthM:      [1.6, 5, 2.2],  // ...and this far out from the window on my side
+  holdAroundMaxM:  [4, 40, 20],    // walk round only if the detour (my side -> its side, not through) is at most this; else zone
+  holdPatienceS:   [0.5, 10, 3],   // a plan that hasn't ended the hold after this long: vault after all (or break off)
+  holdThen:        [0, 1, 0],      // patience out: < 1/3 vault (old); < 2/3 walk round (once more); else break the chase off
   // ---- endgame (gates powered): the hunter only learns lever progress by seeing the lever (cone/LOS, or within 2 m) ----
   gatePatrolW:     [0, 1, 0.1],    // 0 = no gate logic (old: patrol blocked gens / belief). >0: rush a lever seen being
                                    // opened (when not in a chase), and go check a lever once
@@ -301,7 +313,7 @@ export function makeHunter(P0) {
         // stall guard: barely moved over the last 2 s while free to move (not acting / cooling down / vaulting / stunned /
         // carrying) -> the current goal is unreachable or sits behind an obstacle (e.g. a lead on a dropped pallet): drop it
         const free = !me.act && !me.vaulting && !(me.stunS > 0) && !(me.cooldownS > 0) && !(me.windupS > 0) && me.carrying === null;
-        if (free && !(mind.mode && mind.mode.kind === 'stand')) posHist.push([me.x, me.z]); else posHist.length = 0;   // (a loop stand-off stands still on purpose)
+        if (free && !(mind.mode && mind.mode.kind === 'stand') && !mind.still) posHist.push([me.x, me.z]); else posHist.length = 0;   // (a loop stand-off stands still on purpose)
         if (posHist.length > 20) posHist.shift();
         if (posHist.length === 20 && Math.hypot(me.x - posHist[0][0], me.z - posHist[0][1]) < 1.0) {
           posHist.length = 0; goto = null; lastPos = null; beliefTgt = null; patrolGen = -1; camp = null; leadsOffUntil = obs.t + 4;
@@ -424,7 +436,9 @@ export function makeHunter(P0) {
             if (d <= P.lungeDist && (best.vaulting || api.walkClear(me, best) || nav.dist(me, best) <= P.lungeDist + 1)) {
               return { act: 'attack', target: best.id, face: { x: best.x, z: best.z } };
             }
-            return mind.step(obs, api, me, best, d) || { moveTo: mind.aim(api, best) };
+            const mg = mind.step(obs, api, me, best, d);
+            if (mg && mg.breakOff) { ignoreUntil[target] = obs.t + 10; target = null; lastPos = null; return {}; }   // window hold: out of patience
+            return mg || { moveTo: mind.aim(api, best) };
           }
         }
 
