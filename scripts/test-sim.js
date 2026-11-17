@@ -17,6 +17,7 @@ import { RouteLookahead } from '../src/brains/lookahead.js';
 import { generateOutline, checkOutlineCells, outlineToCells, OUTLINE_FAMILIES, generateFromLayout, gasHeavenLayout, makeRng, outlineInset, TILES } from '../src/mapgen/index.js';
 import { analyzeMap } from './validate-map.js';
 import { makeHealPlanner, healSpace } from '../src/brains/healplan.js';
+import { makeKillerProfile, profileSpace } from '../src/brains/killerprofile.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = p => JSON.parse(fs.readFileSync(path.resolve(root, p), 'utf8'));
@@ -2021,6 +2022,88 @@ test('heal handshake in matches: few impossible heals, deterministic, healOfferS
   ok(sum('fail') < 0.25 * Math.max(1, sum('tot')), `most requested heal ticks actually heal (${sum('fail')} / ${sum('tot')} failed)`);
   const off = seeds.map((s) => go(s, { healOfferS: 0 }));
   ok(off.every((x) => x.healing === 0 && x.accepts === 0), 'healOfferS 0: no "healing" intents, no patient pauses');
+});
+
+test('killer profile (killerprofile.js): beliefs from synthetic own observations; knobs 0 = identity; adaptations signed', () => {
+  // one z-axis pallet footprint x 10..11, z 10..12 (stun zone: z 9..13 within x 10..11); one window
+  const map = { pallets: [{ id: 'p', x0: 10, z0: 10, x1: 11, z1: 12, cx: 10.5, cz: 11, axis: 'z' }], windows: [{ id: 'w', x: 30, z: 30, axis: 'x' }], generators: [] };
+  const ctx = { map, config: { hunter: { palletStunAlongM: 1 } } };
+  const P0 = { ...defaults(profileSpace) };
+  const hud = (over = {}) => [0, 1, 2, 3].map((id) => ({ id, state: 'healthy', chased: false, resolve: 0, ...(over[id] || {}) }));
+  const base = (t, extra = {}) => ({ t, self: { id: 0, x: 10.5, z: 8.9, vx: 0, vz: 0, state: 'healthy', chased: true }, hunter: null, teammates: [], pallets: ['up'], gens: [], hud: hud(), notifications: [], terror: null, ...extra });
+  const H = (x, z, o = {}) => ({ x, z, vx: 0, vz: 0, windup: false, cooldown: false, stunned: false, act: null, vaulting: false, carrying: false, ...o });
+  // respecter: hunter holds still 2 m outside the zone while I stand at the pallet
+  const pr = makeKillerProfile(ctx, P0);
+  for (let k = 0; k <= 8; k++) pr.update(base(k * 0.1, { hunter: H(10.5, 15.5) }));
+  ok(pr._rates.respect.n === 1 && pr._rates.respect.s === 1, 'respect: a 0.5 s hold outside the stun zone = 1 respect trial');
+  ok(pr.est().respect.p > 0.5 && pr.est().respect.conf === 1, 'respect: estimate above the 0.5 prior, confidence 1');
+  // runner: hunter walks into the zone
+  const rn = makeKillerProfile(ctx, P0);
+  for (let k = 0; k <= 8; k++) rn.update(base(k * 0.1, { hunter: H(10.5, 16 - k * 0.5, { vz: -5 }) }));
+  ok(rn._rates.respect.n === 1 && rn._rates.respect.s === 0, 'respect: running into the stun zone = 1 run-in trial');
+  // nobody at the pallet: no trial
+  const no = makeKillerProfile(ctx, P0);
+  for (let k = 0; k <= 8; k++) no.update(base(k * 0.1, { self: { id: 0, x: 20, z: 20, vx: 0, vz: 0, state: 'healthy' }, hunter: H(10.5, 15.5) }));
+  ok(no._rates.respect.n === 0, 'respect: no survivor at the pallet -> no trial');
+  // prior strength: N small -> trusts one observation more
+  const fast = makeKillerProfile(ctx, { ...P0, profilePriorN: 0.5 });
+  for (let k = 0; k <= 8; k++) fast.update(base(k * 0.1, { hunter: H(10.5, 15.5) }));
+  ok(fast.est().respect.p > pr.est().respect.p, 'profilePriorN: a weaker prior moves further on the same evidence');
+
+  // tunnelling (HUD only): survivor 1 unhooked, then the next chase is on survivor 1
+  const tu = makeKillerProfile(ctx, P0);
+  tu.update(base(0, { hud: hud({ 1: { state: 'hooked' } }) }));
+  tu.update(base(1, { hud: hud({ 1: { state: 'injured' } }) }));
+  tu.update(base(5, { hud: hud({ 1: { state: 'injured', chased: true } }) }));
+  ok(tu._rates.tunnel.n === 1 && tu._rates.tunnel.s === 1, 'tunnel: first chase after the unhook is on the unhooked survivor');
+  tu.update(base(6, { hud: hud({ 2: { state: 'hooked' } }) }));
+  tu.update(base(7, { hud: hud({ 2: { state: 'injured' } }) }));
+  tu.update(base(9, { hud: hud({ 2: { state: 'injured' }, 3: { chased: true } }) }));
+  ok(tu._rates.tunnel.n === 2 && tu._rates.tunnel.s === 1, 'tunnel: someone else chased first = 0');
+
+  // camping: a teammate hooked (notification), its Resolve rises (hunter within 16 m) -> camp evidence
+  const cp = makeKillerProfile(ctx, P0);
+  const note = { type: 'hooked', who: 2, hookId: 'h', x: 40, z: 40, t: 0 };
+  for (let k = 0; k <= 20; k++) cp.update(base(k, { notifications: [note], hud: hud({ 2: { state: 'hooked', resolve: k > 8 ? (k - 8) * 0.02 : 0 } }) }));
+  const lv = makeKillerProfile(ctx, P0);
+  for (let k = 0; k <= 20; k++) lv.update(base(k, { notifications: [note], hud: hud({ 2: { state: 'hooked' } }), hunter: k === 10 ? H(80, 80) : null }));
+  ok(cp.est().camp.p > 0.2 && lv.est().camp.p < 0.2, `camp: rising Resolve reads camper (${cp.est().camp.p.toFixed(2)}), flat Resolve + hunter seen far reads leaver (${lv.est().camp.p.toFixed(2)})`);
+
+  // slugging: survivor 3 downed and left 25 s vs picked up after 4 s
+  const sl = makeKillerProfile(ctx, P0);
+  sl.update(base(0)); sl.update(base(1, { hud: hud({ 3: { state: 'downed' } }) })); sl.update(base(26, { hud: hud({ 3: { state: 'downed' } }) }));
+  sl.update(base(27, { hud: hud({ 2: { state: 'downed' } }) })); sl.update(base(31, { hud: hud({ 2: { state: 'carried' } }) }));
+  ok(sl._rates.slug.n === 2 && sl._rates.slug.s === 1, 'slug: left on the floor = 1, picked up within 12 s = 0');
+
+  // adaptation hooks: knobs 0 -> identity whatever the evidence; on -> the right direction
+  const obsT = base(30);
+  ok(pr.palletGreed(1) === 1 && pr.stunSeek(0.5) === 0.5 && pr.reverseDist(0) === 0 && pr.reactS(0.4) === 0.4 && pr.fleeSeenDist(obsT, 20) === 20 && pr.fleeTR(obsT, 12) === 12 && pr.rescueTerm() === 0 && pr.healDist(15) === 15, 'all *Adapt 0: every hook is the identity');
+  const on = { ...P0, palletRespectAdapt: 1, campAdapt: 1, slugAdapt: 1, tunnelAdapt: 1 };
+  const pOn = makeKillerProfile(ctx, on), rOn = makeKillerProfile(ctx, on);
+  ok(pOn.palletGreed(1) === 1 && pOn.rescueTerm() === 0, 'knobs on, no evidence yet: still the identity');
+  for (let k = 0; k <= 8; k++) { pOn.update(base(k * 0.1, { hunter: H(10.5, 15.5) })); rOn.update(base(k * 0.1, { hunter: H(10.5, 16 - k * 0.5, { vz: -5 }) })); }
+  ok(pOn.palletGreed(1) > 1 && pOn.stunSeek(0.5) < 0.5, 'respecter: keep pallets longer (greed up), no waiting for a stun');
+  ok(rOn.palletGreed(1) === 1 && rOn.stunSeek(0.5) > 0.5, 'runner: hold the drop for the stun (greed unchanged)');
+  const cOn = makeKillerProfile(ctx, on);
+  for (let k = 0; k <= 20; k++) cOn.update(base(k, { notifications: [note], hud: hud({ 2: { state: 'hooked', resolve: k > 8 ? (k - 8) * 0.02 : 0 } }) }));
+  ok(cOn.rescueTerm() < 0, 'camper: rescue utility lowered (rescue later)');
+  // tunnel adaptation applies only for 60 s after MY unhook
+  const mOn = makeKillerProfile(ctx, on);
+  mOn.update(base(0, { hud: hud({ 1: { state: 'hooked' } }) })); mOn.update(base(1, { hud: hud({ 1: { state: 'injured' } }) })); mOn.update(base(3, { hud: hud({ 1: { state: 'injured', chased: true } }) }));
+  ok(mOn.fleeSeenDist(base(4), 20) === 20, 'tunnel: a teammate was tunnelled, I was not unhooked -> no change for me');
+  mOn.update(base(10, { hud: hud({ 0: { state: 'hooked' } }) })); mOn.update(base(11, { hud: hud({ 0: { state: 'injured' } }) }));
+  ok(mOn.fleeSeenDist(base(12), 20) > 20 && mOn.fleeSeenDist(base(80), 20) === 20, 'tunnel: after my own unhook vs a tunneller flee earlier, for 60 s');
+});
+
+test('killer profile in matches: *Adapt 0 = profile inert (prior strength irrelevant); adaptation on = deterministic', () => {
+  const B = getBrains();
+  const go = (sp, seed) => JSON.stringify(runMatch({ map: smallMap, seed, hunter: B.hunter.make({ ...defaults(B.hunter.space), palletRespectM: 3, palletRespectS: 4 }), survivors: B.survivor.make({ ...defaults(B.survivor.space), ...sp }) }).events);
+  const on = { palletRespectAdapt: 1, chaseAbandonAdapt: 1, reverseAdapt: 1, tunnelAdapt: 1, campAdapt: 1, slugAdapt: 1 };
+  for (const seed of [41, 42]) {
+    ok(go({ profilePriorN: 0.5 }, seed) === go({ profilePriorN: 20 }, seed), `seed ${seed}: knobs 0 -> identical whatever the prior`);
+    const a = go(on, seed);
+    ok(a === go(on, seed), `seed ${seed}: adaptation on is deterministic`);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

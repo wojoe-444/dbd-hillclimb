@@ -16,6 +16,7 @@
 //                                                                       (HUD 'rescue': w 2)
 //       - own risk  rescueSelfRiskW x (injured 0.5 + Deep Wound 1 + belief threat along the way + terror layer / 3)
 //       + 0.75 while I'm already going (hysteresis), + 0.5 within 8 m of the hook
+//       + profileTerm (opts; killer profile: -8 campAdapt x max(0, P(camps) - prior); 0 without evidence / knob 0)
 // go if score > rescueThreshold.
 import { MateTracker } from './matetrack.js';
 
@@ -149,7 +150,8 @@ export function makeRescuePlanner(ctx, P, belief) {
         - P.rescueCampFear * camp
         + (busy ? P.rescueBusyBonus : 0)
         - P.rescueClaimDefer * claim * (myD > 8 ? 1 : 0.3)
-        - P.rescueSelfRiskW * rk;
+        - P.rescueSelfRiskW * rk
+        + (opts.profileTerm || 0);                                        // [killer profile] camper: later, leaver: sooner (killerprofile.js)
       if (going === j) s += 0.75;
       if (myD < 8) s += 0.5;
       stats.last = { j, myD, pClosest, u, camp, claim, rk, s, t };
