@@ -3,6 +3,7 @@
 import { hunterSpace, makeHunter } from './hunter.js';
 import { survivorSpace, makeSurvivor } from './survivor.js';
 import { survivorCtxSpace, makeSurvivorCtx } from './survivor-ctx.js';
+import { survivorGoalSpace, makeSurvivorGoal } from './survivor-goal.js';
 import { hunterBrain as testHunter, survivorBrain as testSurvivor } from '../sim/testbrains.js';
 
 export const hunters = {
@@ -12,6 +13,7 @@ export const hunters = {
 export const survivors = {
   param: { space: survivorSpace, make: makeSurvivor },
   ctx: { space: survivorCtxSpace, make: makeSurvivorCtx },   // research: param + context-conditioned knobs (survivor-ctx.js)
+  goal: { space: survivorGoalSpace, make: makeSurvivorGoal }, // learned goal layer over param's motor skills (survivor-goal.js)
   test: { space: {}, make: () => testSurvivor },
 };
 

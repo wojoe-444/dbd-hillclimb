@@ -101,6 +101,34 @@ test('brain debug() snapshots (viewer layers) never change a match', () => {
   ok(on.r === off.r, 'match with debug polling every 2nd tick is byte-identical to one without');
 });
 
+test("'goal' survivor (learned goal layer): deterministic, debug polling inert, space sane, mixed teams", () => {
+  const map = bigMap || smallMap, B = getBrains('param', 'goal'), P = getBrains('param', 'param');
+  const space = B.survivor.space;
+  ok(Object.values(space).every(([lo, hi, d]) => lo <= d && d <= hi), 'every goal-brain knob default lies in its range');
+  ok(Object.keys(space).some(k => k.startsWith('g_flee_')) && !('fleeSeenDist' in space) && 'loopRace' in space, 'goal weights added, cascade gates dropped, motor knobs kept');
+  const run = (poll, seed = 7, mixed = false) => {
+    const sp = defaults(space), pp = defaults(P.survivor.space);
+    const survivors = mixed ? [B.survivor.make(sp), P.survivor.make(pp), B.survivor.make(sp), P.survivor.make(pp)] : B.survivor.make(sp);
+    const m = createMatch({ map, seed, hunter: B.hunter.make(defaults(B.hunter.space)), survivors });
+    let polls = 0, goals = new Set(), dbg = null;
+    while (!m.over && m.tick < 2400) {
+      m.step();
+      for (const s of m.survivors) if (s.brain.goal) goals.add(s.brain.goal);
+      if (!poll || m.tick % 2) continue;
+      for (const s of m.survivors) { const d = s.brain.debug(m.t, { fields: m.tick % 400 === 0 }); if (d.goal && d.goal.name && d.goal.top.length) dbg = d; }
+      polls++;
+    }
+    return { r: JSON.stringify(m.result()), polls, goals, dbg };
+  };
+  const a = run(false), b = run(false), c = run(true);
+  ok(a.r === b.r, 'two goal-brain runs with seed 7 are byte-identical');
+  ok(c.polls > 100 && c.r === a.r, 'goal-brain match with debug() polling every 2nd tick is byte-identical');
+  ok(a.goals.size >= 3, `several goals used in 240 s (${[...a.goals].join(' ')})`);
+  ok(!!c.dbg && typeof c.dbg.goal.scores[c.dbg.goal.name] === 'number' && c.dbg.goal.top.every(x => typeof x.f === 'string' && Number.isFinite(x.c)) && Number.isFinite(c.dbg.goal.features.hNear), 'debug().goal: chosen goal, scores, top contributing features, feature vector');
+  const x = run(false, 9, true), y = run(false, 9, true);
+  ok(x.r === y.r && x.r !== a.r, 'mixed goal / param team: deterministic');
+});
+
 test('setup: 7 of 11 generator candidates chosen (seeded), distinct per-agent rng/ctx/obs objects', () => {
   const ctxs = [];
   const m = createMatch({
