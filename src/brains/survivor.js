@@ -745,6 +745,130 @@ export function makeSurvivor(P) {
       return { moveDir: sideDir };
     }
 
+    // per-decision bookkeeping (belief / map knowledge / chase + vault tracking); called first by every decide
+    function observe(obs, api) {
+      const me = obs.self;
+      belief.update(obs, api, 2.0, beliefFull);   // heavy belief step every 2 s (sightings, hooks, auras, layer changes apply at once)
+      stats.decides++;
+      if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; if (obs.t - lastPeekT < 5) stats.peekFound++; }   // chase on me began within 5 s of hiding
+      wasChased = !!me.chased;
+      know.update(obs, api, 1.0);
+      if (me.chased && !wasChasedR) chaseStartT = obs.t;
+      wasChasedR = !!me.chased;
+      // window vaults in the current engine chase (entity blocker: 3 vaults of one window per chase; a new chase - my
+      // chase music starting again - restarts the count; blocks themselves expire via obs.blockedWindows)
+      if (me.chased && !wasChasedV) { vaultCount.clear(); blT0 = obs.t; }
+      if (me.chased) lastChasedT = obs.t;
+      wasChasedV = !!me.chased;
+      // Bloodlust resets on a hit and on a pallet break (observed)
+      if (me.state !== prevMyState && (me.state === 'injured' || me.state === 'downed')) blT0 = obs.t;
+      prevMyState = me.state;
+      if (prevPal && obs.pallets.some((st, i) => st === 'broken' && prevPal[i] !== 'broken')) { blT0 = obs.t; lastBreakT = obs.t; }
+      prevPal = obs.pallets.slice();
+      // visible hunter vaults: that window is occupied now and for vaultClearanceS after
+      if (obs.hunter && obs.hunter.vaulting && obs.hunter.vault && obs.hunter.vault.window) {
+        const a = anchors.find((x) => x.kind === 'w' && x.id === obs.hunter.vault.window);
+        if (a) occupiedUntil.set(a.k, obs.t + 0.3 + P.vaultClearanceS);
+      }
+      // my own vaults = real crossings: the circuit follows what actually happened (auto-vaults included)
+      if (me.vaulting && !wasVaulting) {
+        let bk = -1, bd = 2.6;
+        for (const a of anchors) if (a.kind === 'w' || obs.pallets[a.i] === 'dropped') { const d = d2(a.c, me); if (d < bd) { bd = d; bk = a.k; } }
+        if (bk >= 0) {
+          const a = anchors[bk], c = 2 * bk + (d2(me, a.s[0]) <= d2(me, a.s[1]) ? 0 : 1);
+          myVault = { c, t: obs.t };
+          if (me.chased && a.kind === 'w') vaultCount.set(bk, (vaultCount.get(bk) || 0) + 1);
+          if (circ) {
+            let idx = circ.seq.indexOf(c);
+            if (idx < 0 && circ.seq.indexOf(c ^ 1) >= 0) { circ.seq = circ.seq.slice().reverse().map((x) => x ^ 1); idx = circ.seq.indexOf(c); }
+            if (idx >= 0) { circ.i = idx; circ.phase = 'cross'; }
+            else circ = null;                                // a crossing that isn't in the plan: re-plan after landing
+          }
+        }
+      }
+      if (!me.vaulting && wasVaulting && myVault) {
+        if (circ && circ.seq[circ.i] === myVault.c && circ.phase === 'cross') {
+          circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++; circ.runup = false; circ.lockT = Math.max(circ.lockT, obs.t + 0.6);
+        }
+        myVault = null;
+      }
+      wasVaulting = !!me.vaulting;
+    }
+
+    // endgame: open a gate and leave (action, or null when no gate is usable)
+    function gateStep(obs, api, holdProtection) {
+      const me = obs.self, nav = api.nav;
+      if (obs.gatesPowered) {
+        let best = null, bd = Infinity;
+        for (const g of obs.gates) {
+          const gd = M.exitGates.find((x) => x.id === g.id);
+          let d = nav.dist(me, g.open ? gd.exit : gd.lever);
+          if (!g.open && obs.teammates.some((t) => d2(t, gd.lever) < 1.6) && d2(me, gd.lever) > 1.6) d += 60; // lever taken: one opener per lever
+          if (d < bd) { bd = d; best = { g, gd }; }
+        }
+        if (best) {
+          const { g, gd } = best;
+          if (g.open) return { moveTo: gd.exit };
+          if (d2(gd.lever, me) <= 1.4 && !holdProtection) return { act: 'openGate', target: g.id };
+          return { moveTo: gd.lever };
+        }
+      }
+      return null;
+    }
+
+    // generators (only the ones I've found) vs exploring for more. only: undefined (combined choice) | 'gen' | 'explore'
+    function workStep(obs, api, walk, holdProtection, only) {
+      const me = obs.self, h = obs.hunter, nav = api.nav;
+      if (only === 'gen' && genTarget === -2) { genTarget = -1; exploreTo = null; }
+      if (only === 'explore' && genTarget >= 0) genTarget = -1;
+      const gens = obs.gens;
+      if (genTarget >= 0 && (gens[genTarget].done || gens[genTarget].blocked || !gens[genTarget].known)) genTarget = -1;
+      const unknownGens = gens.reduce((n, g) => n + (g.known ? 0 : 1), 0);
+      const exploreLeft = unknownGens > 0 && know.fraction() < 0.98;
+      if (exploreTo && (d2(me, exploreTo) < 3 || obs.t - exploreT > 25 || know.explored(exploreTo.x, exploreTo.z))) exploreTo = null;
+      if (genTarget === -2 && !exploreTo) genTarget = -1;
+      if (genTarget === -1 || obs.tick % 50 === 0) {
+        let bs = Infinity, bi = -1;
+        for (let i = 0; i < gens.length; i++) {
+          const g = gens[i];
+          if (!g.known || g.done || g.blocked || only === 'explore') continue;
+          let s = P.genDistW * nav.dist(me, g) / 20 - P.genProgW * g.progress * 3;
+          const others = g.workers ? g.workers.filter((w) => w !== me.id).length : 0;   // only for gens currently seen
+          // visible teammates standing at it (not yet repairing) or running toward it: they'll take it
+          let headed = 0;
+          for (const t of obs.teammates) {
+            if (g.workers && g.workers.includes(t.id)) continue;
+            const dx = g.x - t.x, dz = g.z - t.z, dg = Math.hypot(dx, dz), v = Math.hypot(t.vx || 0, t.vz || 0);
+            if (dg < 4 || (dg < 40 && v > 1 && (t.vx * dx + t.vz * dz) > 0.9 * v * dg && dg < d2(g, me) + 6)) headed++;
+          }
+          s += P.spreadW * (others + headed);
+          const hpos = h ?? (obs.lastHunter && obs.t - obs.lastHunter.t < 90 ? obs.lastHunter : null);
+          if (hpos) s -= P.farFromHunterW * Math.min(60, d2(g, hpos)) / 20;
+          s += P.genJitter * jitter[i];
+          if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(g, obs.lastHunter)) / 10;
+          if (P.genCoverW !== 0) s -= P.genCoverW * 3 * genCoverOf(g, i);
+          if (P.genThreatW > 0 && beliefOn) s += P.genThreatW * 3 * belief.pHunterWithin(g, 24);
+          if (i === genTarget) s -= 0.5; // hysteresis
+          if (s < bs) { bs = s; bi = i; }
+        }
+        // explore option: always when no gen is known; otherwise a propensity that grows with the gens still unfound
+        if (exploreLeft && only !== 'gen' && (bi < 0 || P.exploresMap > 0)) {
+          if (!exploreTo) { exploreTo = know.pickTarget(me, P.exploreRadM, (c) => exploreJit[c] + scoutBonus(c) - (obs.teammates.some((t) => Math.hypot(know.cx[c] - t.x, know.cz[c] - t.z) < Math.hypot(know.cx[c] - me.x, know.cz[c] - me.z) - 2) ? 0.3 : 0)); exploreT = obs.t; }
+          if (exploreTo) {
+            let se = P.genDistW * d2(me, exploreTo) / 20 + 1.5 - P.exploresMap * (1 + 3 * unknownGens / gens.length);
+            if (genTarget === -2) se -= 0.5;
+            if (me.act === 'repair' && bi >= 0) se += 1;      // don't walk off a gen I'm repairing on a whim
+            if (bi < 0 || se < bs) { bs = se; bi = -2; }
+          }
+        }
+        if (bi !== -2) exploreTo = genTarget === -2 && bi >= 0 ? null : exploreTo;
+        genTarget = bi;
+      }
+      if (genTarget >= 0) return slots.act(obs, genTarget, gens[genTarget], { walk, hold: holdProtection });
+      if (genTarget === -2 && exploreTo) return { moveTo: exploreTo, walk };
+      return only ? null : {};
+    }
+
     return {
       stats,
       know,
@@ -752,6 +876,17 @@ export function makeSurvivor(P) {
       belief,
       rescue,
       heal,
+      // motor skills + the state they share, for brains that pick goals themselves (survivor-goal.js); the cascade
+      // below doesn't use this object
+      skills: {
+        observe, workStep, gateStep, chase, findHide, pickHideSpot, hunterCouldSee, hunterPos, unblock, withLook, myThreat, slots, routes, beliefOn, beliefFull,
+        get mode() { return mode; }, set mode(v) { mode = v; },
+        get circ() { return circ; }, set circ(v) { circ = v; },
+        get hide() { return hide; }, set hide(v) { hide = v; },
+        get hiddenUntil() { return hiddenUntil; }, set hiddenUntil(v) { hiddenUntil = v; },
+        get genTarget() { return genTarget; }, set genTarget(v) { genTarget = v; },
+        get exploreTo() { return exploreTo; },
+      },
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -763,51 +898,7 @@ export function makeSurvivor(P) {
         // hooked brains are called now (minimal obs): take the Resolve self-unhook when offered (was automatic before)
         if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
         if (me.state === 'carried') return { act: 'wiggle' };
-        belief.update(obs, api, 2.0, beliefFull);   // heavy belief step every 2 s (sightings, hooks, auras, layer changes apply at once)
-        stats.decides++;
-        if (me.chased && !wasChased) { stats.chases++; if (obs.t - lastHideTickT < 5) stats.found++; if (obs.t - lastPeekT < 5) stats.peekFound++; }   // chase on me began within 5 s of hiding
-        wasChased = !!me.chased;
-        know.update(obs, api, 1.0);
-        if (me.chased && !wasChasedR) chaseStartT = obs.t;
-        wasChasedR = !!me.chased;
-        // window vaults in the current engine chase (entity blocker: 3 vaults of one window per chase; a new chase - my
-        // chase music starting again - restarts the count; blocks themselves expire via obs.blockedWindows)
-        if (me.chased && !wasChasedV) { vaultCount.clear(); blT0 = obs.t; }
-        if (me.chased) lastChasedT = obs.t;
-        wasChasedV = !!me.chased;
-        // Bloodlust resets on a hit and on a pallet break (observed)
-        if (me.state !== prevMyState && (me.state === 'injured' || me.state === 'downed')) blT0 = obs.t;
-        prevMyState = me.state;
-        if (prevPal && obs.pallets.some((st, i) => st === 'broken' && prevPal[i] !== 'broken')) { blT0 = obs.t; lastBreakT = obs.t; }
-        prevPal = obs.pallets.slice();
-        // visible hunter vaults: that window is occupied now and for vaultClearanceS after
-        if (obs.hunter && obs.hunter.vaulting && obs.hunter.vault && obs.hunter.vault.window) {
-          const a = anchors.find((x) => x.kind === 'w' && x.id === obs.hunter.vault.window);
-          if (a) occupiedUntil.set(a.k, obs.t + 0.3 + P.vaultClearanceS);
-        }
-        // my own vaults = real crossings: the circuit follows what actually happened (auto-vaults included)
-        if (me.vaulting && !wasVaulting) {
-          let bk = -1, bd = 2.6;
-          for (const a of anchors) if (a.kind === 'w' || obs.pallets[a.i] === 'dropped') { const d = d2(a.c, me); if (d < bd) { bd = d; bk = a.k; } }
-          if (bk >= 0) {
-            const a = anchors[bk], c = 2 * bk + (d2(me, a.s[0]) <= d2(me, a.s[1]) ? 0 : 1);
-            myVault = { c, t: obs.t };
-            if (me.chased && a.kind === 'w') vaultCount.set(bk, (vaultCount.get(bk) || 0) + 1);
-            if (circ) {
-              let idx = circ.seq.indexOf(c);
-              if (idx < 0 && circ.seq.indexOf(c ^ 1) >= 0) { circ.seq = circ.seq.slice().reverse().map((x) => x ^ 1); idx = circ.seq.indexOf(c); }
-              if (idx >= 0) { circ.i = idx; circ.phase = 'cross'; }
-              else circ = null;                                // a crossing that isn't in the plan: re-plan after landing
-            }
-          }
-        }
-        if (!me.vaulting && wasVaulting && myVault) {
-          if (circ && circ.seq[circ.i] === myVault.c && circ.phase === 'cross') {
-            circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++; circ.runup = false; circ.lockT = Math.max(circ.lockT, obs.t + 0.6);
-          }
-          myVault = null;
-        }
-        wasVaulting = !!me.vaulting;
+        observe(obs, api);
         if (me.state === 'downed') {
           // crawl out through an open gate if one is close
           if (obs.gates) for (const g of obs.gates) {
@@ -896,21 +987,7 @@ export function makeSurvivor(P) {
         const holdProtection = me.protectedS !== null && me.protectedS !== undefined && me.protectedS > 10 - P.protectHoldS;
 
         // ---- endgame: open a gate and leave ----
-        if (obs.gatesPowered) {
-          let best = null, bd = Infinity;
-          for (const g of obs.gates) {
-            const gd = M.exitGates.find((x) => x.id === g.id);
-            let d = nav.dist(me, g.open ? gd.exit : gd.lever);
-            if (!g.open && obs.teammates.some((t) => d2(t, gd.lever) < 1.6) && d2(me, gd.lever) > 1.6) d += 60; // lever taken: one opener per lever
-            if (d < bd) { bd = d; best = { g, gd }; }
-          }
-          if (best) {
-            const { g, gd } = best;
-            if (g.open) return { moveTo: gd.exit };
-            if (d2(gd.lever, me) <= 1.4 && !holdProtection) return { act: 'openGate', target: g.id };
-            return { moveTo: gd.lever };
-          }
-        }
+        if (obs.gatesPowered) { const ga = gateStep(obs, api, holdProtection); if (ga) return ga; }
 
         if (mode === 'sneak') {
           // move away from the last sighting toward the farthest unfinished gen
@@ -951,52 +1028,7 @@ export function makeSurvivor(P) {
         }
 
         // ---- generators (only the ones I've found) vs exploring for more ----
-        const gens = obs.gens;
-        if (genTarget >= 0 && (gens[genTarget].done || gens[genTarget].blocked || !gens[genTarget].known)) genTarget = -1;
-        const unknownGens = gens.reduce((n, g) => n + (g.known ? 0 : 1), 0);
-        const exploreLeft = unknownGens > 0 && know.fraction() < 0.98;
-        if (exploreTo && (d2(me, exploreTo) < 3 || obs.t - exploreT > 25 || know.explored(exploreTo.x, exploreTo.z))) exploreTo = null;
-        if (genTarget === -2 && !exploreTo) genTarget = -1;
-        if (genTarget === -1 || obs.tick % 50 === 0) {
-          let bs = Infinity, bi = -1;
-          for (let i = 0; i < gens.length; i++) {
-            const g = gens[i];
-            if (!g.known || g.done || g.blocked) continue;
-            let s = P.genDistW * nav.dist(me, g) / 20 - P.genProgW * g.progress * 3;
-            const others = g.workers ? g.workers.filter((w) => w !== me.id).length : 0;   // only for gens currently seen
-            // visible teammates standing at it (not yet repairing) or running toward it: they'll take it
-            let headed = 0;
-            for (const t of obs.teammates) {
-              if (g.workers && g.workers.includes(t.id)) continue;
-              const dx = g.x - t.x, dz = g.z - t.z, dg = Math.hypot(dx, dz), v = Math.hypot(t.vx || 0, t.vz || 0);
-              if (dg < 4 || (dg < 40 && v > 1 && (t.vx * dx + t.vz * dz) > 0.9 * v * dg && dg < d2(g, me) + 6)) headed++;
-            }
-            s += P.spreadW * (others + headed);
-            const hpos = h ?? (obs.lastHunter && obs.t - obs.lastHunter.t < 90 ? obs.lastHunter : null);
-            if (hpos) s -= P.farFromHunterW * Math.min(60, d2(g, hpos)) / 20;
-            s += P.genJitter * jitter[i];
-            if (obs.lastHunter && obs.t - obs.lastHunter.t < 60) s += P.hunterAvoidW * Math.max(0, 25 - d2(g, obs.lastHunter)) / 10;
-            if (P.genCoverW !== 0) s -= P.genCoverW * 3 * genCoverOf(g, i);
-            if (P.genThreatW > 0 && beliefOn) s += P.genThreatW * 3 * belief.pHunterWithin(g, 24);
-            if (i === genTarget) s -= 0.5; // hysteresis
-            if (s < bs) { bs = s; bi = i; }
-          }
-          // explore option: always when no gen is known; otherwise a propensity that grows with the gens still unfound
-          if (exploreLeft && (bi < 0 || P.exploresMap > 0)) {
-            if (!exploreTo) { exploreTo = know.pickTarget(me, P.exploreRadM, (c) => exploreJit[c] + scoutBonus(c) - (obs.teammates.some((t) => Math.hypot(know.cx[c] - t.x, know.cz[c] - t.z) < Math.hypot(know.cx[c] - me.x, know.cz[c] - me.z) - 2) ? 0.3 : 0)); exploreT = obs.t; }
-            if (exploreTo) {
-              let se = P.genDistW * d2(me, exploreTo) / 20 + 1.5 - P.exploresMap * (1 + 3 * unknownGens / gens.length);
-              if (genTarget === -2) se -= 0.5;
-              if (me.act === 'repair' && bi >= 0) se += 1;      // don't walk off a gen I'm repairing on a whim
-              if (bi < 0 || se < bs) { bs = se; bi = -2; }
-            }
-          }
-          if (bi !== -2) exploreTo = genTarget === -2 && bi >= 0 ? null : exploreTo;
-          genTarget = bi;
-        }
-        if (genTarget >= 0) return slots.act(obs, genTarget, gens[genTarget], { walk, hold: holdProtection });
-        if (genTarget === -2 && exploreTo) return { moveTo: exploreTo, walk };
-        return {};
+        return workStep(obs, api, walk, holdProtection);
       },
       // ---- viewer debug layers (viewer/layers.js): read-only snapshot of existing state as plain copies; never called by
       // the sim, mutates nothing a decision reads (the opt-in parts only fill deterministic lazy memos). t = match time.
