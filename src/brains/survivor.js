@@ -85,6 +85,8 @@ export const survivorSpace = {
   ...lookaheadSpace,
   // ---- kicked / threatened gen: hide nearby and return when the hunter leaves vs leave for another gen (kickplan.js) ----
   ...kickSpace,
+  // ---- killer profile: what I've observed of this hunter's habits, and how much to play around it (killerprofile.js) ----
+  ...profileSpace,
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -96,6 +98,7 @@ import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } fr
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
 import { healSpace, makeHealPlanner } from './healplan.js';
 import { kickSpace, makeKickPlanner } from './kickplan.js';
+import { profileSpace, makeKillerProfile } from './killerprofile.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -203,6 +206,7 @@ export function makeSurvivor(P) {
     const beliefFull = beliefOn || P.rescueCampFear > 0;       // the rescue's camp estimate needs the full belief update
     const rescue = makeRescuePlanner(ctx, P, belief);          // hooked teammates, teammate whereabouts, rescue utility
     const heal = makeHealPlanner(ctx, P, rescue.tracker);      // heal / pick-up choice + healer <-> patient handshake
+    const prof = makeKillerProfile(ctx, P);                    // killer profile: own observations of the hunter's habits (killerprofile.js)
     // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
     const CAM = ctx.config.survivor.camera || { enabled: false };
     const camAt = (x, z, yaw) => {
@@ -565,10 +569,10 @@ export function makeSurvivor(P) {
       const g = dhm - 2.0;
       const lapOpen = circ ? loops.evaluate(circ.seq, new Set([a.k])).lap : -Infinity;
       const saveGap = g < 1 ? -1 : g + Math.min(0, lapOpen);
-      const saveV = saveGap > 0 ? lapOpen + P.palletGreed * gain : -Infinity;
+      const saveV = saveGap > 0 ? lapOpen + prof.palletGreed(P.palletGreed) * gain : -Infinity;   // [killer profile] respect / abandon read
       if (!(saveGap <= 0 || dropV > saveV + 1)) return 'save';
       if (inStun) return 'drop';
-      if (d2(hp, a.c) < 2.2 + (1 - P.stunSeek) * 4 || g < 1.5) return 'drop';
+      if (d2(hp, a.c) < 2.2 + (1 - prof.stunSeek(P.stunSeek)) * 4 || g < 1.5) return 'drop';   // [killer profile] runner: hold for the stun
       return 'wait';
     }
 
@@ -616,18 +620,19 @@ export function makeSurvivor(P) {
         // loopReactS of seeing that, reverse
         // (not for a hold crossing -- back over the anchor I just crossed: a hunter following me there heads for it too)
         const nk = circ.seq.length, prevC = circ.seq[(circ.i - 1 + nk) % nk];
-        if (P.loopReverseDist > 0) {
+        const revD = prof.reverseDist(P.loopReverseDist), revS = prof.reactS(P.loopReactS);   // [killer profile] mind-game read
+        if (revD > 0) {
           let cutting = false;
           if (circ.phase === 'toP' && nk > 1 && (prevC >> 1) !== (c >> 1) && h && !h.vaulting) {
             const X = hP <= hQ ? Pt : Qt, hX = Math.min(hP, hQ), tx = X.x - h.x, tz = X.z - h.z, tl = Math.hypot(tx, tz);
             const toward = tl < 1 || ((h.vx || 0) * tx + (h.vz || 0) * tz) / tl > 1.0;
-            cutting = toward && hX < P.loopReverseDist && hX + 1 < api.nav.dist(hp, me);
+            cutting = toward && hX < revD && hX + 1 < api.nav.dist(hp, me);
           }
           // the seen-for clock restarts whenever the sighting breaks (unseen, other phase / crossing, not cutting)
           if (!cutting || (cutSeenT >= 0 && obs.t - cutLastT > 0.25)) cutSeenT = cutting ? obs.t : -1;
           else if (cutSeenT < 0) cutSeenT = obs.t;
           if (cutting) cutLastT = obs.t;
-          if (cutting && obs.t - cutSeenT >= P.loopReactS - 1e-9 && obs.t >= circ.lockT) {
+          if (cutting && obs.t - cutSeenT >= revS - 1e-9 && obs.t >= circ.lockT) {
             cutSeenT = -1; stats.loopReversals++; reverseCirc(obs);
             if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; }
             return chase(obs, api, me, h, depth + 1);
@@ -817,6 +822,7 @@ export function makeSurvivor(P) {
       belief,
       rescue,
       heal,
+      profile: prof,
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -825,6 +831,7 @@ export function makeSurvivor(P) {
       },
       decideInner(obs, api) {
         const me = obs.self, h = obs.hunter, nav = api.nav;
+        prof.update(obs);                            // [killer profile] own observations (HUD-only while hooked / carried)
         // hooked brains are called now (minimal obs): take the Resolve self-unhook when offered (was automatic before)
         if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
         if (me.state === 'carried') return { act: 'wiggle' };
@@ -910,9 +917,9 @@ export function makeSurvivor(P) {
           return { look: { x: h.x + (h.vx || 0) * 0.5, z: h.z + (h.vz || 0) * 0.5 } };   // frozen, watching it
         }
         if (me.chased) { mode = 'chase'; lastThreatT = obs.t; }      // chase music: the hunter is on me even if I can't see it
-        else if (h && dh < P.fleeSeenDist && !busyElsewhere) { mode = 'chase'; lastThreatT = obs.t; }
+        else if (h && dh < prof.fleeSeenDist(obs, P.fleeSeenDist) && !busyElsewhere)   /* [killer profile] after my unhook vs a tunneller */ { mode = 'chase'; lastThreatT = obs.t; }
         else if (busyElsewhere && mode === 'chase' && obs.t - lastChasedT > P.calmS) { mode = 'work'; circ = null; }   // it's busy with a teammate: back to work now
-        else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
+        else if (!h && obs.terror !== null && obs.terror.approx < prof.fleeTR(obs, P.fleeTR) && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
           if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
           lastThreatT = obs.t;
         }
@@ -1009,7 +1016,7 @@ export function makeSurvivor(P) {
 
         // ---- altruism: rescue (utility: am I the closest, stage urgency, camping, busy hunter, claims, own risk; rescue.js) ----
         if (P.altruism > 0.25) {
-          const ra = rescue.decide(obs, api, { holdProtection, say, beliefFull });
+          const ra = rescue.decide(obs, api, { holdProtection, say, beliefFull, profileTerm: prof.rescueTerm() });   // [killer profile] camper / leaver
           if (ra) return ra;
         }
 
@@ -1028,7 +1035,7 @@ export function makeSurvivor(P) {
 
         // ---- heal teammates / pick up downed ones (priorities, threat, gen progress, handshake: healplan.js) ----
         if (P.altruism > 0.15) {
-          const ha = heal.healer(obs, { healDist: P.healDist, holdProtection, say });
+          const ha = heal.healer(obs, { healDist: prof.healDist(P.healDist), holdProtection, say });   // [killer profile] slugger
           if (ha) return ha;
         }
 
