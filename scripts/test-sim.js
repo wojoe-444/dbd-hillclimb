@@ -1644,7 +1644,7 @@ test('loop mind games: predictLeadS extrapolates the survivor along walkable spa
 test('window holds (hunter): plans never vault into the held window; knobs at today\'s values are inert; deterministic', () => {
   const gh = load('maps/gas-heaven.json');
   const B = getBrains();
-  ok(B.hunter.space.holdVaultP[2] === 1, 'holdVaultP default 1 = always vault into a hold (the old behaviour)');
+  ok(B.hunter.space.holdVaultP[2] === 0, 'holdVaultP default 0 = counter-play on (vaulting into a hold was a free exploit; 1 = the old behaviour)');
   const m = createMatch({ map: gh, seed: 7, hunter: hunterBrain, survivors: survivorBrain });
   const api = m.hunter.api, ctx = { map: m.hunter.ctx.map, config: m.cfg };
   const W = gh.windows.find((w) => w.id === 'w-tl-t');
@@ -1697,12 +1697,12 @@ test('window holds (hunter): plans never vault into the held window; knobs at to
   // full matches: defaults = no hold activity; on = holds + plans, identical forward vs reverse
   const go = (seed, on) => {
     let hb = null;
-    const hf = B.hunter.make({ ...defaults(B.hunter.space), ...(on ? { holdVaultP: 0 } : {}) });
+    const hf = B.hunter.make({ ...defaults(B.hunter.space), holdVaultP: on ? 0 : 1 });
     const r = runMatch({ map: gh, seed, hunter: (cx) => (hb = hf(cx)), survivors: B.survivor.make(defaults(B.survivor.space)) });
     return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), st: { ...hb.mind.stats } };
   };
   const off = go(1012, false);
-  ok(off.st.holds === 0 && off.st.hTicks === 0, 'defaults: no window-hold activity');
+  ok(off.st.holds === 0 && off.st.hTicks === 0, 'holdVaultP 1 (old behaviour): no window-hold activity');
   const seeds = [1000, 1001, 1002];
   const fwd = seeds.map((s) => go(s, true)), rev = [...seeds].reverse().map((s) => go(s, true)).reverse();
   for (let i = 0; i < seeds.length; i++) ok(fwd[i].key === rev[i].key, 'holds on: seed ' + seeds[i] + ' identical forward vs reverse order');

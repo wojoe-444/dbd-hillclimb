@@ -49,7 +49,7 @@ export const hunterSpace = {
   // ---- window holds (loopmind.js): the chased survivor stands at a window on the far side, waiting to vault away from
   // whichever side I come round to. One plan per hold, drawn once; holdVaultP 1 = always vault into it (the old
   // behaviour, no RNG draw) ----
-  holdVaultP:      [0, 1, 1],      // P(vault the held window toward it) -- gives it my 1.7 s vault to run
+  holdVaultP:      [0, 1, 0],      // [default 0 since 2026-11-17: vaulting into a held window was a free exploit] P(vault the held window toward it) -- gives it my 1.7 s vault to run
   holdZoneP:       [0, 1, 0.4],    // of the rest: P(zone): stand on my side covering the vault-back and the shorter way round
   holdFakeP:       [0, 1, 0.3],    // of the rest after zone: P(fake): start round, come back to the zone spot; else walk round
   holdFakeFrac:    [0.1, 0.9, 0.5],// fake: turn back after this fraction of the walk-round detour
