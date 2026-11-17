@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cpus } from 'node:os';
 import { createPool } from '../src/hillclimb/pool.js';
+import { modsFromArgv } from '../src/sim/modifiers.js';   // --mod genSeconds=80 (game modifiers)
 import { getBrains } from '../src/brains/index.js';
 import { defaults, clampParams } from '../src/hillclimb/params.js';
 
@@ -31,7 +32,7 @@ const seeds = Array.from({ length: n }, (_, k) => 500001 + 104729 * k);
 const F = arms.map(() => []), O = arms.map(() => ({ kills: 0, escapes: 0, gens: 0, bp: 0 }));
 const t0 = Date.now();
 for (const brain of [...new Set(arms.map((a) => a.brain))]) {
-  const pool = createPool({ threads, mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: 'param', survivorBrain: brain });
+  const pool = createPool({ threads, mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: 'param', survivorBrain: brain, mods: modsFromArgv(argv) });
   const jobs = [];
   arms.forEach((a, i) => { if (a.brain === brain) seeds.forEach((seed, k) => jobs.push({ seed, hunterParams: hp, survivorParams: a.p, tag: { i, k } })); });
   for (const r of await pool.run(jobs)) { F[r.i][r.k] = r.survivorFit; const o = O[r.i]; o.kills += r.kills / n; o.escapes += r.escapes / n; o.gens += r.gensDone / n; o.bp += r.survivorBP / n; }

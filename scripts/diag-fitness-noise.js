@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cpus } from 'node:os';
 import { createPool } from '../src/hillclimb/pool.js';
+import { modsFromArgv } from '../src/sim/modifiers.js';   // --mod genSeconds=80 (game modifiers)
 import { getBrains } from '../src/brains/index.js';
 import { defaults, clampParams, rng } from '../src/hillclimb/params.js';
 import { reliability } from '../src/hillclimb/selection.js';
@@ -36,7 +37,7 @@ const [hb, sb] = (args.brains ?? 'param,param').split(',');
 // knobs added since the run take their defaults; knobs since removed are dropped
 const B = getBrains(hb, sb), fill = (space, p) => clampParams(space, { ...defaults(space), ...p });
 const H = G.hunters.ranking.map((x) => fill(B.hunter.space, x.params)), S = G.survivors.ranking.map((x) => fill(B.survivor.space, x.params));
-const pool = createPool({ threads: +(args.threads ?? Math.max(1, cpus().length - 1)), mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: hb, survivorBrain: sb });
+const pool = createPool({ threads: +(args.threads ?? Math.max(1, cpus().length - 1)), mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: hb, survivorBrain: sb, mods: modsFromArgv(argv) });
 const seeds = Array.from({ length: K }, (_, k) => 900001 + 7919 * k);
 
 const report = { from: args.from, gen: G.gen, k: K, results: [] };

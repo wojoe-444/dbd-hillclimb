@@ -8,6 +8,8 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createMatch } from '../sim/index.js';
+import { deepMerge } from '../sim/config.js';
+import { modsConfig, isStandard } from '../sim/modifiers.js';
 import { scoreBloodpoints, BP } from './bloodpoints.js';
 import { hunterTableScore, hookStagesTotal, survivalTimeScore } from './hunterscore.js';
 
@@ -24,10 +26,13 @@ export async function loadMetrics(paths = []) {
   return out;
 }
 
-// maps: array of map JSONs (variant = seed % maps.length); brains: getBrains(...) result; metrics: loaded metric defs
-export function makePlayer({ maps, brains, metrics = [] }) {
+// maps: array of map JSONs (variant = seed % maps.length); brains: getBrains(...) result; metrics: loaded metric defs;
+// mods: game modifier set (src/sim/modifiers.js) applied to every match, under any job.config override
+export function makePlayer({ maps, brains, metrics = [], mods = null }) {
+  const modCfg = mods && !isStandard(mods) ? modsConfig(mods) : null;
   return function playOne(job) {
-    const { seed, hunterParams, survivorParams, config } = job;
+    const { seed, hunterParams, survivorParams } = job;
+    const config = modCfg ? deepMerge(modCfg, job.config ?? {}) : job.config;
     // each seed plays on one variant of the pool (tile spawns differ per match, like the real game)
     const map = maps[seed % maps.length];
     const m = createMatch({

@@ -8,6 +8,8 @@ import { buildGrid, createDuel, pushFix, duelParams, situation, NEUTRALIZE } fro
 import { createScene, survCss, stateNames } from './scene.js';
 import { createLayers } from './layers.js';
 import { prep, fmtNum } from './charts.js';
+import { withMods } from '../src/sim/modifiers.js';
+import { modBadge, isModded, modLabel } from './mods.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -33,19 +35,23 @@ setTop(true);
 
 // ---------------------------------------------------------------- params (default / a run's champions)
 const runs = await fetch('/api/runs').then((r) => r.json()).catch(() => []);
-$('params').innerHTML = '<option value="">default knobs</option>' + runs.map((r) => `<option value="${esc(r.name)}">champions: ${esc(r.name)}</option>`).join('');
+$('params').innerHTML = '<option value="">default knobs</option>' + runs.map((r) => { const md = isModded(r.modifiers); return `<option value="${esc(r.name)}"${md ? ' class="modded"' : ''}>${md ? `⚠ [${esc(modLabel(r.modifiers))}] ` : ''}champions: ${esc(r.name)}</option>`; }).join('');
+const runModsByName = Object.fromEntries(runs.map((r) => [r.name, r.modifiers ?? {}]));
 const champCache = new Map();
 async function loadChamp(name) {
   if (!name) return null;
   if (!champCache.has(name)) champCache.set(name, await fetch(`../runs/${name}/champions.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
   return champCache.get(name)?.champ ?? null;
 }
+// game modifiers of a run's champions (champions.json, else the /api/runs index); the duel plays under them
+const champMods = (name) => (name ? champCache.get(name)?.modifiers ?? runModsByName[name] ?? {} : {});
 
 // ---------------------------------------------------------------- duel state
 let cfg = null, st = null, timeline = null;
 function newState() {
   const setup = grid[cfg.setupIdx];
-  const D = createDuel({ map, createMatch, B, setup, seed: cfg.seed, P: cfg.P, hunterMode: cfg.hunterMode, assistAfter: cfg.assistAfter, jitter: cfg.jitter });
+  const cm = isModded(cfg.mods) ? (o) => createMatch({ ...o, config: withMods(o.config, cfg.mods) }) : createMatch;
+  const D = createDuel({ map, createMatch: cm, B, setup, seed: cfg.seed, P: cfg.P, hunterMode: cfg.hunterMode, assistAfter: cfg.assistAfter, jitter: cfg.jitter });
   return { D, m: D.m, S: D.S, H: D.H, evI: 0, wasV: [], prevV: null, prevHV: null, palletBreakT: null, hits: [], tDown: null, cause: null, done: false,
     winV: 0, palV: 0, hV: 0, dropT: null, stun: null, breakT: null, chases: 0 };
 }
@@ -79,7 +85,11 @@ async function readCfg() {
   const champ = await loadChamp(champName);
   $('err').textContent = champName && !champ ? `no champions.json in runs/${champName} — using defaults` : '';
   const P = duelParams(B, { defaults, clampParams }, { champ, hunterOverrides: $('leash').checked ? {} : NEUTRALIZE });
-  return { setupIdx: +$('setup').value || 0, seed: +$('seed').value || SEED0, hunterMode: $('hmode').value, assistAfter: +$('assistAfter').value || 3,
+  const mods = champMods(champName);
+  $('modBadge').innerHTML = modBadge(mods);
+  $('toolbar').classList.toggle('modded', isModded(mods));
+  $('params').classList.toggle('modded', isModded(mods));
+  return { mods, setupIdx: +$('setup').value || 0, seed: +$('seed').value || SEED0, hunterMode: $('hmode').value, assistAfter: +$('assistAfter').value || 3,
     jitter: +$('jitter').value, cap: Math.max(5, +$('cap').value || 120), pushFix: $('pushfix').checked, P };
 }
 async function restart(keepTick = 0) {
@@ -135,7 +145,7 @@ function refresh(force) {
 let uiAt = 0, layersMatch = null;
 function hud() {
   const m = st.m, S = st.S;
-  $('hud').innerHTML = `<div class="top"><span class="clock">${m.t.toFixed(1)} s</span><span>${esc(grid[cfg.setupIdx].id)} · seed ${cfg.seed} · ${cfg.hunterMode}</span>${st.tDown !== null ? `<span><b>DOWN</b> ${st.tDown.toFixed(1)} s (${esc(st.cause)})</span>` : st.done ? '<span><b>CAP</b></span>' : ''}${playing ? '' : '<span class="muted">paused</span>'}</div>
+  $('hud').innerHTML = `<div class="top"><span class="clock">${m.t.toFixed(1)} s</span>${modBadge(cfg.mods)}<span>${esc(grid[cfg.setupIdx].id)} · seed ${cfg.seed} · ${cfg.hunterMode}</span>${st.tDown !== null ? `<span><b>DOWN</b> ${st.tDown.toFixed(1)} s (${esc(st.cause)})</span>` : st.done ? '<span><b>CAP</b></span>' : ''}${playing ? '' : '<span class="muted">paused</span>'}</div>
     <div class="chips"><span class="chip"><span class="dot" style="background:#d8313b"></span>Hunter${st.H.seen[0] ? '' : ' (blind)'}</span><span class="chip"><span class="dot" style="background:${survCss[0]}"></span>S0 ${stateNames[S.st]}</span></div>`;
 }
 function renderResult() {

@@ -30,7 +30,8 @@ export { fmtNum };
 export function lineChart(c, opts) {
   const p = prep(c); if (!p) return null;
   const { g, W, H } = p;
-  const { series, yMin = 0, xLabel = (i) => String(i + 1), sel = null, markers = [], hover = null } = opts;
+  const { series, yMin = 0, xLabel = (i) => String(i + 1), sel = null, markers = [], hover = null, bg = null } = opts;
+  if (bg) { g.fillStyle = bg; g.fillRect(0, 0, W, H); }   // background tint (e.g. a run with non-standard game modifiers)
   const n = Math.max(0, ...series.map((s) => s.values.length));
   let yMax = opts.yMax;
   if (yMax == null) { yMax = yMin; for (const s of series) for (const v of s.values) if (v > yMax) yMax = v; yMax = niceCeil(yMax || 1); }

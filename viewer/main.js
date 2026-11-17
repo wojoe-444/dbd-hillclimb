@@ -8,6 +8,8 @@ import { hunterTableScore } from '../src/hillclimb/hunterscore.js';
 import { createScene, survCss, stateNames } from './scene.js';
 import { createLayers } from './layers.js';
 import { lineChart, attachHover, histogram, sparkline, prep, fmtNum, CAT, INK, niceCeil } from './charts.js';
+import { modsConfig } from '../src/sim/modifiers.js';
+import { modBadge, isModded, modLabel, MOD_TINT } from './mods.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -157,7 +159,7 @@ function hud(force) {
   }).join('');
   const hm = hunterMode(m);
   const res = m.over ? m.result() : null;
-  $('hud').innerHTML = `<div class="top"><span class="clock">${fmtT(m.t)}</span><span>gens <b>${m.gensDone}/${m.gensNeeded}</b></span>${m.gatesPowered ? `<span><b>GATES</b>${m.endgameT > 0 ? ' ' + fmtT(m.endgameT) : ''}</span>` : ''}${res ? `<span><b>OVER</b> ${res.kills}K / ${res.escapes}E</span>` : ''}${paused ? '<span class="muted">paused</span>' : ''}</div>
+  $('hud').innerHTML = `<div class="top"><span class="clock">${fmtT(m.t)}</span>${modBadge(matchMods)}<span>gens <b>${m.gensDone}/${m.gensNeeded}</b></span>${m.gatesPowered ? `<span><b>GATES</b>${m.endgameT > 0 ? ' ' + fmtT(m.endgameT) : ''}</span>` : ''}${res ? `<span><b>OVER</b> ${res.kills}K / ${res.escapes}E</span>` : ''}${paused ? '<span class="muted">paused</span>' : ''}</div>
     <div class="chips"><span class="chip"><span class="dot" style="background:#d8313b"></span>Hunter ${esc(hm.mode)}</span>${chips}</div>
     ${immersive ? `<div class="muted" style="margin-top:4px;font-size:11px">${esc(mapLabel())} · seed ${match.seed} · ${esc(genLabelText())}</div>` : ''}`;
 }
@@ -285,13 +287,17 @@ $('logFilter').oninput = () => logUpdate(true);
 
 // ---------------------------------------------------------------- runs (meta.jsonl climb runs / evo.jsonl population runs)
 let meta = [], runKinds = {}, runSpaces = null, runConfig = null, variantPool = [];
+// game modifiers (src/sim/modifiers.js): runMods = the selected run's rules (config.json / evo.jsonl), runModsByName =
+// /api/runs index for the picker, matchMods = the rules the LIVE match was created with (= runMods at newMatch time)
+let runMods = {}, runModsByName = {}, matchMods = {};
 let champ = { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
 const spaceOf = (side) => (runSpaces && runSpaces[side]) || brains[side].space;
 async function loadRuns() {
   const runs = await fetch('/api/runs').then((r) => r.json()).catch(() => []);
   runKinds = Object.fromEntries(runs.map((r) => [r.name, r.kind]));
+  runModsByName = Object.fromEntries(runs.map((r) => [r.name, r.modifiers ?? {}]));
   const keep = $('run').value || store.get('run', '');
-  $('run').innerHTML = runs.length ? runs.map((r) => `<option value="${esc(r.name)}">${esc(r.name)}${r.kind === 'evolve' ? ' (population)' : ''}</option>`).join('') : '<option value="">(no runs — defaults)</option>';
+  $('run').innerHTML = runs.length ? runs.map((r) => { const md = isModded(r.modifiers); return `<option value="${esc(r.name)}"${md ? ' class="modded"' : ''}>${md ? `⚠ [${esc(modLabel(r.modifiers))}] ` : ''}${esc(r.name)}${r.kind === 'evolve' ? ' (population)' : ''}</option>`; }).join('') : '<option value="">(no runs — defaults)</option>';
   if (keep && runKinds[keep]) $('run').value = keep;
   await loadMeta();
 }
@@ -315,6 +321,8 @@ async function loadMeta() {
   meta = await fetchMeta(name).catch(() => []);
   runConfig = name ? await fetch(`../runs/${name}/config.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
   runSpaces = runConfig?.spaces ?? null;
+  runMods = runConfig?.modifiers ?? meta.find((r) => r.evo?.modifiers)?.evo.modifiers ?? runModsByName[name] ?? {};
+  showRunMods();
   const evo = meta.length && meta[0].evo;
   if (evo) {
     const cur = $('knob').value || store.get('knob', 'hunter:tunnel');
@@ -338,6 +346,13 @@ setInterval(async () => {
   pickGen();
 }, 30000);
 
+function showRunMods() {
+  const md = isModded(runMods);
+  $('modBadge').innerHTML = modBadge(runMods);
+  $('toolbar').classList.toggle('modded', md);
+  $('run').classList.toggle('modded', md);
+  dirty.evo = true;
+}
 function genLabelText() {
   const g = +$('gen').value;
   return g === 0 || !meta.length ? 'default params' : `gen ${meta[g - 1].gen}/${meta[meta.length - 1].gen}`;
@@ -378,14 +393,18 @@ let evoDefs = [], evoCanvases = [];
 function renderEvo() {
   const g = +$('gen').value, name = $('run').value;
   const r = g > 0 ? meta[g - 1] : null;
-  $('evoInfo').innerHTML = !meta.length ? 'No run selected — the match plays default params. Pick a run in the toolbar.'
+  const md = isModded(runMods) && meta.length;
+  $('evoCharts').classList.toggle('modded', !!md);
+  $('evoInfo').innerHTML = (md ? `<div class="modbanner">${modBadge(runMods)} this run was evolved under <b>non-standard game rules</b> (${esc(modLabel(runMods))}); its numbers are not comparable with standard runs.</div>` : '') + (!meta.length ? 'No run selected — the match plays default params. Pick a run in the toolbar.'
     : `<b style="color:var(--ink)">${esc(name)}</b> · ${meta[0].evo ? 'population run' : 'hill-climb run'} · ${meta.length} generations${runConfig?.gens ? ` of ${runConfig.gens}` : ''}${runConfig?.pop ? ` · pop ${runConfig.pop}` : ''}${runConfig?.rounds ? ` · ${runConfig.rounds} rounds` : ''}`
-      + (r ? `<br>selected: <b style="color:var(--ink)">gen ${r.gen}</b>` + (r.evo ? ` · best hunter ${esc(r.evo.hunters.ranking[0].id)} vs best team ${esc(r.evo.survivors.ranking[0].id)} · ${r.evo.matches ?? '?'} matches in ${(r.evo.seconds ?? 0).toFixed(0)} s` : ` · ${esc(r.side)} ${r.accepted ? 'ACCEPTED' : 'kept'}`) : '<br>selected: generation 0 (default params)');
+      + (r ? `<br>selected: <b style="color:var(--ink)">gen ${r.gen}</b>` + (r.evo ? ` · best hunter ${esc(r.evo.hunters.ranking[0].id)} vs best team ${esc(r.evo.survivors.ranking[0].id)} · ${r.evo.matches ?? '?'} matches in ${(r.evo.seconds ?? 0).toFixed(0)} s` : ` · ${esc(r.side)} ${r.accepted ? 'ACCEPTED' : 'kept'}`) : '<br>selected: generation 0 (default params)'));
   evoDefs = evoChartDefs();
   const box = $('evoCharts');
-  if (box.childElementCount !== evoDefs.length || box.dataset.sig !== evoDefs.map((d) => d.title).join('|')) {
-    box.dataset.sig = evoDefs.map((d) => d.title).join('|');
-    box.innerHTML = evoDefs.map((d, k) => `<div class="chartbox"><div class="ttl">${esc(d.title)} <span class="lg">${esc(d.unit)}${d.series.length > 1 ? ' · ' + d.series.map((s) => `<span><span class="sw" style="background:${s.color}"></span>${esc(s.name)}</span>`).join('') : ''}</span></div><canvas class="chart" data-k="${k}"></canvas></div>`).join('');
+  const modTag = md ? `<span class="modtag">MODIFIED: ${esc(modLabel(runMods))}</span>` : '';
+  const sig = evoDefs.map((d) => d.title).join('|') + '#' + modTag;
+  if (box.childElementCount !== evoDefs.length || box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    box.innerHTML = evoDefs.map((d, k) => `<div class="chartbox"><div class="ttl">${esc(d.title)} ${modTag}<span class="lg">${esc(d.unit)}${d.series.length > 1 ? ' · ' + d.series.map((s) => `<span><span class="sw" style="background:${s.color}"></span>${esc(s.name)}</span>`).join('') : ''}</span></div><canvas class="chart" data-k="${k}"></canvas></div>`).join('');
     evoCanvases = [...box.querySelectorAll('canvas')];
     evoCanvases.forEach((c, k) => attachHover(c, (h) => drawEvo(k, h), (i) => evoTip(k, i), (i, commit) => setGen(i + 1, commit)));
   }
@@ -395,7 +414,7 @@ function renderEvo() {
 function drawEvo(k, hover) {
   const d = evoDefs[k]; if (!d) return null;
   const markers = meta.map((r, i) => (r.accepted ? { i, color: r.side === 'hunter' ? CAT[1] : CAT[0] } : null)).filter(Boolean);
-  return lineChart(evoCanvases[k], { series: d.series, yMax: d.yMax, xLabel: (i) => String(meta[i].gen), sel: +$('gen').value - 1, hover, markers });
+  return lineChart(evoCanvases[k], { series: d.series, yMax: d.yMax, xLabel: (i) => String(meta[i].gen), sel: +$('gen').value - 1, hover, markers, bg: isModded(runMods) ? MOD_TINT : null });
 }
 function evoTip(k, i) {
   const d = evoDefs[k];
@@ -575,7 +594,7 @@ function drawMinimap() {
 // ---------------------------------------------------------------- Champion tab
 function renderChamp() {
   const g = +$('gen').value, use = $('useChamp').checked;
-  $('champInfo').innerHTML = g === 0 || !meta.length ? 'Default parameters (generation 0 / no run).' : `Champions of <b style="color:var(--ink)">${esc($('run').value)}</b> · gen ${meta[g - 1].gen}${meta[g - 1].evo ? ` · hunter ${esc(meta[g - 1].evo.hunters.ranking[0].id)} · team ${esc(meta[g - 1].evo.survivors.ranking[0].id)}` : ''} — ${use ? 'playing in the current match' : '<b>not</b> used in the match (champs unchecked)'}`;
+  $('champInfo').innerHTML = (isModded(runMods) && meta.length ? modBadge(runMods) + ' ' : '') + (g === 0 || !meta.length ? 'Default parameters (generation 0 / no run).' : `Champions of <b style="color:var(--ink)">${esc($('run').value)}</b> · gen ${meta[g - 1].gen}${meta[g - 1].evo ? ` · hunter ${esc(meta[g - 1].evo.hunters.ranking[0].id)} · team ${esc(meta[g - 1].evo.survivors.ranking[0].id)}` : ''} — ${use ? 'playing in the current match' : '<b>not</b> used in the match (champs unchecked)'}`);
   const onlyChanged = $('champChanged').checked, q = $('champSearch').value.trim().toLowerCase();
   const d = { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
   const tbl = (side) => {
@@ -605,7 +624,11 @@ async function newMatch() {
   const seed = +$('seed').value || 1;
   const use = $('useChamp').checked ? champ : { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
   const live = { ...map }; delete live._path;
-  match = createMatch({ map: live, seed, hunter: brains.hunter.make(use.hunter), survivors: brains.survivor.make(use.survivor) });
+  // the live sim plays under the selected run's game modifiers (also with "champs" unchecked: the run's rules)
+  matchMods = runMods;
+  let config;
+  try { config = isModded(matchMods) ? modsConfig(matchMods) : undefined; } catch (e) { console.warn('game modifiers not supported by this checkout:', e.message); matchMods = {}; config = undefined; }
+  match = createMatch({ map: live, seed, config, hunter: brains.hunter.make(use.hunter), survivors: brains.survivor.make(use.survivor) });
   track = newTrack(); sample(); track.nextSample = 1;
   S3.buildDynamic(match, map);
   layers.rebuild(match, map);

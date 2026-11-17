@@ -159,3 +159,14 @@ tr.selrow td { background: #3987e522; }
 .lyr-info:empty { display: none; }
 #layerFloat { position: absolute; right: 10px; top: 48px; bottom: 48px; width: min(440px, 45vw); overflow-y: auto; background: #111110ee; border: 1px solid var(--line2); border-radius: 8px; padding: 8px 10px; display: none; }
 body.immersive #layerFloat.show { display: block; }
+
+/* ---------- game modifiers (src/sim/modifiers.js): non-standard rules are always shown in amber */
+.modbadge { display: inline-block; background: #f59e0b; color: #1b1100; font-weight: 700; font-size: 12px; letter-spacing: .02em; border-radius: 5px; padding: 2px 8px; white-space: nowrap; box-shadow: 0 0 0 2px #f59e0b55; }
+#toolbar.modded { border-bottom: 3px solid #f59e0b; background: linear-gradient(#2a2110, var(--panel)); }
+select.modded { border-color: #f59e0b; color: #fbbf24; }
+option.modded { color: #fbbf24; }
+#hud .modbadge { margin-left: 2px; }
+body.immersive #hud .modbadge { font-size: 14px; }
+.modbanner { background: #3a2a08; border: 1px solid #f59e0b; color: #fde68a; border-radius: 6px; padding: 6px 10px; margin: 0 0 8px; }
+#evoCharts.modded .chartbox { outline: 2px solid #f59e0b88; outline-offset: -1px; }
+.chartbox .ttl .modtag { color: #fbbf24; font-weight: 700; font-size: 11px; }

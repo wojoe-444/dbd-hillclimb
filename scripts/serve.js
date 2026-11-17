@@ -1,5 +1,6 @@
 // Zero-dependency static server for the viewer: node scripts/serve.js [port]
-// Serves the repo root (viewer/, src/, maps/, runs/) and a JSON index of runs at /api/runs.
+// Serves the repo root (viewer/, src/, maps/, runs/) and a JSON index of runs at /api/runs
+// ({ name, mtime, kind, modifiers? } -- modifiers from runs/<name>/config.json, only for non-standard game rules).
 import { createServer } from 'node:http';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
@@ -18,8 +19,10 @@ createServer(async (req, res) => {
         if (!d.isDirectory()) continue;
         const s = await stat(join(root, 'runs', d.name, 'meta.jsonl')).catch(() => null);
         const e = await stat(join(root, 'runs', d.name, 'evo.jsonl')).catch(() => null);
-        if (s) runs.push({ name: d.name, mtime: s.mtimeMs, kind: 'climb' });
-        else if (e) runs.push({ name: d.name, mtime: e.mtimeMs, kind: 'evolve' });
+        const cfg = s || e ? await readFile(join(root, 'runs', d.name, 'config.json'), 'utf8').then(JSON.parse).catch(() => null) : null;
+        const mods = cfg?.modifiers && Object.keys(cfg.modifiers).length ? { modifiers: cfg.modifiers } : {};
+        if (s) runs.push({ name: d.name, mtime: s.mtimeMs, kind: 'climb', ...mods });
+        else if (e) runs.push({ name: d.name, mtime: e.mtimeMs, kind: 'evolve', ...mods });
       }
       runs.sort((a, b) => b.mtime - a.mtime);
       res.writeHead(200, { 'content-type': 'application/json' });

@@ -16,6 +16,7 @@
 //        [--noNeutralize]                           (keep the gen-cluster leash of the hunter; pocket artifact)
 //        [--noPushFix]                              (don't push a pallet-overlapping hunter out; engine gap)
 //        [--src <dir>]                              (sim + brains from another src/ tree, e.g. a HEAD snapshot)
+//        [--mod genSeconds=80]                      (game modifiers, src/sim/modifiers.js; always from THIS repo, also with --src)
 //        [--out file.json] [--list]                 (--list prints every duel row)
 //        [--trace <duelIndex>] [--every 0.5]        (prints a per-tick narrative for one duel; same --n/--seed0 grid)
 // Report: docs/research/shack-duel.md.
@@ -23,6 +24,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 // shared duel setup (geometry, setup grid, harness); no imports of its own, so --src still picks the sim + brains
+import { modsFromArgv, withMods, describeMods, modsRecord } from '../src/sim/modifiers.js';
 import { inside, OPEN, nearestOpening, situation, NEUTRALIZE, buildGrid as buildDuelGrid, createDuel, pushFix } from '../src/duel/shack.js';
 
 const a = {};
@@ -32,7 +34,11 @@ for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { const k = 
 // don't move while someone edits the working tree. Default: this repo's src/.
 const SRC = a.src ? resolve(a.src) : fileURLToPath(new URL('../src/', import.meta.url));
 const imp = (rel) => import(pathToFileURL(resolve(SRC, rel)).href);
-const { createMatch } = await imp('sim/index.js');
+const { createMatch: createMatch0 } = await imp('sim/index.js');
+// game modifiers: every match of this script (grid probes and duels) plays under them
+const MODS = modsFromArgv(argv);
+if (Object.keys(MODS).length) console.log(`GAME MODIFIERS: ${describeMods(MODS)} (non-standard rules)`);
+const createMatch = Object.keys(MODS).length ? (o) => createMatch0({ ...o, config: withMods(o.config, MODS) }) : createMatch0;
 const { getBrains } = await imp('brains/index.js');
 const { defaults, clampParams } = await imp('hillclimb/params.js');
 const N = +(a.n ?? 64), CAP = +(a.cap ?? 120), SEED0 = +(a.seed0 ?? 1000);
@@ -224,4 +230,4 @@ for (const P of runs) {
   out[P.name] = rows;
 }
 console.log(`\n${grid.length} setups, ${N} duels per brain set, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-if (a.out) writeFileSync(a.out, JSON.stringify({ map: map.id, cap: CAP, seed0: SEED0, grid: grid.map(g => ({ id: g.id, s: g.s, h: g.h })), results: out }, null, 1));
+if (a.out) writeFileSync(a.out, JSON.stringify({ map: map.id, ...modsRecord(MODS), cap: CAP, seed0: SEED0, grid: grid.map(g => ({ id: g.id, s: g.s, h: g.h })), results: out }, null, 1));

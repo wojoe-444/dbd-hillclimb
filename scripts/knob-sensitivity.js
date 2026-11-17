@@ -6,6 +6,7 @@
 //
 // Usage: node scripts/knob-sensitivity.js --set runs/evo-v15 --side survivor [--vs default] [--n 32] [--sigma 0.15]
 //          [--knobs a,b,c] [--map maps/gas-heaven] [--threads N] [--seed-base 2147483648] [--json out.json]
+//          [--mod genSeconds=80]   (game modifiers, src/sim/modifiers.js)
 // Set specs: see src/hillclimb/evalplan.js resolveParamSet. Fitness is the side's evolution fitness (worker/play.js):
 // survivor = 0.5 x normalised BP + 0.5 x time-weighted survival; hunter = outcome table / 100.
 import { cpus } from 'node:os';
@@ -13,7 +14,8 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getBrains } from '../src/brains/index.js';
 import { createPool } from '../src/hillclimb/pool.js';
-import { resolveParamSet, heldOutSeeds, HELDOUT_BASE, gitInfo } from '../src/hillclimb/evalplan.js';
+import { resolveParamSet, heldOutSeeds, HELDOUT_BASE, gitInfo, modMismatches } from '../src/hillclimb/evalplan.js';
+import { modsFromArgv, modsRecord, describeMods } from '../src/sim/modifiers.js';
 
 const args = {};
 const argv = process.argv.slice(2);
@@ -26,6 +28,9 @@ const spaces = { hunter: B.hunter.space, survivor: B.survivor.space };
 const space = spaces[side];
 const set = resolveParamSet(args.set ?? 'default', spaces);
 const vs = resolveParamSet(args.vs ?? 'default', spaces);
+const mods = modsFromArgv(argv);
+if (Object.keys(mods).length) console.log(`GAME MODIFIERS: ${describeMods(mods)} (non-standard rules)`);
+for (const w of new Set(modMismatches([set, vs], mods))) console.warn(w);
 const seeds = heldOutSeeds(+(args.n ?? 32), +(args['seed-base'] ?? HELDOUT_BASE));
 const sigma = +(args.sigma ?? 0.15);
 const threads = +(args.threads ?? Math.max(1, cpus().length - 1));
@@ -47,7 +52,7 @@ const jobs = [];
 variants.forEach((v, vi) => { for (const seed of seeds) jobs.push({ seed, hunterParams: side === 'hunter' ? v.params : vs.hunter, survivorParams: side === 'survivor' ? v.params : vs.survivor, tag: { vi } }); });
 console.log(`knob sensitivity: ${set.name} ${side} vs ${vs.name} ${other}; ${knobs.length} knobs, ${variants.length} variants x ${seeds.length} held-out seeds = ${jobs.length} matches, sigma ${sigma} of range`);
 const t0 = Date.now();
-const pool = createPool({ threads, mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: args.hunter ?? 'param', survivorBrain: args.survivor ?? 'param' });
+const pool = createPool({ threads, mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: args.hunter ?? 'param', survivorBrain: args.survivor ?? 'param', mods });
 const results = await pool.run(jobs);
 pool.close();
 
@@ -105,4 +110,4 @@ const chaosMedian = moved.length ? moved[moved.length >> 1] : 0;
 console.log(`chaos baseline: median dFit of the ${moved.length} game-changing variants ${chaosMedian >= 0 ? '+' : ''}${chaosMedian.toFixed(3)} ` +
   `(${moved.filter((x) => x < 0).length} negative). If clearly below 0 the base was lucky on these seeds: treat dFit near it as noise, use more --n.`);
 
-if (args.json) writeFileSync(resolve(args.json), JSON.stringify({ git: gitInfo(), set: { name: set.name, source: set.source, stale: set.stale }, side, vs: vs.name, sigma, seeds: { first: seeds[0], n: seeds.length }, baseFit, baseOut, chaosMedian, rows }, null, 2));
+if (args.json) writeFileSync(resolve(args.json), JSON.stringify({ git: gitInfo(), ...modsRecord(mods), set: { name: set.name, source: set.source, stale: set.stale }, side, vs: vs.name, sigma, seeds: { first: seeds[0], n: seeds.length }, baseFit, baseOut, chaosMedian, rows }, null, 2));

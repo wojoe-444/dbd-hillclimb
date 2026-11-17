@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defaults, clampParams } from './params.js';
+import { modsOf, modsKey, describeMods } from '../sim/modifiers.js';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -116,7 +117,7 @@ export function resolveParamSet(spec, spaces) {
   let name = null, src = spec;
   const eq = spec.indexOf('=');
   if (eq > 0 && !/^[a-zA-Z]:[\\/]/.test(spec)) { name = spec.slice(0, eq); src = spec.slice(eq + 1); }
-  let raw;
+  let raw, runDir = null, champFile = null;
   if (src === 'default') raw = { hunter: defaults(spaces.hunter), survivor: defaults(spaces.survivor) };
   else {
     const m = src.match(/^(.*)@gen(\d+)$/);
@@ -125,14 +126,18 @@ export function resolveParamSet(spec, spaces) {
       const rows = readFileSync(join(path, 'evo.jsonl'), 'utf8').trim().split(/\r?\n/).map((l) => JSON.parse(l));
       const row = rows.find((r) => r.gen === +m[2]);
       if (!row) throw new Error(`${src}: generation ${m[2]} not in evo.jsonl`);
+      runDir = path;
       raw = { hunter: row.hunters.ranking[0].params, survivor: row.survivors.ranking[0].params };
     } else {
       const file = existsSync(path) && statSync(path).isDirectory() ? join(path, 'champions.json') : path;
       const j = JSON.parse(readFileSync(file, 'utf8'));
       raw = j.champ ?? j.best ?? j;
+      runDir = dirname(file); champFile = j;
     }
   }
   const out = { name: name ?? (src === 'default' ? 'default' : basename(src.replace(/[\\/]+$/, '').replace(/[\\/]champions\.json$/, ''))), source: src };
+  // game modifiers the param set was trained under (champions.json, else the run's config.json; none = standard)
+  out.modifiers = src === 'default' ? null : trainedMods(runDir, champFile);
   out.stale = {};
   for (const side of ['hunter', 'survivor']) {
     if (!raw[side]) continue;
@@ -142,6 +147,20 @@ export function resolveParamSet(spec, spaces) {
     if (missing.length || dropped.length) out.stale[side] = { missing, dropped };
   }
   return out;
+}
+
+function trainedMods(runDir, champ) {
+  if (champ?.modifiers) return modsOf(champ);
+  const cf = runDir && join(runDir, 'config.json');
+  if (cf && existsSync(cf)) { try { return modsOf(JSON.parse(readFileSync(cf, 'utf8'))); } catch { /* unreadable: treat as standard */ } }
+  return {};
+}
+
+/** Warnings for param sets (resolveParamSet results) trained under different game modifiers than `mods`. */
+export function modMismatches(sets, mods) {
+  const want = modsKey(mods), label = (m) => describeMods(m) || 'standard';
+  return sets.filter((p) => p && p.modifiers && modsKey(p.modifiers) !== want)
+    .map((p) => `WARNING: ${p.name} was trained under ${label(p.modifiers)} but is played here under ${label(mods)}`);
 }
 
 // ---------- provenance ----------
