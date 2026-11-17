@@ -138,6 +138,8 @@ function build(map) {
     windows: windows.map(({ id, x, z, axis }) => ({ id, x, z, axis })),
     pallets: pallets.map(p => ({ id: p.id, x: p.x, z: p.z, axis: p.axis, length: p.length, x0: p.x0, z0: p.z0, x1: p.x1, z1: p.z1, cx: p.cx, cz: p.cz })),
     generatorCandidates: genCands.map(({ id, x, z }) => ({ id, x, z })),
+    // tile footprints (public static layout; generated maps only): survivors recognise a whole standard tile from a glimpse
+    tiles: (map.mapgen?.tiles || []).map(({ x, z, size, tile }) => ({ x, z, size, tile })),
     hooks: (map.hooks || []).map(hk => ({ id: hk.id, x: hk.x, z: hk.z })),
     exitGates: (map.exitGates || []).map(g => ({ id: g.id, lever: { ...g.lever }, exit: { ...g.exit } })),
     spawns: { hunter: (map.spawns?.hunter || []).map(s => ({ x: s.x, z: s.z })), survivors: (map.spawns?.survivors || []).map(s => ({ x: s.x, z: s.z })) },

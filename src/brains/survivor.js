@@ -91,6 +91,7 @@ export const survivorSpace = {
   crouchMaxS:    [1, 30, 8],       // stop crouch-walking (walk instead) after this long continuously
   // ---- exploration (survivors only know the generators / loop anchors they have found) ----
   exploresMap:   [0, 1, 0.5],      // propensity to explore unexplored areas instead of working a known gen (0 = only when no gen is known)
+  tileGestalt:   [0, 1, 1],      // >0.5: a glimpse of part of a standard tile (a window / pallet / its middle) reveals the whole tile's windows + pallets
   exploreRadM:   [10, 80, 35],     // preferred distance of exploration targets (score = unexplored share - distance / this)
   // ---- repair productivity (work mode) ----
   otherChaseTrustDist: [0, 40, 5],  // hunter seen while the HUD shows it chasing someone else and it isn't coming at me: keep working (no chase mode / hide) if it's farther than this (40 = off)
@@ -160,7 +161,7 @@ export function makeSurvivor(P) {
     // survivors don't know where the generators are: obs.gens[i] gets id / position / slots once found (engine).
     const loops = new LoopModel(ctx, { lineup: (P.vaultLineup ?? 0) > 0.5, approachM: P.vaultApproachM ?? 4, detourW: P.vaultDetourW ?? 1, funnelDeg: P.vaultFunnelDeg ?? 20, tierW: P.vaultAngleW ?? 1 });   // anchors + distance-held circuits (static parts lazily, once per match)
     const anchors = loops.anchors;
-    const know = new MapKnowledge(ctx, anchors);  // explored area + anchors seen
+    const know = new MapKnowledge(ctx, anchors, { tileGestalt: P.tileGestalt > 0.5 });  // explored area + anchors seen
     const routes = new RouteEval(loops, ctx);     // short-horizon distance held for open-field routes
     const ahead = new RouteLookahead(loops, know, ctx);   // next resource reachable from a flee destination + open ground
     const fc = new HunterForecast(ctx, loops, { learnS: P.fcLearnS });   // where the seen hunter is going (hunterforecast.js)

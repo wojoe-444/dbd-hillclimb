@@ -47,6 +47,15 @@ export class MapKnowledge {
     this.nSeen = 0;
     this.anchors = anchors;
     this.anchorKnown = new Uint8Array(anchors.length);
+    // tile recognition (opts.tileGestalt, default on): a glimpse of any part of a standard tile (one of its windows /
+    // pallets, or its middle) reveals the tile's whole layout, like a player who knows the tile set
+    this.tileGestalt = opts.tileGestalt ?? true;
+    this.tiles = (M.tiles || []).map((t) => ({ x: t.x, z: t.z, size: t.size, cx: t.x + t.size / 2, cz: t.z + t.size / 2, anchors: [] }));
+    this.anchorTile = new Int32Array(anchors.length).fill(-1);
+    anchors.forEach((a, k) => { const ti = this.tiles.findIndex((t) => a.c.x >= t.x && a.c.x < t.x + t.size && a.c.z >= t.z && a.c.z < t.z + t.size); if (ti >= 0) { this.anchorTile[k] = ti; this.tiles[ti].anchors.push(k); } });
+    this.tileKnown = new Uint8Array(this.tiles.length);
+    // a coarse cell counts as explored when ANY of 5 sample points (centre + 4 offsets) is in view, not only its centre
+    this.samp = [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]].map(([u, v]) => [u * this.cs / 3, v * this.cs / 3]);
     this.lastT = -99;
     this.camCfg = ctx.config.survivor && ctx.config.survivor.camera && ctx.config.survivor.camera.enabled ? ctx.config.survivor.camera : null;
     this.cands = (M.generatorCandidates || []).map((g) => ({ x: g.x, z: g.z }));
@@ -113,7 +122,7 @@ export class MapKnowledge {
     this.updateCands(obs, sees);
     for (let k = 0; k < cand.length && k < this.raysPer; k++) {
       const c = cand[k][1];
-      if (sees(this.cx[c], this.cz[c])) { this.seen[c] = 1; this.nSeen++; }
+      for (const [ox, oz] of this.samp) if (sees(this.cx[c] + ox, this.cz[c] + oz)) { this.seen[c] = 1; this.nSeen++; break; }
     }
     // anchors
     const a2 = this.anchorR * this.anchorR;
@@ -121,9 +130,16 @@ export class MapKnowledge {
       if (this.anchorKnown[k]) continue;
       const a = this.anchors[k];
       if ((a.c.x - me.x) ** 2 + (a.c.z - me.z) ** 2 > a2) continue;
-      if (sees(a.s[0].x, a.s[0].z) || sees(a.s[1].x, a.s[1].z)) this.anchorKnown[k] = 1;
+      if (sees(a.s[0].x, a.s[0].z) || sees(a.s[1].x, a.s[1].z) || sees(a.c.x, a.c.z)) { this.anchorKnown[k] = 1; if (this.tileGestalt && this.anchorTile[k] >= 0) this.knowTile(this.anchorTile[k]); }
+    }
+    if (this.tileGestalt) for (let t = 0; t < this.tiles.length; t++) {
+      const T = this.tiles[t];
+      if (this.tileKnown[t] || !T.anchors.length || (T.cx - me.x) ** 2 + (T.cz - me.z) ** 2 > a2) continue;
+      if (sees(T.cx, T.cz)) this.knowTile(t);
     }
   }
+
+  knowTile(t) { this.tileKnown[t] = 1; for (const k of this.tiles[t].anchors) this.anchorKnown[k] = 1; }
 
   explored(x, z) { return !!this.seen[this.cellAt(x, z)]; }
   fraction() { return this.nOpen ? this.nSeen / this.nOpen : 1; }
