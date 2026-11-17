@@ -87,6 +87,25 @@ export const survivorSpace = {
   ...kickSpace,
   // ---- killer profile: what I've observed of this hunter's habits, and how much to play around it (killerprofile.js) ----
   ...profileSpace,
+  // ---- hunter forecast (hunterforecast.js): where the seen hunter is GOING, learned per chase from its own moves ----
+  fcLearnS:      [0.3, 4, 1.5],    // memory (s) of each motion model's recent prediction error (pursue / momentum / cut / stand)
+  fcLeadS:       [0, 1.5, 0],      // route scoring: the hunter keeps its forecast course this long, then pure pursuit (0 = pure pursuit, old)
+  fcReverseP:    [0, 1.05, 1.05],  // running a loop: reverse when P(forecast hunter is at my next entry before me) >= this (> 1 = off;
+                                   // default off: 0.6 was neutral at n=128, -0.02 / +0.01 kills)
+  fcEntryMarginM:[-1, 4, 1],       // ...where "at" = within its swing reach + this
+  // ---- after a vault: where to wait, and whether waiting beats running on ----
+  stationMode:   [0, 1, 0],        // >0.5: wait at the best mind-game distance on the landing side (vault-back vs run-round
+                                   // margins, weighted by the forecast) and leave when running on is worth more; else the
+                                   // old hold at the entry until holdMaxS. Default off: n=128 A/B +0.10..0.15 kills (the
+                                   // default hunter vaults into a holding survivor in 56% of holds: diag-holds.js)
+  palletRunOn:   [0, 1, 0],        // >0.5: through a standing pallet, wait on the far side for a drop only while that beats running on
+                                   // (P(it comes through) x the pallet's distance held vs the best route's gap + holdBiasM); else the old wait.
+                                   // Default off: +0.04..0.06 kills at n=128 (more probe-tile laps though), fewer stuns in the shack duel
+  holdBiasM:     [-10, 20, 10],    // m added to waiting (window / pallet) vs running on (the best route's min gap); holdMaxS stays a hard cap
+  fcReactS:      [0, 1, 0.3],      // my reaction time to the hunter's vault / turn in that margin model
+  // ---- strong loops: run farther to them, value the laps they hold ----
+  strongTravelW: [0, 1.5, 0.5],    // extra path I'll run to a loop: + this x its expected distance held per chase (m per m)
+  strongLoopW:   [0, 2, 0.3],      // route value of a loop: + this x (expected held per chase - one lap): more laps there
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -94,6 +113,7 @@ import { HunterBelief } from './hunterbelief.js';
 import { LoopModel } from './loops.js';
 import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
+import { HunterForecast } from './hunterforecast.js';
 import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } from './lookahead.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
 import { healSpace, makeHealPlanner } from './healplan.js';
@@ -123,6 +143,9 @@ export function makeSurvivor(P) {
     const know = new MapKnowledge(ctx, anchors);  // explored area + anchors seen
     const routes = new RouteEval(loops, ctx);     // short-horizon distance held for open-field routes
     const ahead = new RouteLookahead(loops, know, ctx);   // next resource reachable from a flee destination + open ground
+    const fc = new HunterForecast(ctx, loops, { learnS: P.fcLearnS });   // where the seen hunter is going (hunterforecast.js)
+    const fcOn = P.fcLeadS > 0 || P.fcReverseP <= 1 || P.stationMode > 0.5;
+    let fcCheckT = -99, fcLastSeenT = -99;
     let lastBreakT = -99;                         // last pallet break I saw (chain to the next tile)
     let routeT = -99, chaseStartT = -99, wasChasedR = false;
     // exploration pull toward unseen anchors that would complete a strong loop with anchors I already know
@@ -252,7 +275,7 @@ export function makeSurvivor(P) {
     let peek = null;              // current peek: { spot, look, since }
     let hide = null;              // { start, lastTrig, spot, spotT }
     let hideCooldownUntil = -99;
-    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0, trustTicks: 0, taskGlances: 0, candExplores: 0 };   // diagnostics (read by scripts via brain.stats)
+    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0, trustTicks: 0, taskGlances: 0, candExplores: 0, fcReversals: 0, fcLeaves: 0, holdLeaves: 0, stationTicks: 0 };   // diagnostics (read by scripts via brain.stats)
     let wasChased = false, lastHideTickT = -99, lastPeekT = -99, wasChasedV = false;
     const kick = makeKickPlanner(ctx, P, { belief, peekValue, hunterCouldSee, slots, stats, beliefOn });   // kicked-gen plan (kickplan.js)
     const genCover = M.generators.map(() => null);   // per known gen: mean cover of its repair slots (lazy)
@@ -466,11 +489,11 @@ export function makeSurvivor(P) {
       const vl = vaultsLeft(obs), ps = palletState(obs), R = P.loopTravelMaxM;
       const cands = [];
       for (const a of anchors) {
-        if (!know.anchorKnown[a.k] || !crossOK(a, obs) || contested(a, obs) || d2(me, a.c) > R + 2) continue;
+        if (!know.anchorKnown[a.k] || !crossOK(a, obs) || contested(a, obs) || d2(me, a.c) > R + 2 + P.strongTravelW * 45) continue;
         for (let d = 0; d < 2; d++) {
           const c = 2 * a.k + d, Pt = loops.sidePt[c];
           const dmE = d2(me, Pt), dhP = d2(hp, Pt);
-          if (dmE > R || !(dmE < P.loopRace * dhP) && !racePath(Pt)) continue;
+          if (dmE > R + P.strongTravelW * 45 || !(dmE < P.loopRace * dhP) && !racePath(Pt)) continue;
           if (dmE > 1.5 && landsBad(api, me, hp, c)) continue;
           // the hunter is heading for it: it would cut us off there
           if (h && P.avoidHeading > 0.5) { const tx = Pt.x - h.x, tz = Pt.z - h.z, tl = Math.hypot(tx, tz) || 1; if ((h.vx * tx + h.vz * tz) / tl > 2.5 && dhP < dmE + 4) continue; }
@@ -483,6 +506,8 @@ export function makeSurvivor(P) {
             const ex = loops.expected(o, vl, ps) * (unk ? 0.6 : 1);
             if (ex > be) { be = ex; best = o; }
           }
+          // strong loops: worth a longer run (strongTravelW m of extra path per m of expected distance held)
+          if (best && dmE > R + P.strongTravelW * be) continue;
           if (best) cands.push({ o: best, ex: be, Pt, dhP, s: P.holdW * be - dmE + extra(Pt) });
         }
       }
@@ -492,9 +517,14 @@ export function makeSurvivor(P) {
     const newCirc = (c, obs) => ({ seq: c.o.seq.slice(), i: 0, phase: 'toP', lockT: obs.t + 1, holdT: 0, chosenT: obs.t, lap: c.o.lap, crossed: 0 });
     // ~1.3 Hz: where to run. Open points in 12 directions (at run speed x horizon) vs known loop entries, each scored by
     // the min survivor-hunter path gap (routes.js); loops add holdW x their distance held per lap if reached in time.
-    function chooseRoute(obs, api, me, hp, h, extra) {
+    // dry = { holdK }: evaluate only (no plan change), without pure holds at anchor holdK and without the current plan:
+    // returns the best route value (the "run on" option when deciding whether to keep waiting at a window)
+    function chooseRoute(obs, api, me, hp, h, extra, dry = null) {
       const chaseS = me.chased ? obs.t - blT0 : 0;
-      if (!routes.prepare(obs, me, hp, chaseS, brk ? brk.remainS : 0)) return false;
+      // forecast lead: the seen hunter keeps its forecast course for fcLeadS, then pursues (pure pursuit at 0)
+      let hpR = hp, delay = brk ? brk.remainS : 0;
+      if (P.fcLeadS > 0 && h && !brk && !h.vaulting) { const pr = fc.predict(obs, api, me, P.fcLeadS); if (pr) { hpR = pr; delay = P.fcLeadS; } }
+      if (!routes.prepare(obs, me, hpR, chaseS, delay)) return dry ? null : false;
       const Hz = P.holdHorizonS, r0 = Math.min(30, Math.max(6, routes.vS * Hz * 0.5));   // first leg ~ half the horizon
       // route lookahead (lookahead.js), in a chase only: open flee points also count the next resource I can still
       // reach from there and the bare ground before it (pallet broken just now: chainAfterBreakW on top)
@@ -522,20 +552,25 @@ export function makeSurvivor(P) {
         // re-planning on arrival then flip-flops between nearby points)
         const doom = useLA ? Math.min(1, Math.max(0, 1 - ro.gap / LOOKAHEAD_DOOM_M)) * Math.min(1, Math.max(0, (d2(me, T) - LOOKAHEAD_NEAR_M) / 4)) : 0;
         if (doom > 0) { const la = ahead.nextResource(routes, T, P.lookaheadMaxM); v += doom * (laW * la.v - P.openGroundPenalty * la.open); }
-        if (!circ && fleePoint && d2(T, fleePoint) < 6) v += 2;           // hysteresis
+        if (!dry && !circ && fleePoint && d2(T, fleePoint) < 6) v += 2;   // hysteresis
         if (circ) v -= 2;                                                  // leaving a loop for open ground: needs a clear win
-        if (v > bs) { bs = v; best = { kind: 'open', T }; }
+        if (v > bs) { bs = v; best = { kind: 'open', T, g: ro.gap }; }
       }
       // loops: roll out to the far side of the first crossing (my field includes the vault, the hunter's its vault /
       // break / detour), so the crossing's own gain counts
       for (const c of chooseCircuit(obs, api, me, hp, h, extra)) {
+        if (dry && c.o.seq.every((x) => (x >> 1) === dry.holdK)) continue;  // waiting there is the other option
+        if (!dry && obs.t < noHoldUntil && c.o.seq.every((x) => (x >> 1) === noHoldK)) continue;   // just left that wait
         const Qt = loops.sidePt[c.o.seq[0] ^ 1];
         const ro = routes.rollout(Qt.x, Qt.z, 15, true);
-        if (!ro || ro.arrive * routes.vS > P.loopTravelMaxM * 1.3) continue;
-        let v = ro.gap + (ro.gap > 0 ? P.holdW * c.o.lap : 0) + extra(c.Pt);
-        if (circ && circ.seq[circ.i] === c.o.seq[0]) v += 1;               // hysteresis
-        if (v > bs) { bs = v; best = { kind: 'loop', c }; }
+        if (!ro || ro.arrive * routes.vS > (P.loopTravelMaxM + P.strongTravelW * c.ex) * 1.3) continue;
+        // a loop reached in time adds its distance held per lap, and strong loops (more laps left in the vault budget)
+        // add strongLoopW x the rest of their expected distance held
+        let v = ro.gap + (ro.gap > 0 ? P.holdW * c.o.lap + P.strongLoopW * Math.max(0, c.ex - c.o.lap) : 0) + extra(c.Pt);
+        if (!dry && circ && circ.seq[circ.i] === c.o.seq[0]) v += 1;       // hysteresis
+        if (v > bs) { bs = v; best = { kind: 'loop', c, g: ro.gap }; }
       }
+      if (dry) return best ? { v: bs, g: best.g, best } : null;
       if (circ && circ.phase === 'toP') {                                  // the loop I'm already running to
         const Qt = loops.sidePt[circ.seq[circ.i] ^ 1], ro = routes.rollout(Qt.x, Qt.z, 15, true);
         if (ro) { const v = ro.gap + (ro.gap > 0 ? P.holdW * circ.lap : 0) + extra(Qt) + 1.5; if (v > bs) { bs = v; best = { kind: 'keep' }; } }
@@ -576,6 +611,59 @@ export function makeSurvivor(P) {
       return 'wait';
     }
 
+    // ---- forecast helpers ----
+    // P(the forecast hunter is within its swing reach + fcEntryMarginM of crossing c's entry when I get there)
+    function entryDanger(obs, api, me, c) {
+      const Pt = loops.sidePt[c], dMe = api.nav.dist(me, Pt);
+      if (!(dMe < Infinity)) return 1;
+      const br = fc.branches(obs, api, me, dMe / routes.vS);
+      if (!br) return 0;
+      const R = routes.reach + P.fcEntryMarginM;
+      let p = 0;
+      for (const b of br) { if (Math.hypot(b.x - Pt.x, b.z - Pt.z) <= R && api.nav.dist(b, Pt) <= R) p += b.w; }
+      return p;
+    }
+    // where to wait on my side of window a (crossing c = going back over it). Spots on the crossing axis at r m from the
+    // window centre, valued in metres of margin under the forecast's P(through / around / stand):
+    //   through: it vaults over to me; I run when I see it start:  r - 1 + vS * (vault - fcReactS) - reach
+    //   around : it walks round; I vault back (fast from >= the run-up distance, else medium); it has to come back the
+    //            cheaper of vaulting / walking round:              min(vault * vH, detour) - vH * (vault time + (r - 1.6) / vS)
+    //   stand  : it waits on the far side:                         its path to the spot - reach
+    // through / around also get the hunter's own path to the window (it has to get there first).
+    let stationCache = null, noHoldK = -1, noHoldUntil = -99, leaveT = -99;
+    function stationPlan(obs, api, me, h, hp, a, c, vH) {
+      if (stationCache && stationCache.k === a.k && stationCache.c === c && obs.t - stationCache.t < 0.25) return stationCache;
+      const P0 = loops.sidePt[c], Q0 = loops.sidePt[c ^ 1], ux = (P0.x - Q0.x) / 3.2, uz = (P0.z - Q0.z) / 3.2;
+      const cm = fc.commit(obs, api, me, a, P0, Q0) || { through: 0.5, around: 0.5, stand: 0 };
+      const hV = HC.vaultS ?? 1.7, vS = routes.vS, reach = routes.reach;
+      const D = loops.detour(a.k), hw = Math.max(0, api.nav.dist(hp, a.c) - 1.6);
+      let best = null;
+      for (const r of [1.6, 2.6, 3.9]) {
+        const S = { x: a.c.x + ux * r, z: a.c.z + uz * r };
+        if (loops.solid[Math.floor(S.z) * M.w + Math.floor(S.x)] || (d2(me, S) > 0.5 && !api.walkClear(me, S))) continue;
+        const tv = r >= RUNUP_TO_CENTRE - 0.05 ? (SV.vaultFastS ?? 0.5) : (SV.vaultMediumS ?? 0.9);
+        const mThrough = hw + (r - 1) + vS * Math.max(0, hV - P.fcReactS) - reach;
+        const mAround = hw + Math.min(hV * vH, D) - vH * (tv + Math.max(0, r - 1.6) / vS);
+        const mStand = api.nav.dist(hp, S) - reach;
+        const v = cm.through * mThrough + cm.around * mAround + cm.stand * mStand + (r < 2 ? 0 : -0.05 * r);
+        if (!best || v > best.v) best = { S, v, r };
+      }
+      stationCache = best ? { ...best, k: a.k, c, t: obs.t } : { S: P0, v: 0, r: 1.6, k: a.k, c, t: obs.t };
+      return stationCache;
+    }
+    // waiting at window a vs running on (the best route without a pure hold there), every 0.5 s: leave when running
+    // on is worth more than the wait's expected margin + holdBiasM (then no pure hold at a for 3 s)
+    function leaveHold(obs, api, me, hp, h, extra, a, station) {
+      if (obs.t - leaveT < 0.5) return false;
+      leaveT = obs.t;
+      const r = chooseRoute(obs, api, me, hp, h, extra, { holdK: a.k });
+      if (!r || !(r.g > station.v + P.holdBiasM)) return false;
+      stats.holdLeaves++;
+      noHoldK = a.k; noHoldUntil = obs.t + 3;
+      circ = null; routeT = obs.t; chooseRoute(obs, api, me, hp, h, extra);
+      return true;
+    }
+
     function chase(obs, api, me, h, depth = 0) {
       if (depth > 3) return null;
       // the visible hunter is breaking a pallet: that pallet is as good as gone, and the break time is mine to run
@@ -590,6 +678,7 @@ export function makeSurvivor(P) {
       const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
       const hp = hunterPos(obs);
       if (!hp) return null;
+      if (fcOn) { fc.update(obs, api, me, circ ? loops.sidePt[circ.seq[circ.i] ^ 1] : fleePoint); if (h) fcLastSeenT = obs.t; }
       // mid-vault: committed until landing (no re-planning); keep pushing through
       if (me.vaulting) { const c = myVault ? myVault.c : null; return c !== null ? { moveTo: loops.sidePt[c ^ 1] } : {}; }
       const hk = rescue.nearestHook(me);
@@ -638,6 +727,21 @@ export function makeSurvivor(P) {
             return chase(obs, api, me, h, depth + 1);
           }
         }
+        // forecast: P(the hunter is at my next entry by the time I get there) -- it is cutting me off (a pursuer that
+        // follows me never is); the other way round is clearly safer -> reverse; both ways covered -> leave the loop
+        if (fcOn && P.fcReverseP <= 1 && circ.phase === 'toP' && nk > 1 && (prevC >> 1) !== (c >> 1) && obs.t >= circ.lockT && obs.t - fcLastSeenT < 1 && obs.t - fcCheckT >= 0.2 && d2(me, Pt) > 1.2) {
+          fcCheckT = obs.t;
+          const pBad = entryDanger(obs, api, me, c);
+          if (pBad >= P.fcReverseP) {
+            const revNext = prevC ^ 1, pRev = entryDanger(obs, api, me, revNext);
+            if (pRev < pBad - 0.2) {
+              stats.fcReversals++; reverseCirc(obs);
+              if (landsBad(api, me, hp, circ.seq[circ.i])) { circ = null; routeT = -99; }
+              return chase(obs, api, me, h, depth + 1);
+            }
+            if (pBad >= 0.95 && d2(me, Pt) > 3) { stats.fcLeaves++; circ = null; routeT = -99; return chase(obs, api, me, h, depth + 1); }
+          }
+        }
         if (circ.phase === 'toP') {
           // running crossing (a real leg leads into it): keep the momentum for a fast vault while the hunter is on us;
           // hold crossing (zero leg: mind-game at one anchor): wait at the entry until the hunter is close
@@ -653,7 +757,10 @@ export function makeSurvivor(P) {
           if (A && !circ.runup && !isUp && !fastTier(c, me) && d2(me, A) > 0.6 && vaultSafe(a, c, A, hp, vH, 0.5, P.vaultSafetyMarginM, lead(d2(me, A) / vS0 + 0.3))) return { moveTo: A };
           if (A && d2(me, A) <= 0.6) circ.runup = true;
           if (circ.runup && !vaultSafe(a, c, me, hp, vH, 0.5, P.vaultSafetyMarginM, lead(0.3)) && d2(me, Pt) > 0.8 && dhm > 6) circ.runup = false;   // too late for the run-up: hold at the entry
-          if (d2(me, Pt) > (running ? 1.6 : 0.8) && !(circ.runup && d2(me, Pt) < 2.8)) return { moveTo: Pt };
+          // after a vault, waiting to go back over this window (stationMode): the spot on my side with the best expected
+          // margin against the forecast hunter (vault-back vs run-round), and whether waiting beats running on at all
+          const station = P.stationMode > 0.5 && !running && legIn < 2 && circ.crossed > 0 && a.kind === 'w' ? stationPlan(obs, api, me, h, hp, a, c, vH) : null;
+          if (!station && d2(me, Pt) > (running ? 1.6 : 0.8) && !(circ.runup && d2(me, Pt) < 2.8)) return { moveTo: Pt };
           // at the entry: cross when the hunter is close behind; otherwise hold here (mind-game) for a while
           const pressing = h && dhm < 16 && ((h.vx * (me.x - h.x) + h.vz * (me.z - h.z)) / Math.max(0.1, dhm)) > 1.0;
           const onMySide = hP <= hQ;
@@ -674,6 +781,11 @@ export function makeSurvivor(P) {
           else {
             circ.holdT = pressing ? 0 : circ.holdT + api.dt * (ctx.config.decisionEvery || 1);
             if (circ.holdT > P.holdMaxS) { circ = null; if (!me.chased) return null; routeT = -99; return chase(obs, api, me, h, depth + 1); }
+            if (station) {
+              if (leaveHold(obs, api, me, hp, h, extra, a, station)) return chase(obs, api, me, h, depth + 1);
+              stats.stationTicks++;
+              return { moveTo: station.S, face: hp };
+            }
             // hold at the run-up point if there is one (a fast vault from standing), else at the entry
             const Hpt = A && circ.runup ? A : Pt;
             return { moveTo: Hpt, face: hp };
@@ -696,6 +808,14 @@ export function makeSurvivor(P) {
           // through, pallet still up: wait on the far side for the hunter to come close, then drop
           circ.holdT += api.dt * (ctx.config.decisionEvery || 1);
           if (circ.holdT > P.holdMaxS + 2) { circ = null; if (!me.chased) return null; routeT = -99; return chase(obs, api, me, h, depth + 1); }
+          // stationMode: waiting here only while it beats running on. Waiting pays the pallet's distance held (+ a
+          // stun) if the hunter comes through to me; a hunter that goes round or stands off just costs me the wait
+          // (worth nothing); running on keeps the pallet for later (route value)
+          if (P.palletRunOn > 0.5) {
+            const cm = fc.commit(obs, api, me, a, Qt, Pt) || { through: 0.5, around: 0.5, stand: 0 };
+            const vWait = cm.through * loops.palletGain(a.k);
+            if (leaveHold(obs, api, me, hp, h, extra, a, { v: vWait })) return chase(obs, api, me, h, depth + 1);
+          }
           return { moveTo: Qt, face: hp };
         }
         // windows / dropped pallets: run through (the engine vaults); the circuit advances on my observed landing
@@ -844,7 +964,7 @@ export function makeSurvivor(P) {
         wasChasedR = !!me.chased;
         // window vaults in the current engine chase (entity blocker: 3 vaults of one window per chase; a new chase - my
         // chase music starting again - restarts the count; blocks themselves expire via obs.blockedWindows)
-        if (me.chased && !wasChasedV) { vaultCount.clear(); blT0 = obs.t; }
+        if (me.chased && !wasChasedV) { vaultCount.clear(); blT0 = obs.t; fc.reset(); }
         if (me.chased) lastChasedT = obs.t;
         wasChasedV = !!me.chased;
         // Bloodlust resets on a hit and on a pallet break (observed)
