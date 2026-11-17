@@ -127,6 +127,8 @@ export const survivorSpace = {
   // ---- strong loops: run farther to them, value the laps they hold ----
   strongTravelW: [0, 1.5, 0.5],    // extra path I'll run to a loop: + this x its expected distance held per chase (m per m)
   strongLoopW:   [0, 2, 0.3],      // route value of a loop: + this x (expected held per chase - one lap): more laps there
+  // ---- route-level stealth planner (stealthplan.js): stay / walk / run to cover vs hunter approach hypotheses ----
+  ...stealthSpace,
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -140,6 +142,7 @@ import { rescueSpace, makeRescuePlanner } from './rescue.js';
 import { healSpace, makeHealPlanner } from './healplan.js';
 import { kickSpace, makeKickPlanner } from './kickplan.js';
 import { profileSpace, makeKillerProfile } from './killerprofile.js';
+import { stealthSpace, makeStealthPlanner } from './stealthplan.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -252,6 +255,13 @@ export function makeSurvivor(P) {
     const rescue = makeRescuePlanner(ctx, P, belief);          // hooked teammates, teammate whereabouts, rescue utility
     const heal = makeHealPlanner(ctx, P, rescue.tracker);      // heal / pick-up choice + healer <-> patient handshake
     const prof = makeKillerProfile(ctx, P);                    // killer profile: own observations of the hunter's habits (killerprofile.js)
+    // route-level stealth (off unless stealthPlan > 0.5): preempts the old stealth modes with a preventive hide when one is safe; when it "stays", sneak / visible hide / unseen hide run as before. Cover
+    // spots near a known loop anchor keep a chase fallback.
+    const stealth = makeStealthPlanner(ctx, P, belief, { fallbackAt: (pt) => {
+      let b = 0;
+      for (const a of anchors) if (know.anchorKnown[a.k]) { const d = d2(a.c, pt); if (d < 20) b = Math.max(b, 1 - d / 20); }
+      return b;
+    } });
     // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
     const CAM = ctx.config.survivor.camera || { enabled: false };
     const camAt = (x, z, yaw) => {
@@ -1008,11 +1018,14 @@ export function makeSurvivor(P) {
       return a;
     }
 
-    // body-blocked by a teammate (moving, no progress, a teammate within 1.2 m) for 0.6 s: sidestep for 0.5 s
+    // body-blocked by a teammate (moving, no progress, a teammate within 1.2 m) for 0.6 s: sidestep for 0.5 s.
+    // The sidestep keeps the current action's gait and camera (`walk`, `look`): sidestepping a teammate while sneaking
+    // must not turn into a run (scratch marks). Running here would have to be an explicit choice of the inner action.
     let blockedT = 0, sideUntil = -99, sideDir = null;
+    const sidestep = (a) => { const o = { moveDir: sideDir }; if (a && a.walk) o.walk = true; if (a && a.look) o.look = a.look; return o; };
     function unblock(obs, a) {
       const me = obs.self;
-      if (obs.t < sideUntil && sideDir) return { moveDir: sideDir };
+      if (obs.t < sideUntil && sideDir) return sidestep(a);
       const mt = a && a.moveTo;
       const mate = obs.teammates.find((t) => d2(t, me) < 1.2 && (t.state === 'healthy' || t.state === 'injured'));
       if (!mt || a.act || d2(mt, me) < 1 || !mate || Math.hypot(me.vx, me.vz) > 0.3) { blockedT = 0; return a; }
@@ -1023,7 +1036,7 @@ export function makeSurvivor(P) {
       const gx = mt.x - me.x, gz = mt.z - me.z, L = Math.hypot(gx, gz) || 1;
       const sgn = ((mate.x - me.x) * -gz + (mate.z - me.z) * gx) > 0 ? -1 : 1;   // step to the side away from the teammate
       sideDir = { x: (-gz / L) * sgn + (gx / L) * 0.3, z: (gx / L) * sgn + (gz / L) * 0.3 };
-      return { moveDir: sideDir };
+      return sidestep(a);
     }
 
     // per-decision bookkeeping (belief / map knowledge / chase + vault tracking); called first by every decide
@@ -1110,6 +1123,9 @@ export function makeSurvivor(P) {
         const exploreLeft = unknownGens > 0 && know.fraction() < 0.98;
         if (exploreTo && (d2(me, exploreTo) < 3 || obs.t - exploreT > 25 || (exploreTo.cand >= 0 ? know.candRes[exploreTo.cand] !== 0 : know.explored(exploreTo.x, exploreTo.z)))) exploreTo = null;
         if (genTarget === -2 && !exploreTo) genTarget = -1;
+        // stealth planner: after a hide, go back to the generator I left (the commitment lasts until I repair again)
+        const retGen = stealth.on ? stealth.returnGen(obs) : -1;
+        if (retGen >= 0 && me.act === 'repair') stealth.clearReturn();
         if (genTarget === -1 || obs.tick % 50 === 0) {
           let bs = Infinity, bi = -1;
           // repairersTargetW: teammates I last saw repairing a gen, still repairing per the HUD (anchored MateTracker fix)
@@ -1148,6 +1164,7 @@ export function makeSurvivor(P) {
             }
             if (isFinite(triBase)) { const tr = knownTriTour(gens, i); if (isFinite(tr)) s -= P.remainingClusterW * (Math.min(150, tr) - Math.min(150, triBase)) / 30; }
             if (i === genTarget) s -= 0.5 + (repairingCur ? P.repairAbandonMarginS / 5 : 0); // hysteresis (+ abandon cost: 1 unit ~ 20 m ~ 5 s of running)
+            if (i === retGen) s -= 2;      // the gen I left to hide
             if (s < bs) { bs = s; bi = i; }
           }
           // explore option: always when no gen is known; otherwise a propensity that grows with the gens still unfound
@@ -1194,6 +1211,7 @@ export function makeSurvivor(P) {
         get genTarget() { return genTarget; }, set genTarget(v) { genTarget = v; },
         get exploreTo() { return exploreTo; },
       },
+      stealth,
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -1218,6 +1236,7 @@ export function makeSurvivor(P) {
           if (h && d2(h, me) < P.downedStillDist) return { moveDir: { x: me.x - h.x, z: me.z - h.z } };
           return {};
         }
+        if (stealth.on) stealth.update(obs);   // own scratch-trail memory
         const canSay = !(me.intentCooldownS > 0);
         const say = (a, msg) => (canSay ? { ...a, intent: msg } : a);
 
@@ -1238,8 +1257,9 @@ export function makeSurvivor(P) {
         // a teammate is healing me: stand still (healing needs an idle patient) unless the hunter is close
         if (hud && hud[me.id] && hud[me.id].beingHealed && !(h && dh < 10)) return {};
         // hiding / holding out of view and the hunter appears but can't see me (and isn't close): don't bolt (running is what starts a chase)
-        if ((hide || obs.t < hiddenUntil) && h && !me.chased && dh >= P.hideNerveM && !hunterCouldSee(api, h, me)) {
-          if (hide) { hide.lastTrig = obs.t; stats.hideTicks++; lastHideTickT = obs.t; }
+        if ((hide || obs.t < hiddenUntil || stealth.holding) && h && !me.chased && dh >= P.hideNerveM && !hunterCouldSee(api, h, me)) {
+          if (hide) hide.lastTrig = obs.t;
+          if (hide || stealth.holding) { stats.hideTicks++; lastHideTickT = obs.t; }
           if (!api.los(h, me)) { stats.peekTicks++; if (obs.t - lastPeekT > 3) stats.peeks++; lastPeekT = obs.t; }
           return { look: { x: h.x + (h.vx || 0) * 0.5, z: h.z + (h.vz || 0) * 0.5 } };   // frozen, watching it
         }
@@ -1252,6 +1272,24 @@ export function makeSurvivor(P) {
         }
         else if (mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS) { mode = 'work'; circ = null; }
         else if (obs.t - lastThreatT > P.calmS) { mode = 'work'; circ = null; }
+
+        // ---- route-level stealth planner (stealthplan.js; stealthPlan > 0.5): stay / walk / run to cover / hold ----
+        if (stealth.on) {
+          if (mode === 'chase' || me.chased || obs.gatesPowered) stealth.reset();
+          else {
+            const g = genTarget >= 0 && obs.gens[genTarget].known ? obs.gens[genTarget] : null;
+            const working = me.act === 'repair' || (!!g && d2(me, g) < 4);
+            const threat = (!!h && dh < P.hideDist) || obs.terror !== null || (!!obs.lastHunter && obs.t - obs.lastHunter.t < 8) || (beliefOn && myThreat(me) >= 0.3);
+            const travel = g && !working ? { to: g, walk: P.walkWhenTR > 0.5 && obs.terror !== null } : null;
+            const d0 = stealth.stats.departs;
+            const sa = stealth.decide(obs, api, { working, gen: g ? genTarget : -1, threat, travel });
+            if (sa) {
+              if (stealth.stats.departs > d0) stats.hides++;
+              stats.hideTicks++; lastHideTickT = obs.t;
+              return sa;
+            }
+          }
+        }
 
         // ---- kicked / threatened gen (kickplan.js): hide near it and return once the hunter leaves, or leave ----
         kick.note(obs, genTarget);
@@ -1284,7 +1322,7 @@ export function makeSurvivor(P) {
         }
 
         // ---- hide from an unseen hunter that my belief / the terror radius says is close or closing in ----
-        if (mode === 'chase' || h || me.chased || obs.gatesPowered) {
+        if (mode === 'chase' || h || me.chased || obs.gatesPowered || stealth.active) {
           hide = null;
         } else {
           const trig = hideTrigger(obs, me, !!hide);
