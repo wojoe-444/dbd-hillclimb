@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-export function createPool({ threads, mapPath, hunterBrain = 'param', survivorBrain = 'param', metrics = [], chunk = 1 }) {
+export function createPool({ threads, mapPath, hunterBrain = 'param', survivorBrain = 'param', metrics = [], mods = null, chunk = 1 }) {
+  // mods: game modifier set (src/sim/modifiers.js), sent to every worker and applied to every match
   const workers = [], idle = [], queue = [], pending = new Map();
   let nextId = 0;
   const stats = { jobs: 0, busyMs: 0, gameS: 0, since: Date.now() };
@@ -21,7 +22,7 @@ export function createPool({ threads, mapPath, hunterBrain = 'param', survivorBr
     }
   };
   for (let i = 0; i < threads; i++) {
-    const w = new Worker(join(here, 'worker.js'), { workerData: { mapPath, hunterBrain, survivorBrain, metrics } });
+    const w = new Worker(join(here, 'worker.js'), { workerData: { mapPath, hunterBrain, survivorBrain, metrics, mods } });
     w.on('message', ({ id, results, ms }) => {
       stats.jobs += results.length; stats.busyMs += ms ?? 0;
       for (const r of results) stats.gameS += r.durationS ?? 0;

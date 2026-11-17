@@ -10,6 +10,7 @@ const playOne = makePlayer({
   maps: loadMapPool(workerData.mapPath),
   brains: getBrains(workerData.hunterBrain, workerData.survivorBrain),
   metrics: await loadMetrics(workerData.metrics ?? []),
+  mods: workerData.mods ?? null,   // game modifiers for every match this pool plays
 });
 
 parentPort.on('message', ({ id, jobs }) => {

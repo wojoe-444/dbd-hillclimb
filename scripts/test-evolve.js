@@ -4,7 +4,8 @@
 //     evo.jsonl after dropping the known additive fields (seconds, perf, selection, ranking[].fitSd),
 //     population.json and champions.json as they are;
 //  2. --panel --race (GA) and --opt cmaes (with and without --panel/--race) are deterministic for a fixed seed,
-//     independent of the thread count.
+//     independent of the thread count;
+//  3. --mod genSeconds=80: recorded in config.json / evo.jsonl / champions.json, deterministic, --resume guard.
 //   node scripts/test-evolve.js [--base <git ref>] [--keep]
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs';
@@ -79,6 +80,26 @@ for (const [name, extra] of Object.entries(modes)) {
     const ch = JSON.parse(file(a, 'champions.json'));
     ok(Object.entries(g2.cma.hunter.mean).every(([k, v]) => Math.abs(ch.champ.hunter[k] - v) < 1e-3 + 1e-3 * Math.abs(v)) && ch.bestSample, 'champions.json = CMA mean (+ bestSample)');
   }
+}
+// 3. game modifiers: recorded everywhere, deterministic across thread counts, resume refuses other rules
+{
+  console.log('- game modifiers: --mod genSeconds=80');
+  const extra = ['--rounds', '2', '--mod', 'genSeconds=80'];
+  const a = run('src/hillclimb/evolve.js', 'mod-a', extra, 3), b = run('src/hillclimb/evolve.js', 'mod-b', extra, 2);
+  const la = lines(a), lb = lines(b);
+  ok(la.length === 2 && same(la, lb, noTiming), 'evo.jsonl identical (3 vs 2 threads)');
+  ok(file(a, 'champions.json') === file(b, 'champions.json'), 'champions.json identical');
+  const cfg = JSON.parse(file(a, 'config.json')), ch = JSON.parse(file(a, 'champions.json'));
+  ok(cfg.modifiers?.genSeconds === 80 && cfg.standard === false, 'config.json: modifiers { genSeconds: 80 }, standard: false');
+  ok(la.every((r) => r.modifiers?.genSeconds === 80), 'every evo.jsonl line carries the modifiers');
+  ok(ch.modifiers?.genSeconds === 80 && ch.standard === false, 'champions.json carries the modifiers');
+  const std = run('src/hillclimb/evolve.js', 'mod-std', ['--rounds', '2'], 3);
+  const cs = JSON.parse(file(std, 'config.json'));
+  ok(cs.standard === true && Object.keys(cs.modifiers).length === 0 && lines(std).every((r) => !('modifiers' in r)) && !('modifiers' in JSON.parse(file(std, 'champions.json'))), 'standard run: config.json standard: true, nothing extra in evo.jsonl / champions.json');
+  ok(!same(la, lines(std), noTiming), 'the modifier changes the evolution');
+  let refused = false;
+  try { execFileSync(process.execPath, ['src/hillclimb/evolve.js', ...SMALL, '--threads', '2', '--out', a, '--rounds', '2', '--resume'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] }); } catch { refused = true; }
+  ok(refused && lines(a).length === 2, '--resume without the run\'s --mod is refused (log untouched)');
 }
 if (!argv.includes('--keep')) rmSync(work, { recursive: true, force: true });
 else console.log('runs kept in ' + work);

@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cpus } from 'node:os';
 import { createPool } from '../src/hillclimb/pool.js';
+import { modsFromArgv } from '../src/sim/modifiers.js';   // --mod genSeconds=80 (game modifiers)
 import { getBrains } from '../src/brains/index.js';
 import { defaults, clampParams } from '../src/hillclimb/params.js';
 
@@ -23,7 +24,7 @@ const load = (spec, side) => {
 };
 const arms = ['a', 'b', 'c', 'd'].filter((k) => args[k]).map((k) => ({ name: args[k], p: load(args[k], 'survivor') }));
 const hp = load(args.hunter, 'hunter');
-const pool = createPool({ threads: +(args.threads ?? Math.max(1, cpus().length - 1)), mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: 'param', survivorBrain: 'ctx' });
+const pool = createPool({ threads: +(args.threads ?? Math.max(1, cpus().length - 1)), mapPath: resolve(args.map ?? 'maps/gas-heaven'), hunterBrain: 'param', survivorBrain: 'ctx', mods: modsFromArgv(argv) });
 const seeds = Array.from({ length: n }, (_, k) => 500001 + 104729 * k);
 const jobs = [];
 arms.forEach((a, i) => seeds.forEach((seed, k) => jobs.push({ seed, hunterParams: hp, survivorParams: a.p, tag: { i, k } })));

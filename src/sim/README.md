@@ -417,6 +417,24 @@ stage length 70 s, teammates far away; time from the hook until the meter is ful
 kick-and-leave < 10%, the choice (ignored meter, interrupted attempt), camp time only while filling, the teammate freeze, the chase pause,
 carrying, grace re-grant, gates powered, stage 2, persistence across the stage change, and HUD-only visibility.
 
+## Game modifiers (`src/sim/modifiers.js`)
+
+Named rule overrides on top of the standard config, e.g. faster generators so survivors do better and evolution
+gets denser signal. A modifier set is `{ name: value }`; `{}` is the standard game (results byte-identical to no flag).
+
+| modifier | standard | expands to |
+|---|---|---|
+| `genSeconds` | 90 | `gens.repairS` = solo repair time of one generator (charges = seconds at efficiency 1; efficiencies, kick loss, regression and cancel thresholds are fractions / rates of it and follow along) |
+
+Adding one is a single `REGISTRY` line. Every match-running script takes `--mod name=value` (repeatable or a comma
+list): `evolve.js`, `matchup.js`, `duel-shack.js`, `crossplay.js`, `knob-sensitivity.js`, `bench.js`, `ab-brains.js`,
+`ab-ctx.js`, `diag-fitness-noise.js`. The worker pool sends the set to every worker (`createPool({ mods })`).
+Recorded as `config.json { modifiers, standard }`, `modifiers` on every `evo.jsonl` line of a modified run and in its
+`champions.json` (absent = standard). `--resume` refuses another modifier set; crossplay / knob-sensitivity / bench
+opponents warn when a param set was trained under other rules. The viewer shows an amber `MODIFIED: gens 80 s` badge
+(toolbar, HUD incl. full screen, Evolution charts tinted, Champion tab, run pickers, duel page) and plays the run's
+champions under the run's modifiers.
+
 ## Determinism
 
 Seeded: world rng (`'world'` stream: generator choice, spawns, grunt noise, legacy fumbles if enabled) + one stream per agent. Same `(map, seed, config, brains)` ⇒

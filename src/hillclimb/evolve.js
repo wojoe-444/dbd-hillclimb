@@ -38,6 +38,9 @@
 // Every generation also logs (additive fields): `perf` (matches/s, worker utilisation, ms per game-second) and
 // `selection` (per side: reliability of the fitness means, split-half, rank persistence of survivors, racing stats).
 // Every start writes runs/<name>/config.json: git HEAD + dirty flag, map pool fingerprint, argv and the full config.
+// Game modifiers (src/sim/modifiers.js): --mod genSeconds=80 (repeatable / comma list) plays every match under the
+// modified rules. Recorded as config.json { modifiers, standard }, on every evo.jsonl line of a modified run
+// (`modifiers`) and in champions.json (modified runs only; absent = standard). --resume refuses a different modifier set than the run was started with.
 
 import { cpus } from 'node:os';
 import { mkdirSync, appendFileSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -45,13 +48,16 @@ import { resolve, join } from 'node:path';
 import { getBrains } from '../brains/index.js';
 import { defaults, mutate, rng, round, clampParams } from './params.js';
 import { createPool } from './pool.js';
-import { roundJobs, reevalJobs, benchJobs, groupBench, heldOutSeeds, edgeReport, resolveParamSet, gitInfo, mapPoolInfo, averageMetrics } from './evalplan.js';
+import { roundJobs, reevalJobs, benchJobs, groupBench, heldOutSeeds, edgeReport, resolveParamSet, gitInfo, mapPoolInfo, averageMetrics, modMismatches } from './evalplan.js';
 import { parsePanelSpec, buildPanel, hofAdd, makeSlots, slotJobs, raceStep, reliability, persistence, mean, variance, spearman } from './selection.js';
 import { cmaInit, cmaAsk, cmaTell, cmaSummary, fromNorm } from './cmaes.js';
+import { modsFromArgv, modsRecord, describeMods, modsKey, modsOf } from '../sim/modifiers.js';
 
 const args = {};
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
+const mods = modsFromArgv(argv);   // {} = the standard game
+const modRec = modsRecord(mods);
 const opts = {
   map: resolve(args.map ?? 'maps/gas-heaven'),
   gens: +(args.gens ?? 200),
@@ -100,7 +106,7 @@ mkdirSync(outDir, { recursive: true });
 const brains = getBrains(opts.hunterBrain, opts.survivorBrain);
 const spaces = { hunter: brains.hunter.space, survivor: brains.survivor.space };
 const R = rng(opts.seed);
-const pool = createPool({ threads: opts.threads, mapPath: opts.map, hunterBrain: opts.hunterBrain, survivorBrain: opts.survivorBrain, metrics: opts.metrics });
+const pool = createPool({ threads: opts.threads, mapPath: opts.map, hunterBrain: opts.hunterBrain, survivorBrain: opts.survivorBrain, metrics: opts.metrics, mods });
 
 // ---------- population helpers ----------
 let nextId = 0;
@@ -308,23 +314,28 @@ if (args.resume && existsSync(popFile)) {
 }
 if (opts.panel) for (const s of opts.panelFixed) {
   const p = resolveParamSet(s, spaces);
-  if (p.survivor) fixedOpp.hunter.push({ name: p.name, params: p.survivor });
-  if (p.hunter) fixedOpp.survivor.push({ name: p.name, params: p.hunter });
+  if (p.survivor) fixedOpp.hunter.push({ name: p.name, params: p.survivor, modifiers: p.modifiers });
+  if (p.hunter) fixedOpp.survivor.push({ name: p.name, params: p.hunter, modifiers: p.modifiers });
 }
 // provenance: source snapshot (git HEAD + dirty flag), map pool fingerprint, the exact command and the full config
 const cfgFile = join(outDir, 'config.json');
 const prevCfg = args.resume && existsSync(cfgFile) ? JSON.parse(readFileSync(cfgFile, 'utf8')) : null;
+if (prevCfg && modsKey(modsOf(prevCfg)) !== modsKey(mods)) {
+  throw new Error(`--resume: this run was started with game modifiers ${describeMods(modsOf(prevCfg)) || 'standard'}, not ${describeMods(mods) || 'standard'} (pass the same --mod flags)`);
+}
 const benchSet = opts.benchEvery > 0 ? {
   seeds: heldOutSeeds(opts.benchSeeds),
   opponents: [resolveParamSet('default', spaces), ...opts.benchOpponents.map((s) => resolveParamSet(s, spaces))],
 } : null;
 writeFileSync(cfgFile, JSON.stringify({
-  kind: 'evolve', ...opts, spaces,
+  kind: 'evolve', ...modRec, ...opts, spaces,
   git: gitInfo(), mapPool: mapPoolInfo(opts.map), argv: process.argv.slice(2), node: process.version, startedAt: new Date().toISOString(), startGen,
-  bench: benchSet && { seeds: { first: benchSet.seeds[0], n: benchSet.seeds.length }, opponents: benchSet.opponents.map((o) => ({ name: o.name, source: o.source, stale: o.stale, hunter: o.hunter, survivor: o.survivor })) },
+  bench: benchSet && { seeds: { first: benchSet.seeds[0], n: benchSet.seeds.length }, opponents: benchSet.opponents.map((o) => ({ name: o.name, source: o.source, stale: o.stale, modifiers: o.modifiers, hunter: o.hunter, survivor: o.survivor })) },
   // a resumed run keeps the provenance of its earlier legs
   ...(prevCfg ? { previous: [...(prevCfg.previous ?? []), { ...prevCfg, previous: undefined, spaces: undefined }] } : {}),
 }, null, 2));
+if (!modRec.standard) console.log(`GAME MODIFIERS: ${describeMods(mods)} (non-standard rules)`);
+for (const w of new Set(modMismatches([...(benchSet?.opponents ?? []), ...fixedOpp.hunter, ...fixedOpp.survivor], mods))) console.warn(w);
 console.log(`evolving on ${opts.map}: pop ${opts.pop}+${opts.pop}, ${opts.panel ? `panel ${opts.slots} slots${opts.race ? ` (race to ${opts.race.max})` : ''}` : `${opts.rounds} rounds/gen`}${opt === 'cmaes' ? ', sep-CMA-ES' : ''}, ${opts.threads} threads -> ${outDir}`);
 
 pool.takeStats();
@@ -367,7 +378,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
   const perf = pool.takeStats();
   const r3 = (v) => (v === null || v === undefined ? null : v);
   appendFileSync(join(outDir, 'evo.jsonl'), JSON.stringify({
-    gen, seconds: (Date.now() - t0) / 1000, matches: ev.matches, outcome: tot,
+    gen, ...(modRec.standard ? {} : { modifiers: modRec.modifiers }), seconds: (Date.now() - t0) / 1000, matches: ev.matches, outcome: tot,
     ...ev.extra, ...(bench ? { bench } : {}), ...(cmaLog ? { cma: cmaLog } : {}),
     // edges: knobs with >= 25 % of the population within 5 % of a range bound (share at lo / hi)
     hunters: { ranking: rh.map(brief), knobs: knobStats('hunter', hunters), edges: edgeReport(spaces.hunter, hunters) },
@@ -384,7 +395,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
   const extraState = opts.panel || cma ? { hof, prev: prevRanked, ...(cma ? { cma } : {}) } : {};
   writeFileSync(popFile, JSON.stringify({ gen, nextId, hunters, survivors, best: { hunter: champ.hunter, survivor: champ.survivor }, ...extraState }, null, 2));
   // champions.json in the climb format, so the viewer/matchup can play the current best pair
-  writeFileSync(join(outDir, 'champions.json'), JSON.stringify({ gen, champ: { hunter: round(champ.hunter), survivor: round(champ.survivor) }, ...(cma ? { bestSample: { hunter: round(rh[0].params), survivor: round(rs[0].params) } } : {}) }, null, 2));
+  writeFileSync(join(outDir, 'champions.json'), JSON.stringify({ gen, ...(modRec.standard ? {} : modRec), champ: { hunter: round(champ.hunter), survivor: round(champ.survivor) }, ...(cma ? { bestSample: { hunter: round(rh[0].params), survivor: round(rs[0].params) } } : {}) }, null, 2));
   if (opts.panel) writeFileSync(join(outDir, 'hof.json'), JSON.stringify(hof, null, 2));
 
   const tk = knobStats('hunter', rh).tunnel;

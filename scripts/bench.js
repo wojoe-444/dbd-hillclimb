@@ -2,13 +2,13 @@
 // Throughput benchmark: runs N matches with the baseline brains and prints win stats + matches/second.
 //
 //   node scripts/bench.js [--n 200] [--map maps/gas-heaven.json] [--seed 1] [--warmup 10]
-//                         [--decide-every 1] [--perception-every 2] [--config '{"gens":{"repairS":60}}']
+//                         [--decide-every 1] [--perception-every 2] [--config '{"gens":{"repairS":60}}'] [--mod genSeconds=80]
 //
 // The first `--warmup` matches (different seeds) fill the shared navigation caches and are not timed.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runMatch } from '../src/sim/index.js';
+import { runMatch, modsFromArgv, withMods } from '../src/sim/index.js';
 import { survivorBrain, hunterBrain } from '../src/sim/testbrains.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,6 +18,7 @@ const n = +opt('n', 200), seed0 = +opt('seed', 1), warm = +opt('warmup', 10);
 const mapPath = opt('map', fs.existsSync(path.join(root, 'maps/gas-heaven.json')) ? 'maps/gas-heaven.json' : 'maps/test-small.json');
 const map = JSON.parse(fs.readFileSync(path.resolve(root, mapPath), 'utf8'));
 let config = opt('config', null) ? JSON.parse(opt('config')) : {};
+config = withMods(config, modsFromArgv(args));   // game modifiers (src/sim/modifiers.js) win over --config
 if (opt('decide-every', null)) config = { ...config, decisionEvery: +opt('decide-every') };
 if (opt('perception-every', null)) config = { ...config, sight: { ...(config.sight || {}), perceptionEvery: +opt('perception-every') } };
 

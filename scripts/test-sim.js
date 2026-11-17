@@ -29,6 +29,7 @@ import { cmaInit, cmaAsk, cmaTell, toNorm, fromNorm } from '../src/hillclimb/cma
 import { parsePanelSpec, buildPanel, hofAdd, spreadPick, makeSlots, slotJobs, raceStep, reliability, persistence } from '../src/hillclimb/selection.js';
 import { roundJobs, reevalJobs, benchJobs, groupBench, heldOutSeeds, HELDOUT_BASE, summarize, edgeReport, resolveParamSet } from '../src/hillclimb/evalplan.js';
 import { makeKillerProfile, profileSpace } from '../src/brains/killerprofile.js';
+import { parseMods, modsFromArgv, modsConfig, withMods, describeMods, isStandard, modsRecord, modsOf } from '../src/sim/modifiers.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = p => JSON.parse(fs.readFileSync(path.resolve(root, p), 'utf8'));
@@ -2787,6 +2788,49 @@ test('sep-CMA-ES: deterministic, stays in bounds, converges on a noisy bounded o
   ok(JSON.stringify(fromNorm(sp, toNorm(sp, p0))) === JSON.stringify(p0), 'normalisation round trip');
   const st = cmaInit(sp, p0, { lambda: 6, mirror: true }), c = cmaAsk(sp, st, climbRng(1));
   ok(c.length === 6, 'lambda candidates');
+});
+
+test('game modifiers: parsing, genSeconds=80 => an 80 s solo gen, standard = byte-identical, deterministic', () => {
+  // parsing / canonical form
+  ok(JSON.stringify(parseMods('genSeconds=80')) === '{"genSeconds":80}', 'parse name=value');
+  ok(JSON.stringify(modsFromArgv(['--n', '4', '--mod', 'genSeconds=80'])) === '{"genSeconds":80}', 'modsFromArgv finds --mod');
+  ok(JSON.stringify(modsFromArgv(['--mod=genSeconds=75'])) === '{"genSeconds":75}', '--mod=... form');
+  ok(isStandard(parseMods('genSeconds=90')) && isStandard({}) && isStandard(modsFromArgv([])), 'the standard value / no flag = standard ({})');
+  let threw = false; try { parseMods('genSecs=80'); } catch { threw = true; } ok(threw, 'unknown modifier name throws');
+  threw = false; try { parseMods('genSeconds=abc'); } catch { threw = true; } ok(threw, 'non-numeric value throws');
+  ok(describeMods({ genSeconds: 80 }) === 'gens 80 s' && describeMods({}) === '', 'labels');
+  ok(JSON.stringify(modsConfig({ genSeconds: 80 })) === '{"gens":{"repairS":80}}' && JSON.stringify(modsConfig({})) === '{}', 'genSeconds -> gens.repairS');
+  ok(withMods({ gens: { repairS: 5, needed: 2 } }, { genSeconds: 80 }).gens.repairS === 80 && withMods({ gens: { needed: 2 } }, {}).gens.needed === 2, 'modifiers merge over (and win against) a config override');
+  ok(JSON.stringify(modsRecord({ genSeconds: 80 })) === '{"modifiers":{"genSeconds":80},"standard":false}' && modsRecord({}).standard === true, 'record fields');
+  ok(isStandard(modsOf({})) && modsOf({ modifiers: { genSeconds: 80 } }).genSeconds === 80, 'modsOf: older runs without the field = standard');
+
+  // one survivor repairing alone finishes in genSeconds (charges = seconds at efficiency 1)
+  const soloT = (mods) => {
+    const { m, ctl } = mk({ config: withMods({ gens: { fumbleChancePerS: 0 } }, mods) });
+    ctl.S[1] = () => ({ act: 'repair', target: gen(m).id });
+    place(m.survivors[1], gen(m).x + 1, gen(m).z);
+    let started = null;
+    while (!gen(m).done && m.t < 200) { m.step(); if (started === null && gen(m).p > 0) started = m.t - m.dt; }
+    return { t: m.t - started, done: gen(m).done };
+  };
+  const s80 = soloT({ genSeconds: 80 }), s90 = soloT({});
+  ok(s80.done && s90.done, 'both gens complete');
+  near(s80.t, 80, 0.15, 'genSeconds=80: solo repair takes 80 s');
+  near(s90.t, 90, 0.15, 'standard: solo repair takes 90 s');
+
+  // standard = today's results, byte for byte (no config / {} / the explicit standard value)
+  const B = getBrains();
+  const hp = defaults(B.hunter.space), sp = defaults(B.survivor.space);
+  const play = (config) => JSON.stringify(runMatch({ map: smallMap, seed: 7, config, hunter: B.hunter.make(hp), survivors: B.survivor.make(sp) }));
+  const base = play(undefined);
+  ok(play(modsConfig({})) === base && play(modsConfig(parseMods('genSeconds=90'))) === base, 'standard modifiers => byte-identical match result');
+  const job = { seed: 11, hunterParams: hp, survivorParams: sp };
+  const P = (mods) => JSON.stringify(makePlayer({ maps: [smallMap], brains: B, mods })(job));
+  ok(P(null) === P({}), 'makePlayer: mods {} = no mods');
+  const m80 = P({ genSeconds: 80 });
+  ok(m80 === P({ genSeconds: 80 }), 'genSeconds=80 is deterministic (replay identical)');
+  ok(m80 !== P(null), 'genSeconds=80 changes the match');
+  ok(m80 === JSON.stringify(makePlayer({ maps: [smallMap], brains: B })({ ...job, config: { gens: { repairS: 80 } } })), 'mods = the equivalent config override');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
