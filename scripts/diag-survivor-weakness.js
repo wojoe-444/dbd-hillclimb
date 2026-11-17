@@ -51,7 +51,7 @@ for (let i = 0; i < n; i++) {
     chaseStandingS: 0, nonchasedStandingS: 0, nonchasedRepairS: 0, seen20OtherChaseS: 0, seen20OtherChaseRepairS: 0,
     repairWithOthersS: 0, hitsWhileRepairing: 0, hitsAfterOtherChaseExposure: 0, chasesAfterOtherChaseExposure: 0, repairRequestedNoWorkS: 0, healRequestedNoWorkS: 0, knownAt60: [], downedWithInjuredOnlyS: 0,
     chaseLengths: [], chaseEnd: {}, downNearResource: 0, downsTotal: 0, downsNearEdge: 0, fast: 0, medium: 0, slow: 0,
-    hitsMidVault: 0, hitBoostDistance: [], rescues: 0, trades: 0, endReason: null, deaths: {}, stats: null };
+    hitsMidVault: 0, hitBoostDistance: [], rescues: 0, trades: 0, endReason: null, deaths: {}, stats: null, healPlan: {} };
   let ei = 0; const active = new Map(), vaults = [], boost = [], rescueTimes = [], exposedT = [-99, -99, -99, -99];
   while (!m.over) {
     const prev = m.survivors.map(s => ({ x: s.x, z: s.z, st: s.st, act: s.curAct }));
@@ -125,6 +125,8 @@ for (let i = 0; i < n; i++) {
       if (e.type === 'death') r.deaths[e.cause] = (r.deaths[e.cause] ?? 0) + 1;
     }
   }
+  // heal planner episodes (healplan.js stats: arrivals / readLetGo / readKept / healedLetGo / healedAfterGen / sigLetGo / sigKeep ...)
+  for (const b of brains) if (b && b.heal) for (const [k, v] of Object.entries(b.heal.stats)) r.healPlan[k] = (r.healPlan[k] ?? 0) + v;
   const res = m.result();
   Object.assign(r, { kills: res.kills, escapes: res.escapes, gensDone: res.gensDone, durationS: res.durationS, endReason: res.endReason,
     rawRepairS: res.survivors.reduce((s, x) => s + x.repairS, 0), effectiveRepairS: 90 * res.survivors.reduce((s, x) => s + x.repairC, 0),
@@ -133,7 +135,7 @@ for (let i = 0; i < n; i++) {
 }
 const summary = {};
 for (const k of Object.keys(rows[0])) if (typeof rows[0][k] === 'number') summary[k] = mean(rows.map(r => r[k]));
-for (const k of ['bins', 'first120', 'runModes', 'idleModes', 'healFailedReasons', 'chaseEnd', 'deaths', 'stats']) { summary[k] = {}; for (const r of rows) for (const [x, v] of Object.entries(r[k])) summary[k][x] = (summary[k][x] ?? 0) + v / n; }
+for (const k of ['bins', 'first120', 'runModes', 'idleModes', 'healFailedReasons', 'chaseEnd', 'deaths', 'stats', 'healPlan']) { summary[k] = {}; for (const r of rows) for (const [x, v] of Object.entries(r[k])) summary[k][x] = (summary[k][x] ?? 0) + v / n; }
 for (const k of ['chaseBins', 'chaseAllFourBins']) summary[k] = [0, 1, 2, 3].map(i => mean(rows.map(r => r[k][i])));
 summary.endReasons = rows.reduce((c, r) => (c[r.endReason] = (c[r.endReason] ?? 0) + 1, c), {});
 summary.chase = { n: rows.flatMap(r => r.chaseLengths).length, mean: mean(rows.flatMap(r => r.chaseLengths)), median: quantile(rows.flatMap(r => r.chaseLengths), 0.5), p90: quantile(rows.flatMap(r => r.chaseLengths), 0.9) };
