@@ -143,3 +143,68 @@ vault back) as if every crossing were fast. Other biases in the loop model, e.g.
 undervalue those loops, and the optimism was offsetting them. It is not a simple scale offset. With the lineup on, `holdW 1.4` still gives 3.773 kills, while
 the base improves to 3.617 at the same `holdW`. So the capability ships off, with its knobs in the evolvable space for the GA. The
 candidate engine changes in questions 1 and 4 would make fast vaults worth more and are the owner's call.
+
+## Rules v2 (2026-11-16, branch feat/vault-rules): 45° cone + acceleration
+
+The owner answered the questions above: the fast-vault cone goes from 25° to **45°** (q2), and survivor acceleration is now
+modelled (q4). Medium vaults stay quiet (q1), and the first-heading run-up measurement stays (q3). It is nearly moot at
+45°: the README-wording counterfactual gives 39.6% vs 39.8% actual. Engine rules: `src/sim/README.md` "Acceleration".
+
+**Sources:**
+- [wiki Movement Speeds](https://deadbydaylight.wiki.gg/wiki/Movement_Speeds): survivor acceleration **10 m/s²**, killer
+  **11.25 m/s²** ("the same across all Killers"); acceleration is also used during speed curves.
+- [wiki Vault](https://deadbydaylight.wiki.gg/wiki/Vault): a fast vault retains momentum; medium and slow vaults reset it.
+  The 2.5.0 patch note says "retain their momentum after Vaulting", read here as applying to the fast tier.
+
+**Implemented:**
+- Speed ramps by accel × dt per tick. 0 → 4 m/s takes 4 ticks and loses 0.6 m ≈ 0.15 s; the hunter loses ≈ 0.155 s.
+- A mover that did not move last tick starts from 0: standing starts, after any interaction or hold, after a stun.
+- Fast window vaults keep their entry speed; medium and slow vaults land at 0.
+- The fast-vault run-up counts while accelerating; full speed is not required.
+
+**Assumptions (owner questions, all config or one-liners):**
+
+| # | Question | Assumed |
+|---|---|---|
+| a | Hunter speed after its window vault | lands at 0 (`hunter.vaultExitReset`); no source |
+| b | Braking / slowing down | instant; no source |
+| c | Turning | keeps speed, no turn penalty; no source |
+| d | Rushed pallet vault | keeps momentum, like a fast window vault; slow pallet vault resets |
+| e | Hunter lunge | not ramped (6.9 m/s from the first windup tick), so the attack envelope is unchanged |
+| f | On-hit sprint / haste | ramp like any speed change (4 → 6.6 m/s in 3 ticks), per "used during speed curves" |
+
+**Brains (vault / leg cost pricing only, `src/brains/accel.js`):**
+- `LoopModel` and `RouteEval`: medium vault, pallet drop, hunter vault and pallet break all include the re-acceleration
+  loss.
+- `vaultSafe`: the 1D replay re-accelerates from 0 after a medium vault.
+- `stationPlan`: the medium tier and the hunter vault include the loss.
+- Cone checks read `fastVaultAngleDeg`.
+- `vaultFunnelDeg` range widened to 5–44.
+
+### Before / after
+
+`maps/gas-heaven`, default hunter, n = 256 from seed 1000, mean ± SE. "base" = `e96e973` (25°, no acceleration):
+
+| Config | Kills | Escapes | Gens |
+|---|---|---|---|
+| base | 3.234 ± .067 | 0.766 | 3.789 ± .089 |
+| 45° only (acceleration off by config) | 3.242 ± .068 | 0.758 | 3.715 ± .088 |
+| acceleration only (cone 25° by config) | 3.430 ± .061 | 0.570 | 3.508 ± .091 |
+| **new rules (default, lineup off)** | **3.379 ± .061** | 0.621 | 3.523 ± .093 |
+| new rules, `vaultLineup 1` | 3.406 ± .060 | 0.594 | 3.508 ± .094 |
+| 45° only, `vaultLineup 1` | 3.246 ± .065 | 0.754 | 3.641 ± .093 |
+| new rules, brains blind to acceleration | 3.418 ± .059 | 0.582 | 3.555 ± .094 |
+| new rules, `vaultLineup 1`, blind | 3.480 ± .058 | 0.520 | 3.254 ± .095 |
+
+Fast share of chased window vaults (diag-fastvault, 32 matches): base 34.4% → new 39.8% (`vaultLineup 1`: 44.9%).
+
+Other checks:
+- `duel-shack`: 14.8 → 14.0 s alive (fast 21% → 35%).
+- `matchup --n 64`: 3.08 / 0.92 / 3.75 → 3.39 / 0.61 / 3.64 (kills / escapes / gens).
+- `diag-dither`: 3 → 1 survivor streaks, 0 hunter streaks.
+
+**Reading:**
+- The 45° cone alone is neutral. Acceleration costs survivors ≈ 0.2 kills/match: survivors stop and go far more than the
+  hunter (holds, drops, interactions, medium vaults).
+- Pricing the re-acceleration in the planners helps a little (blind brains are worse).
+- `vaultLineup` still does not pay (3.406 vs 3.379) and stays **off**. Its knobs remain evolvable.
