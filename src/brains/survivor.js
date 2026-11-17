@@ -946,7 +946,7 @@ export function makeSurvivor(P) {
 
         // ---- heal teammates / pick up downed ones (priorities, threat, gen progress, handshake: healplan.js) ----
         if (P.altruism > 0.15) {
-          const ha = heal.healer(obs, { healDist: P.healDist, holdProtection, say });
+          const ha = heal.healer(obs, { healDist: P.healDist, holdProtection, say, joinGen: (gi) => slots.act(obs, gi, obs.gens[gi], { walk: false, hold: holdProtection }) });
           if (ha) return ha;
         }
 

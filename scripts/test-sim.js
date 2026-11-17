@@ -1938,11 +1938,12 @@ test('heal handshake (healplan.js): healer announces + heals a visible patient, 
   ok(a && a.moveTo && a.intent === 'healing', 'healer within healOfferS of run time: walks over and says "healing"');
   o.t = 1; a = hp.healer(o, opts);
   ok(a && a.moveTo && !a.intent, 'the announcement is said once per rendezvous');
-  o.t = 2; o.self.x = 16.8; a = hp.healer(o, opts);
+  o.t = 2; o.self.x = 16.8; o.hud[1].activity = null; a = hp.healer(o, opts);
   ok(a && a.act === 'heal' && a.target === 1, 'adjacent: heal');
+  for (o.t = 2.5; o.t < 2 + P.healAbortS; o.t += 0.5) hp.healer(o, opts);
   o.t = 2 + P.healAbortS + 0.1; a = hp.healer(o, opts);
   ok(a === null && hp.stats.aborts === 1, 'healing never started healAbortS after arriving: give up');
-  o.t += 1; ok(hp.healer(o, opts) === null, 'that pair cools down');
+  o.t += 0.5; ok(hp.healer(o, opts) === null, 'that pair cools down');
   hp = makeHealPlanner(ctx, P, tracker);
   o = mkObs({ teammates: [{ id: 1, x: 11, z: 10, vx: 0, vz: 0, state: 'injured' }] }); o.hud[1].state = 'injured';
   for (let t = 0; t < 20; t += 1) { o.t = t; o.self.act = t > 0 ? 'heal' : null; a = hp.healer(o, opts); }
@@ -1967,36 +1968,109 @@ test('heal handshake (healplan.js): healer announces + heals a visible patient, 
   ok(a && a.moveTo && Math.abs(a.moveTo.x - 14.8) < 1e-9, 'injured survivor picks up a slug, even with the hunter around');
   ok(makeHealPlanner(ctx, { ...P, slugRecoveryPriority: 0.4 }, tracker).healer(q, opts) === null, 'slugRecoveryPriority <= 0.5: injured survivors do not');
   q = mixed(); q.downedAuras = []; q.hud[2].state = 'healthy'; q.self.state = 'injured'; q.hud[0].state = 'injured';
-  ok(makeHealPlanner(ctx, { ...P, mutualHeal: 1 }, tracker).healer(q, opts) === null, 'mutualHeal: not while a healthy teammate is standing');
-  q.hud[2].state = 'dead'; q.hud[3].state = 'hooked';
-  a = makeHealPlanner(ctx, { ...P, mutualHeal: 1 }, tracker).healer(q, opts);
-  ok(a && a.act === 'heal' && a.target === 1, 'mutualHeal: injured heals injured once nobody healthy is standing');
-  ok(makeHealPlanner(ctx, P, tracker).healer(q, opts) === null, 'mutualHeal off (default): no injured -> injured heals');
-  // ---- patient ----
+  a = makeHealPlanner(ctx, P, tracker).healer(q, opts);
+  ok(a && a.act === 'heal' && a.target === 1, 'injured survivor heals an injured teammate (injuredHealW 0.5), even with a healthy teammate standing');
+  ok(makeHealPlanner(ctx, { ...P, injuredHealW: 0 }, tracker).healer(q, opts) === null, 'injuredHealW 0: injured survivors never heal');
+  const far = mixed(); far.downedAuras = []; far.self.state = 'injured'; far.hud[0].state = 'injured'; far.teammates[0].x = 20;   // 10 m
+  ok(makeHealPlanner(ctx, P, tracker).healer(far, opts) === null, 'injuredHealW 0.5: an injured survivor only bothers within 0.5 x healDist');
+  ok(makeHealPlanner(ctx, { ...P, injuredHealW: 2 }, tracker).healer(far, opts) !== null, 'injuredHealW 2: ... and up to healDist');
+  q.self.act = 'repair'; q.hud[0].activity = 'repair'; q.hud[0].activityProgress = 0.2;
+  ok(makeHealPlanner(ctx, { ...P, injuredHealW: 2 }, tracker).healer(q, opts) === null, 'an injured survivor never leaves its own gen to heal (only arrivals carry the signal)');
+  // ---- healer reading the let-go signal ----
+  const sig = (t, act, prog = 0.3) => {
+    const r = mkObs({ t, self: { id: 0, x: 11.2, z: 10, vx: 0, vz: 0, state: 'healthy', act: null }, teammates: [{ id: 1, x: 10, z: 10, vx: 0, vz: 0, state: 'injured' }],
+      gens: [{ id: 'g1', known: true, done: false, x: 10, z: 11.3, slots: [{ side: 'S', x: 10, z: 10 }, { side: 'N', x: 10, z: 12.6 }] }] });
+    r.hud[1].state = 'injured'; r.hud[1].activity = act; r.hud[1].activityProgress = prog; return r;
+  };
+  const joins = [];
+  const jopts = { ...opts, joinGen: (gi) => (joins.push(gi), { moveTo: { x: 10, z: 12.6 } }) };
+  let hs = makeHealPlanner(ctx, P, tracker);
+  a = hs.healer(sig(0, 'repair'), jopts);
+  ok(a && !a.act && !a.moveTo && hs.stats.arrivals === 1, 'arriving next to a repairing patient: stand by and read its answer (no heal request)');
+  a = hs.healer(sig(1, 'repair'), jopts);
+  ok(a && !a.act && !a.moveTo, '... still reading within readSignalS');
+  a = hs.healer(sig(1.5, null), jopts);
+  ok(a && a.act === 'heal' && a.target === 1 && hs.stats.readLetGo === 1, 'the patient let go of its gen = "heal me": heal');
+  const healTick = sig(2, null); healTick.self.act = 'heal'; hs.update(healTick);
+  const done = sig(18, null); done.hud[1].state = 'healthy'; done.self.act = 'heal'; hs.update(done);
+  ok(hs.stats.healedLetGo === 1 && hs.offer === null, 'completed heal counted as a let-go heal');
+  hs = makeHealPlanner(ctx, P, tracker);
+  for (let tt = 0; tt < P.readSignalS; tt += 0.5) hs.healer(sig(tt, 'repair'), jopts);
+  a = hs.healer(sig(P.readSignalS + 0.1, 'repair'), jopts);
+  ok(a && a.moveTo && joins.length === 1 && joins[0] === 0 && hs.stats.readKept === 1, 'it kept repairing for readSignalS = "join me": take a slot on its gen');
+  const working = sig(P.readSignalS + 1, 'repair'); working.self.act = 'repair'; working.hud[0].activity = 'repair'; working.hud[0].activityProgress = 0.95;
+  a = hs.healer(working, jopts);
+  ok(a && joins.length === 2, 'keep repairing alongside it while it repairs (even past healGenKeep)');
+  const popped = sig(P.readSignalS + 2, null); popped.gens[0].done = true;
+  a = hs.healer(popped, jopts);
+  ok(a && a.act === 'heal' && hs.offer.how === 'afterGen', 'healAfterGenW 0.7: heal it once the gen pops');
+  const hs0 = makeHealPlanner(ctx, { ...P, healAfterGenW: 0 }, tracker);
+  for (let tt = 0; tt < P.readSignalS; tt += 0.5) hs0.healer(sig(tt, 'repair'), jopts);
+  hs0.healer(sig(P.readSignalS + 0.1, 'repair'), jopts); hs0.healer(sig(P.readSignalS + 1, 'repair'), jopts);
+  ok(hs0.healer(popped, jopts) === null, 'healAfterGenW 0: leave it be after the gen');
+  for (const rs of [healSpace.readSignalS[0], healSpace.readSignalS[1]]) {
+    const h = makeHealPlanner(ctx, { ...P, readSignalS: rs }, tracker); const n0 = joins.length;
+    for (let tt = 0; tt < rs - 0.05; tt += 0.5) h.healer(sig(tt, 'repair'), jopts);
+    const before = joins.length; h.healer(sig(rs + 0.05, 'repair'), jopts);
+    ok(before === n0 && joins.length === n0 + 1, `readSignalS ${rs}: joins exactly after reading that long`);
+  }
+  // ---- patient: explicit handshake when not repairing ----
   const tr = { intent: [null, null, null, null] };
   const pp = makeHealPlanner(ctx, P, tr);
-  const pObs = (t, x, vx) => {
-    const r = mkObs({ t, self: { id: 0, x: 10, z: 10, vx: 0, vz: 0, state: 'injured', act: 'repair' }, teammates: [{ id: 1, x, z: 10, vx, vz: 0, state: 'healthy' }] });
-    r.hud[0].state = 'injured'; r.hud[0].activity = 'repair'; r.hud[0].activityProgress = 0.4; return r;
+  const pObs = (t, x, vx, repairing = false, prog = 0.4) => {
+    const r = mkObs({ t, self: { id: 0, x: 10, z: 10, vx: 0, vz: 0, state: 'injured', act: repairing ? 'repair' : null }, teammates: [{ id: 1, x, z: 10, vx, vz: 0, state: 'healthy' }] });
+    r.hud[0].state = 'injured'; r.hud[0].activity = repairing ? 'repair' : null; r.hud[0].activityProgress = repairing ? prog : 0; return r;
   };
-  ok(pp.patient(pObs(0, 14, -4)) === null, 'no "healing" heard: keep repairing');
+  ok(pp.patient(pObs(0, 14, -4)) === null, 'no "healing" heard: carry on');
   tr.intent[1] = { intent: 'healing', t: 0 };
-  ok(pp.patient(pObs(0.5, 14, 4)) === null, 'heard, but the teammate is walking away: keep repairing');
-  ok(pp.patient(pObs(0.5, 30, -4)) === null, 'heard, but beyond healAcceptDist: keep repairing');
+  ok(pp.patient(pObs(0.5, 14, 4)) === null, 'heard, but the teammate is walking away: carry on');
+  ok(pp.patient(pObs(0.5, 30, -4)) === null, 'heard, but beyond healAcceptDist: carry on');
   const noSee = pObs(0.5, 14, -4); noSee.teammates = [];
-  ok(pp.patient(noSee) === null, 'heard, but I cannot see the teammate: keep repairing');
-  const nearDone = pObs(0.5, 14, -4); nearDone.hud[0].activityProgress = 0.9;
-  ok(pp.patient(nearDone) === null, 'my gen is nearly finished: keep repairing');
+  ok(pp.patient(noSee) === null, 'heard, but I cannot see the teammate: carry on');
   a = pp.patient(pObs(0.5, 14, -4));
   ok(a && !a.act && !a.moveTo && !a.moveDir && pp.stats.accepts === 1, 'visible + heard + coming toward me: stop and wait (no act, no move)');
   a = pp.patient(pObs(3, 11.2, 0));
   ok(a && !a.act && !a.moveTo, 'still waiting within healAbortS');
-  const healing = pObs(4, 11.2, 0); healing.hud[0].beingHealed = true; healing.self.act = null; pp.update(healing);
+  const healing = pObs(4, 11.2, 0); healing.hud[0].beingHealed = true; pp.update(healing);
   a = pp.patient(pObs(4 + P.healAbortS - 0.5, 11.2, 0));
   ok(a && pp.stats.acceptAborts === 0, 'healing actually started: the wait is refreshed');
   ok(pp.patient(pObs(4 + 2 * P.healAbortS, 11.2, 0)) === null && pp.stats.acceptAborts === 1, 'no healing for healAbortS: back to work');
   ok(pp.patient(pObs(4 + 2 * P.healAbortS + 1, 11.2, 0)) === null, 'that teammate is refused for a while');
-  ok(makeHealPlanner(ctx, { ...P, healAcceptDist: 0 }, tr).patient(pObs(0.5, 14, -4)) === null, 'healAcceptDist 0: never pause');
+  ok(makeHealPlanner(ctx, { ...P, healAcceptDist: 0 }, tr).patient(pObs(0.5, 14, -4)) === null, 'healAcceptDist 0: never pause for an announcement');
+  const pl = makeHealPlanner(ctx, P, tr); pl.patient(pObs(0.5, 14, -4));
+  ok(pl.patient(pObs(1, 13, 4)) === null && pl.stats.acceptLeft === 1, 'the teammate visibly walks off: stop waiting at once');
+  // ---- patient: the let-go signal while repairing ----
+  const tq = { intent: [null, null, null, null] };
+  const decide = (p, x, vx, prog, o = {}) => { const ob = pObs(0, x, vx, true, prog); Object.assign(ob, o); return makeHealPlanner(ctx, { ...P, ...p }, tq).patient(ob); };
+  ok(decide({}, 14, -4, 0.2) === null, 'repairing: a teammate still 4 m away is not "next to me" yet');
+  ok(decide({}, 11.2, 0, 0.2) !== null, 'defaults, gen at 20 %: a teammate comes up -> let go ("heal me")');
+  ok(decide({}, 11.2, 0, 0.6) === null, 'defaults, gen at 60 %: keep repairing ("join me")');
+  ok(decide({ letGoW: -2 }, 11.2, 0, 0) === null, 'letGoW -2: always keep repairing');
+  ok(decide({ letGoW: 2, letGoProgW: 0 }, 11.2, 0, 0.95) !== null, 'letGoW 2, letGoProgW 0: let go even at 95 %');
+  ok(decide({ letGoW: 2, letGoProgW: 4 }, 11.2, 0, 0.6) === null, 'letGoProgW 4: a gen at 60 % outweighs letGoW 2');
+  ok(decide({}, 11.2, 4, 0.2) === null, 'a teammate passing by (moving away) is no signal');
+  const thr = { terror: { approx: 5.3 } };
+  ok(decide({}, 11.2, 0, 0.1, thr) === null, 'terror radius close, letGoThreatW <= 0: keep repairing');
+  ok(decide({ letGoThreatW: 2 }, 11.2, 0, 0.1, thr) !== null, 'letGoThreatW 2: under threat, get healed first');
+  const inj = pObs(0, 11.2, 0, true, 0); inj.teammates[0].state = 'injured';
+  ok(makeHealPlanner(ctx, P, tq).patient(inj) === null, 'an injured teammate comes up: keep repairing unless letGoW beats the 0.5 handicap');
+  ok(makeHealPlanner(ctx, { ...P, letGoW: 1 }, tq).patient(inj) !== null, '... letGoW 1 does');
+  const busy = pObs(0, 11.2, 0, true, 0.1); busy.hud[1].activity = 'repair';
+  ok(makeHealPlanner(ctx, P, tq).patient(busy) === null, 'a teammate repairing the same gen is no signal');
+  const pk = makeHealPlanner(ctx, P, tq);
+  ok(pk.patient(pObs(0, 11.2, 0, true, 0.6)) === null && pk.patient(pObs(5, 11.2, 0, true, 0.1)) === null && pk.stats.sigKeep === 1, 'after "keep repairing" the same teammate is not re-read for a while');
+  const pj = makeHealPlanner(ctx, P, tq); pj.patient(pObs(0, 11.2, 0, true, 0.1));
+  const joined = pObs(1, 11.2, 0); joined.hud[1].activity = 'repair';
+  ok(pj.patient(joined) === null && pj.stats.sigJoined === 1, 'let go, but the teammate started repairing instead: back to work');
+  // ---- both injured, both offered: whoever said "healing" first heals ----
+  const mo = (t) => { const r = mkObs({ t, self: { id: 0, x: 10, z: 10, vx: 0, vz: 0, state: 'injured', act: null }, teammates: [{ id: 1, x: 13, z: 10, vx: -4, vz: 0, state: 'injured' }] }); r.hud[0].state = 'injured'; r.hud[1].state = 'injured'; return r; };
+  const mu = makeHealPlanner(ctx, P, { intent: [null, { intent: 'healing', t: 2 }, null, null] });
+  a = mu.healer(mo(1), opts);
+  ok(a && a.intent === 'healing', 'mutual: I offer first (t 1)');
+  ok(mu.patient(mo(2.2)) === null, 'mutual: it offered later (t 2): I stay the healer');
+  const mu2 = makeHealPlanner(ctx, P, { intent: [null, { intent: 'healing', t: 0.5 }, null, null] });
+  mu2.healer(mo(1), opts);
+  ok(mu2.patient(mo(1.2)) !== null && mu2.offer === null, 'mutual: it offered first: I become the patient and drop my offer');
 });
 
 test('heal handshake in matches: few impossible heals, deterministic, healOfferS 0 = no "healing" intents', () => {
@@ -2010,7 +2084,7 @@ test('heal handshake in matches: few impossible heals, deterministic, healOfferS
     while (!m.over) { m.step(); for (const s of m.survivors) { const A = s.lastAction || {}; if (s.st <= 1 && A.act === 'heal') { tot++; if (s.curAct !== 'heal') fail++; } } }
     const r = m.result();
     return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), fail, tot, healing: r.events.filter((e) => e.type === 'intent' && e.intent === 'healing').length,
-      accepts: sbs.reduce((n, b) => n + b.heal.stats.accepts, 0), heals: r.events.filter((e) => e.type === 'heal').length };
+      accepts: sbs.reduce((n, b) => n + b.heal.stats.accepts, 0), sigLetGo: sbs.reduce((n, b) => n + b.heal.stats.sigLetGo, 0), heals: r.events.filter((e) => e.type === 'heal').length };
   };
   const seeds = [4101, 4102, 4103, 4104];
   const fwd = seeds.map((s) => go(s));
@@ -2020,7 +2094,35 @@ test('heal handshake in matches: few impossible heals, deterministic, healOfferS
   ok(sum('healing') > 0 && sum('accepts') > 0 && sum('heals') > 0, `defaults: healers announce, patients accept, heals complete (${sum('healing')} / ${sum('accepts')} / ${sum('heals')})`);
   ok(sum('fail') < 0.25 * Math.max(1, sum('tot')), `most requested heal ticks actually heal (${sum('fail')} / ${sum('tot')} failed)`);
   const off = seeds.map((s) => go(s, { healOfferS: 0 }));
-  ok(off.every((x) => x.healing === 0 && x.accepts === 0), 'healOfferS 0: no "healing" intents, no patient pauses');
+  ok(off.every((x) => x.healing === 0 && x.accepts === x.sigLetGo), 'healOfferS 0: no "healing" intents; patients pause only on the let-go signal');
+});
+
+test('heal signals in matches: knob extremes are deterministic; letGoW -2 / +2 steer the answer; injuredHealW 0 = no injured healers', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  const SIG = ['letGoW', 'letGoProgW', 'letGoThreatW', 'readSignalS', 'healAfterGenW', 'injuredHealW'];
+  const ext = (i) => Object.fromEntries(SIG.map((k) => [k, B.survivor.space[k][i]]));
+  const go = (seed, sp) => {
+    const sbs = [];
+    const sf = B.survivor.make({ ...defaults(B.survivor.space), ...sp });
+    let injHeal = 0;
+    const m = createMatch({ map: gh, seed, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: (c) => { const b = sf(c); sbs.push(b); return b; } });
+    while (!m.over) { m.step(); for (const s of m.survivors) if (s.st === INJURED && s.curAct === 'heal') injHeal++; }
+    const r = m.result(), st = {};
+    for (const b of sbs) for (const [k, v] of Object.entries(b.heal.stats)) st[k] = (st[k] ?? 0) + v;
+    return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), st, injHeal };
+  };
+  const seeds = [4201, 4202, 4203];
+  for (const [name, sp] of [['min', ext(0)], ['max', ext(1)]]) {
+    const fwd = seeds.map((s) => go(s, sp)), rev = [...seeds].reverse().map((s) => go(s, sp)).reverse();
+    ok(fwd.every((x, i) => x.key === rev[i].key), `all signal knobs at ${name}: identical forward vs reverse order`);
+  }
+  const tot = (sp) => seeds.map((s) => go(s, sp)).reduce((a, x) => { for (const [k, v] of Object.entries(x.st)) a[k] = (a[k] ?? 0) + v; a.injHeal += x.injHeal; return a; }, { injHeal: 0 });
+  const keep = tot({ letGoW: -2 }), let_ = tot({ letGoW: 2, letGoProgW: 0 });
+  ok(keep.sigLetGo === 0 && keep.sigKeep > 0, `letGoW -2: patients always keep repairing (${keep.sigKeep} keeps)`);
+  ok(let_.sigKeep === 0 && let_.sigLetGo > 0, `letGoW 2 / letGoProgW 0: patients always let go (${let_.sigLetGo})`);
+  ok(tot({ injuredHealW: 0, slugRecoveryPriority: 0.5 }).injHeal === 0, 'injuredHealW 0 (+ slugRecoveryPriority 0.5): no injured survivor ever heals');
+  ok(tot({ injuredHealW: 2 }).injHeal > 0, 'injuredHealW 2: injured survivors heal');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
