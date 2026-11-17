@@ -1,0 +1,239 @@
+{
+  "variants": 32,
+  "seedsPerVariant": 128,
+  "seedStart": 1000,
+  "matches": 4096,
+  "candidatesWithoutFourSides": 0,
+  "tightThreeGenTourBelow80mFraction": 0,
+  "tightEuclideanTourBelow80mFraction": 0,
+  "candidates": {
+    "count": {
+      "mean": 11.2813,
+      "min": 11,
+      "p05": 11,
+      "median": 11,
+      "p95": 12,
+      "max": 12
+    },
+    "nearestWalkM": {
+      "mean": 24.2689,
+      "min": 18,
+      "p05": 19.656,
+      "median": 23.21,
+      "p95": 30.312,
+      "max": 38.726
+    },
+    "nearestEuclideanM": {
+      "mean": 23.7291,
+      "min": 20,
+      "p05": 20.1246,
+      "median": 22.6716,
+      "p95": 29.7321,
+      "max": 39.0512
+    },
+    "edgeM": {
+      "mean": 18.6106,
+      "min": 6.0415,
+      "p05": 10.5,
+      "median": 15.5,
+      "p95": 37.0473,
+      "max": 45.3045
+    },
+    "loopWalkM": {
+      "mean": 7.9225,
+      "min": 2.414,
+      "p05": 3.414,
+      "median": 6.242,
+      "p95": 17.242,
+      "max": 31.14
+    },
+    "deadTileFraction": {
+      "mean": 0.5014,
+      "min": 0,
+      "p05": 0,
+      "median": 1,
+      "p95": 1,
+      "max": 1
+    },
+    "farFromLoopFraction": {
+      "mean": 0.1662,
+      "min": 0,
+      "p05": 0,
+      "median": 0,
+      "p95": 1,
+      "max": 1
+    },
+    "pairWalkM": {
+      "mean": 53.3586,
+      "min": 18,
+      "p05": 22.656,
+      "median": 51.726,
+      "p95": 91.662,
+      "max": 124.528
+    },
+    "pairEuclideanM": {
+      "mean": 50.7171,
+      "min": 20,
+      "p05": 22.2036,
+      "median": 49.0408,
+      "p95": 86.6083,
+      "max": 114.9478
+    },
+    "closestPairWalkM": {
+      "mean": 20.4647,
+      "min": 18,
+      "p05": 19,
+      "median": 20.312,
+      "p95": 22.14,
+      "max": 22.554
+    },
+    "minThreeGenTourWalkM": {
+      "mean": 73.2668,
+      "min": 62.866,
+      "p05": 64.522,
+      "median": 72.522,
+      "p95": 81.936,
+      "max": 89.006
+    },
+    "minThreeGenTourEuclideanM": {
+      "mean": 71.9174,
+      "min": 64.6373,
+      "p05": 65.2963,
+      "median": 71.2421,
+      "p95": 79.473,
+      "max": 81.5358
+    }
+  },
+  "selected": {
+    "nearestWalkM": {
+      "mean": 30.5761,
+      "min": 22.828,
+      "p05": 24.21,
+      "median": 29.484,
+      "p95": 42.14,
+      "max": 69.968
+    },
+    "nearestEuclideanM": {
+      "mean": 29.5568,
+      "min": 24,
+      "p05": 24.1661,
+      "median": 28.1603,
+      "p95": 40.1123,
+      "max": 63.7887
+    },
+    "edgeM": {
+      "mean": 17.776,
+      "min": 6.0415,
+      "p05": 10.5,
+      "median": 14.5,
+      "p95": 36.5,
+      "max": 45.3045
+    },
+    "loopWalkM": {
+      "mean": 8.0066,
+      "min": 2.414,
+      "p05": 3.828,
+      "median": 6.242,
+      "p95": 18,
+      "max": 31.14
+    },
+    "deadTileFraction": {
+      "mean": 0.5049,
+      "min": 0,
+      "p05": 0,
+      "median": 1,
+      "p95": 1,
+      "max": 1
+    },
+    "farFromLoopFraction": {
+      "mean": 0.1607,
+      "min": 0,
+      "p05": 0,
+      "median": 0,
+      "p95": 1,
+      "max": 1
+    },
+    "pairWalkM": {
+      "mean": 56.564,
+      "min": 22.828,
+      "p05": 26.796,
+      "median": 55.14,
+      "p95": 94.764,
+      "max": 124.528
+    },
+    "pairEuclideanM": {
+      "mean": 53.7044,
+      "min": 24,
+      "p05": 26.0192,
+      "median": 52.1728,
+      "p95": 89.3197,
+      "max": 114.9478
+    },
+    "closestPairWalkM": {
+      "mean": 26.0325,
+      "min": 22.828,
+      "p05": 23.414,
+      "median": 25.726,
+      "p95": 29.726,
+      "max": 32.796
+    },
+    "minThreeGenTourWalkM": {
+      "mean": 97.9331,
+      "min": 80.662,
+      "p05": 84.764,
+      "median": 96.28,
+      "p95": 115.592,
+      "max": 133.732
+    },
+    "minThreeGenTourEuclideanM": {
+      "mean": 94.1389,
+      "min": 80.0989,
+      "p05": 81.8949,
+      "median": 91.829,
+      "p95": 110.1414,
+      "max": 125.3644
+    },
+    "candidateCoverageM": {
+      "mean": 8.8757,
+      "min": 0,
+      "p05": 0,
+      "median": 0,
+      "p95": 27.2029,
+      "max": 40
+    }
+  },
+  "spawns": {
+    "survivorNearestGenWalkM": {
+      "mean": 19.3461,
+      "min": 0,
+      "p05": 5.414,
+      "median": 18.14,
+      "p95": 36.656,
+      "max": 60.554
+    },
+    "survivorToGenWalkM": {
+      "mean": 61.3133,
+      "min": 0,
+      "p05": 14.656,
+      "median": 62.35,
+      "p95": 105.318,
+      "max": 139.012
+    },
+    "hunterNearestGenWalkM": {
+      "mean": 18.6935,
+      "min": 1,
+      "p05": 5.656,
+      "median": 16.828,
+      "p95": 38.07,
+      "max": 59.248
+    },
+    "hunterToGenWalkM": {
+      "mean": 62.7407,
+      "min": 1,
+      "p05": 13.484,
+      "median": 63.866,
+      "p95": 107.942,
+      "max": 133.152
+    }
+  }
+}

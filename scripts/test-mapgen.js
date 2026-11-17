@@ -4,8 +4,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { TILES, TILE_LIST, SOLID_CHARS as TILES_SOLIDS, resolveTile, makeRng, composeFeatures, gasHeavenLayout, outlineInset } from '../src/mapgen/index.js';
+import { TILES, TILE_LIST, SOLID_CHARS as TILES_SOLIDS, resolveTile, makeRng, composeFeatures, gasHeavenLayout, generateFromLayout, outlineInset } from '../src/mapgen/index.js';
 import { analyzeMap } from './validate-map.js';
+import { generatorSets, selectGenerators } from '../src/sim/gen-selection.js';
+import { prepareMap, createMatch } from '../src/sim/index.js';
+import { genSlots } from '../src/sim/match.js';
+import { makeRng as simRng } from '../src/sim/rng.js';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const protectedRows = {
@@ -29,6 +33,12 @@ for (const tile of TILE_LIST) {
     assert(r.rows.every((row, z) => [...row].every((c, x) => (x && z && x < n - 1 && z < n - 1) || c === '.')), `${tile.id}: connected border`);
     const { windows, pallets } = composeFeatures(r.rows.flatMap(row => [...row]), n, n);
     const at = (x, z) => r.rows[z]?.[x];
+    if (tile.id === 'shack') {
+      assert.equal(r.genSlots.length, 1);
+      const [x, z] = r.genSlots[0];
+      assert(x > 3 && x < n - 4 && z > 3 && z < n - 4, 'shack slot stays indoors under all transforms');
+      for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) assert.equal(at(x + dx, z + dz), '.', 'shack repair sides');
+    }
     for (const f of [...windows, ...pallets]) {
       const len = f.length ?? 1;
       const [dx, dz] = f.axis === 'x' ? [0, 1] : [1, 0];
@@ -49,12 +59,48 @@ const load = file => JSON.parse(readFileSync(file, 'utf8'));
 const index = load('maps/gas-heaven/index.json');
 assert.equal(index.count, 32);
 assert.equal(index.variants.length, 32);
+{
+  const seed = index.variants[0].seed, a = generateFromLayout(gasHeavenLayout, seed), b = generateFromLayout(gasHeavenLayout, seed);
+  assert(a.ok && b.ok, 'known seed regenerates'); assert.deepEqual(a, b, 'candidate packing and mapgen deterministic');
+  const impossible = structuredClone(gasHeavenLayout); impossible.gens.minSpacing = 1000;
+  assert.equal(generateFromLayout(impossible, seed).ok, false, 'impossible candidate spacing rejects instead of relaxing');
+}
 for (const [i, variant] of index.variants.entries()) {
   assert.equal(variant.file, `v${String(i).padStart(3, '0')}.json`);
   const map = load(`maps/gas-heaven/${variant.file}`), result = analyzeMap(map);
   assert.deepEqual(result.errors, [], variant.file);
   assert(result.maxHookDistance <= 26, `${variant.file}: hook walk coverage`);
   assert(map.generators.every(g => outlineInset(g.x, g.z, map.outline) >= 6), `${variant.file}: generator edge inset`);
+  const md = prepareMap(map);
+  assert(md.genCands.every(g => genSlots(md, g).length === 4), `${variant.file}: four repair sides`);
+  assert.deepEqual(map.generatorRules, gasHeavenLayout.gens.selection);
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  for (const a of map.generators) for (const b of map.generators) if (a !== b) assert(distance(a, b) >= 20, `${variant.file}: candidate spacing never relaxed`);
+  const sets = generatorSets(md.genCands, 7, map.generatorRules);
+  assert(sets.length, `${variant.file}: feasible match selection`);
+  assert.equal(new Set(sets.flat()).size, md.genCands.length, 'every candidate appears in a feasible seven');
+  for (const ids of sets) {
+    for (let a = 0; a < 7; a++) for (let b = a + 1; b < 7; b++) {
+      assert(distance(md.genCands[ids[a]], md.genCands[ids[b]]) >= 24, 'selected pair spacing');
+      for (let c = b + 1; c < 7; c++) assert(distance(md.genCands[ids[a]], md.genCands[ids[b]]) + distance(md.genCands[ids[b]], md.genCands[ids[c]]) + distance(md.genCands[ids[c]], md.genCands[ids[a]]) >= 80, 'selected triple perimeter');
+    }
+    assert(md.genCands.every(g => ids.some(j => distance(g, md.genCands[j]) <= 40)), 'selected footprint coverage');
+  }
+  const sampled = new Set();
+  const cold = prepareMap(structuredClone(map));
+  for (let seed = 1000; seed < 1128; seed++) {
+    const chosen = selectGenerators(md, 7, simRng(seed, 'world'), simRng(seed, 'generator-placement'));
+    assert(sets.some(s => s.join() === chosen.join()));
+    assert.deepEqual(chosen, selectGenerators(cold, 7, simRng(seed, 'world'), simRng(seed, 'generator-placement')), 'warm/cold selection determinism');
+    sampled.add(chosen.join());
+  }
+  assert(sets.length === 1 || sampled.size > 1, 'seeded variation among feasible subsets');
+  const idle = () => ({ decide: () => ({}) });
+  const match = createMatch({ map, seed: 1000, hunter: idle, survivors: idle });
+  assert.deepEqual(match.gens.map(g => g.ci), selectGenerators(md, 7, simRng(1000, 'world'), simRng(1000, 'generator-placement')), 'engine uses constrained selector');
+  const legacy = structuredClone(map); delete legacy.generatorRules;
+  const other = createMatch({ map: legacy, seed: 1000, hunter: idle, survivors: idle });
+  assert.deepEqual([match.hunter.spawn, ...match.survivors.map(s => s.spawn)], [other.hunter.spawn, ...other.survivors.map(s => s.spawn)], 'selection leaves world/spawn RNG unchanged');
   const pr = map.mapgen.shape ? map.mapgen.shape.areaM2 / 9984 : 1;   // shaped outlines scale the pallet budget by area (generate.js)
   assert(map.pallets.length >= Math.round(14 * pr) && map.pallets.length <= Math.round(24 * pr), `${variant.file}: pallet budget`);
   const tiles = map.mapgen.tiles;
@@ -65,5 +111,32 @@ for (const [i, variant] of index.variants.entries()) {
   const s = map.mapgen.stats;
   assert.equal(s.safePallets + s.unsafePallets + s.godPallets, map.pallets.length, `${variant.file}: safety totals`);
   for (const key of ['pallets', 'windows', 'strongLoops', 'weakLoops', 'safePallets', 'unsafePallets', 'godPallets', 'deadTileFraction', 'deadZoneFraction']) assert.equal(variant[key], s[key], `${variant.file}: index ${key}`);
+}
+// Legacy fixtures keep their exact old shuffle, including the next world RNG value.
+{
+  const md = prepareMap(load('maps/test-small.json')), a = simRng(4, 'world'), b = simRng(4, 'world');
+  const expected = b.shuffle(md.genCands.map((_, i) => i)).slice(0, 7).sort((x, y) => x - y);
+  assert.deepEqual(selectGenerators(md, 7, a), expected); assert.equal(a.next(), b.next());
+  const invalid = structuredClone(md.map); invalid.generatorRules = { minSpacingM: 1000, minThreeGenTourM: 80, maxCoverageM: 40 };
+  assert.throws(() => selectGenerators(prepareMap(invalid), 7, simRng(1)), /No feasible/);
+  assert(analyzeMap(invalid).errors.some(e => e.includes('no feasible')));
+}
+// Compare enumeration to an independent brute-force oracle, including exact-boundary acceptance.
+{
+  const points = [[0, 0], [24, 0], [48, 0], [0, 24], [24, 24], [48, 24], [0, 48], [24, 48], [48, 48]].map(([x, z]) => ({ x, z }));
+  const rules = { minSpacingM: 24, minThreeGenTourM: 80, maxCoverageM: 24 }, expected = [];
+  const d = (i, j) => Math.hypot(points[i].x - points[j].x, points[i].z - points[j].z);
+  for (let mask = 0; mask < (1 << points.length); mask++) {
+    const ids = points.map((_, i) => i).filter(i => mask & (1 << i));
+    if (ids.length !== 4 || points.some((_, i) => ids.every(j => d(i, j) > 24))) continue;
+    let valid = true;
+    for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) {
+      if (d(ids[a], ids[b]) < 24) valid = false;
+      for (let c = b + 1; c < 4; c++) if (d(ids[a], ids[b]) + d(ids[b], ids[c]) + d(ids[c], ids[a]) < 80) valid = false;
+    }
+    if (valid) expected.push(ids.join());
+  }
+  assert(expected.length > 1, 'oracle exercises a nontrivial feasible set');
+  assert.deepEqual(generatorSets(points, 4, rules).map(s => s.join()).sort(), expected.sort());
 }
 console.log(`${TILE_LIST.length} tile templates, ${transforms} resolutions and all 32 maps passed; fixed pieces, feature approaches, density, generator inset and hook coverage preserved.`);

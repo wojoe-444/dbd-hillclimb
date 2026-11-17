@@ -5,7 +5,7 @@
 export const gasHeavenLayout = {
   id: 'gas-heaven',
   name: 'Gas Heaven (tiles)',
-  generator: 'mapgen/gas-heaven@2',
+  generator: 'mapgen/gas-heaven@3',
   size: { w: 112, h: 96 },
   cell: 8,
   outline: [[16, 0], [112, 0], [112, 64], [96, 64], [96, 96], [0, 96], [0, 16], [16, 16]],
@@ -51,7 +51,9 @@ export const gasHeavenLayout = {
 
   pallets: { min: 14, max: 24 },
   gates: { minDistance: 75 },
-  gens: { count: [11, 12], minSpacing: 20, require: [], minEdgeM: 6 },   // minEdgeM: no generator within 6 m of the outer wall
+  // Numeric spread limits are our single-floor approximation, not published BHVR constants.
+  gens: { count: [11, 12], minSpacing: 20, require: [], minEdgeM: 6,
+    selection: { minSpacingM: 24, minThreeGenTourM: 80, maxCoverageM: 40 } },
   hooks: { min: 16, max: 20, radius: 26, slotBonus: 25, jitter: 15 },   // radius was 20; the walled MID enclosure lengthens walks
   // perimeter spawns: survivor anchors (engine scatters 4 survivors within 15 m) + hunter points
   spawns: { survivorAnchors: 10, hunter: 10, inset: [4, 8], anchorOpenRadius: 15, anchorOpenFraction: 0.75 },

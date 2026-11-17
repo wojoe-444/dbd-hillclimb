@@ -335,6 +335,15 @@ anyone mid-vault. **A carrying hunter collides** (report §17: survivors can bod
 
 ## Generators: side slots
 
+Generated tile maps declare `generatorRules`: the seeded seven-generator selection samples uniformly
+from subsets satisfying 24 m pair spacing, 80 m minimum three-gen perimeter and 40 m candidate coverage
+(every candidate lies within 40 m of a selected generator). These are Euclidean, single-floor simulation
+approximations, not published BHVR constants. Feasible subsets are cached per map/configuration;
+an impossible policy fails explicitly. Maps without the metadata retain the legacy seeded shuffle.
+Generator placement has its own RNG stream; the old world shuffle is still consumed so other world
+randomness is unaffected by the selector. Candidate packs have hard 20 m spacing and a 6 m outline inset.
+See `docs/research/gen-placement.md` for research, audit definitions and limitations.
+
 A generator is a solid 1×1 cell. Its **side slots** are the orthogonal neighbour cells (N = −z, E = +x, S = +z, W = −x) that are plain walkable
 cells (not solid / window / pallet / outside); the slot point is that cell's centre. Each slot holds **one** repairing survivor: repair needs the
 survivor within `reach.repairSlot` (0.6 m) of a slot point that nobody else repaired from this tick or the previous one (first come keeps it;

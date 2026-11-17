@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { generatorSets } from '../src/sim/gen-selection.js';
 
 // Shared with the renderer; importing this module does not run the CLI.
 export function analyzeMap(map) {
@@ -19,6 +20,11 @@ export function analyzeMap(map) {
   }
   if (!object(map.spawns) || !Array.isArray(map.spawns.hunter) || !Array.isArray(map.spawns.survivors)) fail('spawns must contain hunter and survivors arrays.');
   if (errors.length) return { errors };
+  if (map.generatorRules !== undefined) {
+    const r = map.generatorRules;
+    if (!object(r) || ['minSpacingM', 'minThreeGenTourM', 'maxCoverageM'].some(k => !finite(r[k]) || r[k] < 0)) fail('generatorRules requires finite nonnegative spacing, three-gen tour and coverage limits.');
+    else if (map.generators.length <= 12 && map.generators.every(g => object(g) && finite(g.x) && finite(g.z)) && !generatorSets(map.generators, 7, r).length) fail('generatorRules: no feasible seven-generator distribution.');
+  }
   if (map.generators.length < 10 || map.generators.length > 12) fail('generators must contain 10-12 candidates.');
   const { w, h } = map.size;
   // Avoid allocating unbounded grids for malformed inputs.

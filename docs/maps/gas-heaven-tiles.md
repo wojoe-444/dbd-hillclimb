@@ -11,7 +11,7 @@ Generator: `src/mapgen/` (tile library `tiles.js`, layout spec `layouts/gas-heav
 3. Two exit gates on ring cells along different outline edges ≥ 75 m apart.
 4. Free inner 2×2 blocks get a 16 m loop tile with p=0.55 (jungle gyms, T+L, filler loops; repeated types are down-weighted); the remaining inner cells get 8 m small fillers or dead zones; ring cells mostly dead zones (trees, rocks, lone cars) with a few small fillers.
 5. Optional pallets roll per tile (`p` groups) and car piles roll *one* of their numbered spots or none. If the total exceeds 24, random optional non-landmark pallets are removed; below 14 the seed is rejected.
-6. 11-12 generator candidates chosen from tile slots, spread at least ~20 m where possible, all at least 6 m from the outline.
+6. 11-12 generator candidates chosen from authored tile slots, at most one per tile, all pairs at least 20 m apart and all at least 6 m from the outline. Every slot has a clear 3x3 floor footprint. Failed packings restart instead of relaxing spacing. Shack has an optional indoor slot. Match selection uniformly samples feasible seven-gen subsets: pairs at least 24 m apart, triple perimeters at least 80 m, every candidate within 40 m of a selected gen (Euclidean). See docs/research/gen-placement.md for evidence and simulation-specific thresholds.
 7. Spawns: 10 survivor *anchors* and 10 hunter points spread around the whole perimeter, each 4–8 m inside the outline, outside landmarks; anchors need ≥ 75% walkable cells within 15 m (the engine scatters the 4 survivors within 15 m of the chosen anchor and picks a hunter point on the opposite side). Maps declare `spawnRules`, so the validator enforces the inset/walkable/open-space rules for them.
 8. Hooks: exactly 20 hooks placed by simulated annealing so every walkable cell is within 26 m (4-neighbour walk, the validator's metric) of a hook; tile hook slots are preferred.
 
@@ -58,34 +58,34 @@ Pallet slots: G = guaranteed, O = optional groups (spawn chance in brackets), C 
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | v000 | base | 21 | 16 | 11 | 13 | 54% | 32% | 11 | 3/2 | 2 | pallet-gym, four-lane-open, pallet-gym, variant-gym | 0/1 | gate-n gate-e |
 | v001 | notched 96×112 (9728 m²) | 15 | 12 | 10 | 6 | 66% | 52% | 11 | 1/1 | 0 | four-lane-closed, four-lane-open, four-lane-open, variant-gym, variant-gym | 1/0 | gate-w gate-n |
-| v002 | base | 20 | 17 | 12 | 11 | 53% | 30% | 11 | 3/1 | 2 | four-lane-closed, pallet-gym, four-lane-open, variant-gym, variant-gym | 1/0 | gate-n gate-s |
-| v003 | circlish 96×120 (9472 m²) | 20 | 11 | 11 | 10 | 62% | 44% | 11 | 1/1 | 0 | four-lane-closed, four-lane-open, pallet-gym, variant-gym, variant-gym | 1/0 | gate-n gate-s |
-| v004 | base | 16 | 17 | 11 | 8 | 63% | 39% | 12 | 1/2 | 2 | four-lane-open, four-lane-open, four-lane-closed, variant-gym, variant-gym | 0/1 | gate-w gate-n |
-| v005 | blob 120×112 (9216 m²) | 14 | 12 | 9 | 7 | 64% | 44% | 12 | 2/1 | 1 | pallet-gym, four-lane-closed, four-lane-open | 1/0 | gate-w gate-n |
+| v002 | base | 19 | 17 | 12 | 10 | 55% | 38% | 11 | 1/2 | 2 | four-lane-open, four-lane-open, four-lane-closed, variant-gym, variant-gym | 1/0 | gate-w gate-n |
+| v003 | circlish 88×120 (9536 m²) | 17 | 16 | 10 | 10 | 58% | 40% | 12 | 3/1 | 2 | four-lane-closed, pallet-gym, four-lane-closed, variant-gym | 1/0 | gate-w gate-e |
+| v004 | base | 18 | 15 | 10 | 10 | 62% | 41% | 12 | 3/1 | 1 | four-lane-open, four-lane-closed, four-lane-closed, variant-gym | 1/0 | gate-e gate-n |
+| v005 | blob 96×112 (9216 m²) | 19 | 12 | 10 | 11 | 56% | 37% | 11 | 2/0 | 1 | four-lane-closed, four-lane-open, pallet-gym, variant-gym | 1/0 | gate-e gate-w |
 | v006 | base | 17 | 16 | 10 | 10 | 58% | 42% | 12 | 2/1 | 2 | four-lane-closed, four-lane-closed, pallet-gym, variant-gym, variant-gym | 1/0 | gate-n gate-s |
-| v007 | chunky 112×104 (9664 m²) | 21 | 15 | 10 | 14 | 56% | 37% | 12 | 1/2 | 2 | four-lane-open, pallet-gym, four-lane-closed, variant-gym | 1/0 | gate-e gate-w |
-| v008 | base | 17 | 15 | 8 | 13 | 60% | 38% | 12 | 0/1 | 3 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 0/1 | gate-s gate-e |
-| v009 | notched 96×112 (9216 m²) | 16 | 16 | 10 | 10 | 59% | 41% | 12 | 2/2 | 3 | pallet-gym, pallet-gym, four-lane-closed | 1/0 | gate-e gate-n |
-| v010 | base | 16 | 17 | 9 | 11 | 58% | 37% | 12 | 3/0 | 3 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-s gate-w |
+| v007 | chunky 128×80 (9600 m²) | 20 | 13 | 11 | 10 | 60% | 40% | 12 | 3/2 | 0 | four-lane-closed, four-lane-closed, pallet-gym, variant-gym | 0/1 | gate-n gate-s |
+| v008 | base | 22 | 15 | 11 | 13 | 58% | 34% | 11 | 2/3 | 1 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-n gate-w |
+| v009 | notched 120×88 (9792 m²) | 14 | 16 | 12 | 5 | 60% | 45% | 12 | 2/1 | 2 | pallet-gym, four-lane-open, four-lane-closed, variant-gym, variant-gym | 1/0 | gate-s gate-n |
+| v010 | base | 17 | 16 | 11 | 10 | 56% | 38% | 11 | 2/1 | 3 | pallet-gym, four-lane-closed, four-lane-closed | 0/1 | gate-w gate-e |
 | v011 | circlish 96×112 (9472 m²) | 21 | 14 | 8 | 16 | 57% | 38% | 11 | 1/1 | 2 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-s gate-n |
-| v012 | base | 18 | 15 | 10 | 11 | 60% | 42% | 12 | 2/1 | 2 | four-lane-open, four-lane-open, pallet-gym, variant-gym | 1/0 | gate-s gate-n |
-| v013 | blob 112×96 (9280 m²) | 14 | 17 | 10 | 8 | 61% | 40% | 12 | 2/1 | 3 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 0/1 | gate-s gate-n |
-| v014 | base | 14 | 14 | 10 | 7 | 60% | 46% | 12 | 3/0 | 2 | pallet-gym, pallet-gym, four-lane-closed, variant-gym | 0/1 | gate-s gate-e |
-| v015 | chunky 112×96 (9344 m²) | 16 | 14 | 9 | 11 | 60% | 37% | 11 | 1/0 | 3 | pallet-gym, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-n gate-e |
+| v012 | base | 14 | 15 | 11 | 6 | 62% | 46% | 11 | 0/2 | 2 | four-lane-closed, four-lane-open, pallet-gym, variant-gym, variant-gym | 1/0 | gate-w gate-e |
+| v013 | blob 112×112 (9280 m²) | 22 | 10 | 9 | 14 | 59% | 34% | 11 | 1/1 | 0 | four-lane-open, four-lane-open, pallet-gym, variant-gym | 1/0 | gate-n gate-s |
+| v014 | base | 16 | 17 | 13 | 6 | 59% | 39% | 11 | 2/2 | 2 | four-lane-open, pallet-gym, four-lane-closed, variant-gym, variant-gym | 0/1 | gate-s gate-w |
+| v015 | chunky 80×128 (9216 m²) | 17 | 16 | 9 | 12 | 56% | 42% | 11 | 1/1 | 3 | pallet-gym, four-lane-closed, four-lane-open, variant-gym | 1/0 | gate-n gate-s |
 | v016 | base | 17 | 12 | 10 | 9 | 63% | 44% | 11 | 3/1 | 1 | pallet-gym, pallet-gym, four-lane-closed | 1/0 | gate-s gate-n |
-| v017 | notched 112×104 (9408 m²) | 15 | 20 | 10 | 11 | 51% | 37% | 12 | 2/1 | 5 | pallet-gym, four-lane-closed, four-lane-closed | 1/0 | gate-n gate-w |
-| v018 | base | 19 | 13 | 8 | 14 | 61% | 41% | 12 | 1/1 | 2 | four-lane-closed, four-lane-open, pallet-gym | 1/0 | gate-e gate-w |
-| v019 | circlish 120×96 (9472 m²) | 17 | 16 | 12 | 7 | 57% | 38% | 12 | 3/1 | 1 | four-lane-open, pallet-gym, four-lane-closed, variant-gym, variant-gym, variant-gym | 1/0 | gate-n gate-s |
+| v017 | notched 104×96 (9344 m²) | 19 | 15 | 12 | 9 | 53% | 39% | 11 | 3/2 | 1 | pallet-gym, four-lane-closed, four-lane-closed, variant-gym | 1/0 | gate-w gate-s |
+| v018 | base | 17 | 19 | 12 | 9 | 56% | 36% | 11 | 1/3 | 3 | four-lane-open, four-lane-open, pallet-gym, variant-gym, variant-gym | 1/0 | gate-e gate-w |
+| v019 | circlish 120×88 (9536 m²) | 18 | 16 | 11 | 10 | 54% | 37% | 12 | 2/0 | 2 | four-lane-closed, four-lane-closed, four-lane-closed, variant-gym, variant-gym | 1/0 | gate-n gate-w |
 | v020 | base | 17 | 18 | 12 | 8 | 58% | 36% | 11 | 2/1 | 2 | four-lane-open, four-lane-open, four-lane-open, variant-gym, variant-gym, variant-gym | 1/0 | gate-s gate-n |
 | v021 | blob 120×88 (9664 m²) | 16 | 15 | 11 | 8 | 60% | 42% | 11 | 1/1 | 2 | pallet-gym, four-lane-open, four-lane-closed, variant-gym, variant-gym | 1/0 | gate-s gate-n |
-| v022 | base | 23 | 17 | 10 | 17 | 52% | 34% | 12 | 2/1 | 3 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-n gate-w |
-| v023 | chunky 104×104 (9280 m²) | 15 | 14 | 8 | 10 | 61% | 42% | 12 | 1/0 | 2 | four-lane-closed, pallet-gym, four-lane-open, variant-gym, variant-gym | 1/0 | gate-w gate-n |
+| v022 | base | 23 | 17 | 10 | 17 | 52% | 35% | 12 | 2/1 | 3 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-n gate-w |
+| v023 | chunky 104×120 (9600 m²) | 18 | 14 | 7 | 14 | 62% | 41% | 11 | 1/1 | 2 | four-lane-open, four-lane-open, four-lane-closed | 0/1 | gate-s gate-w |
 | v024 | base | 18 | 14 | 11 | 9 | 58% | 38% | 12 | 2/2 | 1 | four-lane-open, pallet-gym, four-lane-closed, variant-gym | 1/0 | gate-w gate-e |
-| v025 | notched 88×112 (9536 m²) | 19 | 19 | 11 | 12 | 54% | 31% | 12 | 3/2 | 3 | four-lane-closed, pallet-gym, four-lane-closed, variant-gym | 0/1 | gate-e gate-w |
+| v025 | notched 88×120 (9472 m²) | 15 | 15 | 11 | 7 | 57% | 45% | 11 | 2/1 | 2 | pallet-gym, four-lane-open, four-lane-closed, variant-gym | 1/0 | gate-e gate-s |
 | v026 | base | 15 | 16 | 12 | 6 | 62% | 43% | 11 | 2/2 | 2 | four-lane-open, pallet-gym, four-lane-closed, variant-gym | 1/0 | gate-n gate-w |
 | v027 | circlish 104×104 (9536 m²) | 21 | 9 | 8 | 14 | 61% | 41% | 11 | 1/0 | 0 | pallet-gym, four-lane-open, four-lane-closed, variant-gym | 1/0 | gate-w gate-e |
-| v028 | base | 19 | 16 | 11 | 11 | 57% | 36% | 12 | 2/1 | 2 | pallet-gym, four-lane-open, four-lane-closed, variant-gym, variant-gym | 1/0 | gate-e gate-s |
-| v029 | blob 128×88 (9280 m²) | 15 | 16 | 8 | 11 | 58% | 42% | 11 | 2/0 | 3 | pallet-gym, four-lane-closed, four-lane-open, variant-gym | 1/0 | gate-n gate-s |
+| v028 | base | 15 | 19 | 12 | 7 | 57% | 36% | 11 | 3/1 | 3 | four-lane-open, four-lane-open, four-lane-open, variant-gym | 1/0 | gate-e gate-s |
+| v029 | blob 96×104 (9216 m²) | 18 | 13 | 12 | 8 | 55% | 35% | 11 | 3/0 | 1 | four-lane-open, four-lane-closed, pallet-gym, variant-gym | 1/0 | gate-s gate-n |
 | v030 | base | 17 | 12 | 10 | 9 | 63% | 41% | 11 | 2/0 | 1 | pallet-gym, four-lane-open, four-lane-open, variant-gym | 0/1 | gate-e gate-n |
 | v031 | chunky 112×88 (9344 m²) | 16 | 17 | 10 | 10 | 51% | 37% | 12 | 2/0 | 3 | four-lane-open, four-lane-closed, pallet-gym, variant-gym, variant-gym | 1/0 | gate-w gate-s |
 
@@ -93,15 +93,15 @@ Pallet slots: G = guaranteed, O = optional groups (spawn chance in brackets), C 
 
 | Stat | Min | Mean | Max |
 | --- | --- | --- | --- |
-| Pallets | 14.0 | 17.3 | 23.0 |
-| Windows | 9.0 | 15.1 | 20.0 |
-| Strong loops | 8.0 | 10.0 | 12.0 |
-| Weak loops | 6.0 | 10.4 | 17.0 |
-| Safe pallets | 6.0 | 8.0 | 10.0 |
-| Unsafe pallets | 4.0 | 8.3 | 14.0 |
+| Pallets | 14.0 | 17.8 | 23.0 |
+| Windows | 9.0 | 14.9 | 19.0 |
+| Strong loops | 7.0 | 10.6 | 13.0 |
+| Weak loops | 5.0 | 9.9 | 17.0 |
+| Safe pallets | 5.0 | 8.6 | 11.0 |
+| Unsafe pallets | 3.0 | 8.2 | 14.0 |
 | God pallets | 1.0 | 1.0 | 1.0 |
-| Dead tiles | 51% | 59% | 66% |
-| Dead zone | 30% | 39% | 52% |
+| Dead tiles | 51% | 58% | 66% |
+| Dead zone | 32% | 39% | 52% |
 
 Hand-made v1 for comparison: 14 pallets, 9 windows.
 
