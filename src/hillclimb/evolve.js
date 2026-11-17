@@ -18,6 +18,25 @@
 //   --bench-opponents a,b      logged as `bench` in that generation's evo.jsonl line (spec forms: evalplan.js
 //                              resolveParamSet, e.g. runs/evo-v15, runs/evo-v14@gen20, v15=runs/evo-v15)
 //   --metrics f.js,g.js      optional per-match metric modules (play.js); their means land in outcome.metrics
+// Noise-robust selection (selection.js, cmaes.js; see docs/research/selection-fix.md):
+//   --panel [spec]           evaluate each side against a fixed opponent PANEL instead of random co-evolution pairings.
+//                            spec = comma list of kind:n, kinds cur (top n of the opposite side's last ranking), hof
+//                            (n hall-of-fame champions spread over the archive), default, mean (opposite pop / CMA mean).
+//                            Default spec cur:4,hof:3,default:1. Every individual of a side plays the same SLOTS
+//                            (opponent, seed) = common random numbers; a match counts for the evaluated side only.
+//   --panel-fixed a,b        extra fixed panel opponents (resolveParamSet specs, e.g. v16=runs/evo-v16)
+//   --slots N                slots per individual per generation with --panel (default = --rounds)
+//   --hof-every k            every k gens archive each side's champion (GA: rank 1; CMA-ES: the mean) (default 5)
+//   --hof-size N             hall-of-fame cap per side, thinned evenly over the run (default 20)
+//   --race                   racing (needs --panel): after the --slots stage, individuals whose paired difference to
+//   --race-step s              the selection cut is significant (|z| >= --race-z, default 1.5) are decided; the rest
+//   --race-max M               play s more slots (default max(4, slots/2)) per stage, up to M slots (default 3 x slots)
+//   --opt cmaes              sep-CMA-ES per side over the normalised knob vector instead of the GA (lambda = --pop,
+//   --cma-sigma s              mu = lambda/2). s = initial step in [0,1] units (default 0.15); --cma-mirror = antithetic
+//   --cma-mirror               pairs; --cma-min-sigma floor (default 0.01). evo.jsonl gains `cma` (mean, sigma, per-knob
+//   --cma-min-sigma f          sd); rankings/knobs describe the sampled population; champions.json = the CMA mean.
+// Every generation also logs (additive fields): `perf` (matches/s, worker utilisation, ms per game-second) and
+// `selection` (per side: reliability of the fitness means, split-half, rank persistence of survivors, racing stats).
 // Every start writes runs/<name>/config.json: git HEAD + dirty flag, map pool fingerprint, argv and the full config.
 
 import { cpus } from 'node:os';
@@ -27,6 +46,8 @@ import { getBrains } from '../brains/index.js';
 import { defaults, mutate, rng, round, clampParams } from './params.js';
 import { createPool } from './pool.js';
 import { roundJobs, reevalJobs, benchJobs, groupBench, heldOutSeeds, edgeReport, resolveParamSet, gitInfo, mapPoolInfo, averageMetrics } from './evalplan.js';
+import { parsePanelSpec, buildPanel, hofAdd, makeSlots, slotJobs, raceStep, reliability, persistence, mean, variance, spearman } from './selection.js';
+import { cmaInit, cmaAsk, cmaTell, cmaSummary, fromNorm } from './cmaes.js';
 
 const args = {};
 const argv = process.argv.slice(2);
@@ -53,6 +74,26 @@ const opts = {
   benchOpponents: args['bench-opponents'] ? String(args['bench-opponents']).split(',').filter(Boolean) : [],
   metrics: args.metrics ? String(args.metrics).split(',').filter(Boolean).map((p) => resolve(p)) : [],
 };
+// noise-robust selection options: only added to the config when used, so a default run's config is unchanged
+const opt = args.opt ?? 'ga';
+if (!['ga', 'cmaes'].includes(opt)) throw new Error(`--opt ${opt}: expected ga | cmaes`);
+if (args.race && !args.panel) args.panel = true;
+if (opt !== 'ga') opts.opt = opt;
+if (args.panel) {
+  opts.panel = parsePanelSpec(args.panel);
+  opts.panelFixed = args['panel-fixed'] ? String(args['panel-fixed']).split(',').filter(Boolean) : [];
+  opts.slots = +(args.slots ?? opts.rounds);
+  opts.hofEvery = +(args['hof-every'] ?? 5);
+  opts.hofSize = +(args['hof-size'] ?? 20);
+  if (opts.reevalTop > 0) throw new Error('--reeval-top is for co-evolution pairings; with --panel use --race');
+}
+if (args.race) {
+  opts.race = { step: +(args['race-step'] ?? Math.max(4, Math.round(opts.slots / 2))), max: +(args['race-max'] ?? 3 * opts.slots), z: +(args['race-z'] ?? 1.5) };
+}
+if (opt === 'cmaes') {
+  opts.cma = { sigma0: +(args['cma-sigma'] ?? 0.15), mirror: !!args['cma-mirror'], minSigma: +(args['cma-min-sigma'] ?? 0.01) };
+  if (opts.carry) throw new Error('--carry has no meaning with --opt cmaes (no individual survives a generation)');
+}
 const outDir = resolve(args.out ?? `runs/evo-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 mkdirSync(outDir, { recursive: true });
 
@@ -84,9 +125,10 @@ function tournament(ranked, k = 3) {
   return best;
 }
 
+const keepCount = () => Math.max(1, Math.round(opts.pop * opts.elite));
 function nextPopulation(side, ranked, gen) {
   const space = spaces[side];
-  const keep = Math.max(1, Math.round(opts.pop * opts.elite));
+  const keep = keepCount();
   const elites = ranked.slice(0, keep).map((x) => ({ id: x.id, params: x.params, parents: x.parents, born: x.born, ...(opts.carry ? { hist: x.hist } : {}) }));
   const children = [];
   while (elites.length + children.length < opts.pop) {
@@ -110,14 +152,164 @@ function knobStats(side, pop) {
   return out;
 }
 
+const agg = (n) => Array.from({ length: n }, () => ({ fit: 0, bp: 0, n: 0, kills: 0, escapes: 0, gens: 0, F: [] }));
+const TOT_KEYS = ['survivalTime', 'kills', 'escapes', 'gensDone', 'genProgress', 'hunterScore100', 'hookStages', 'hunterBP', 'survivorBP', 'durationS', 'hooks'];
+function outcomeOf(results) {
+  const tot = Object.fromEntries(TOT_KEYS.map((k) => [k, 0]));
+  for (const r of results) for (const k of TOT_KEYS) tot[k] += r[k] ?? 0;
+  for (const k of TOT_KEYS) tot[k] = +(tot[k] / results.length).toFixed(3);
+  const mets = averageMetrics(results, 3);
+  if (mets) tot.metrics = mets;
+  return tot;
+}
+// fitness sample per individual: this generation's games (+ its earlier generations' games with --carry)
+const sample = (x, a) => (opts.carry && x.hist ? { fit: a.fit + x.hist.fit, n: a.n + x.hist.n } : { fit: a.fit, n: a.n });
+const scored = (popn, A) => popn.map((x, i) => {
+  const s = sample(x, A[i]);
+  return { ...x, idx: i, fit: s.fit / s.n, games: s.n, fitSd: Math.sqrt(variance(A[i].F)), ...(opts.carry ? { hist: s } : {}),
+    bp: A[i].bp / A[i].n, kills: A[i].kills / A[i].n, escapes: A[i].escapes / A[i].n, gensDone: A[i].gens / A[i].n };
+});
+const rank = (popn, A) => scored(popn, A).sort((a, b) => b.fit - a.fit);
+const addHunter = (a, r) => { a.fit += r.hunterFit; a.bp += r.hunterBP; a.kills += r.kills; a.n++; a.F.push(r.hunterFit); };
+const addSurvivor = (a, r) => { a.fit += r.survivorFit; a.bp += r.survivorBP; a.escapes += r.escapes; a.gens += r.gensDone; a.n++; a.F.push(r.survivorFit); };
+
+// ---------- co-evolution evaluation (the historical path; R consumption unchanged) ----------
+async function evalCoevo() {
+  // pairings: each round is a random permutation, so every individual plays exactly `rounds` matches
+  // (--paired: one shared seed per round, so every individual of a side sees the same seed/map set)
+  const jobs = roundJobs({ hunters, survivors, rounds: opts.rounds, R, paired: opts.paired });
+  const results = await pool.run(jobs);
+  const H = agg(hunters.length), S = agg(survivors.length);
+  for (const r of results) { addHunter(H[r.h], r); addSurvivor(S[r.s], r); }
+  const tot = outcomeOf(results);
+  // reliability from the main rounds (raw: co-evolution opponents and seeds differ per individual unless --paired)
+  const sel = { hunter: { rel: reliability(H.map((a) => a.F.slice())) }, survivor: { rel: reliability(S.map((a) => a.F.slice())) } };
+  let rh = rank(hunters, H), rs = rank(survivors, S);
+
+  // --reeval-top: extra games for the current top K of each side, then re-rank (the population outcome line
+  // stays main-round only, so it remains comparable with runs without re-evaluation)
+  let reeval = null;
+  if (opts.reevalTop > 0 && opts.reevalRounds > 0) {
+    const K = Math.min(opts.reevalTop, rh.length, rs.length);
+    const before = { hunter: rh.slice(0, K).map((x) => [x.id, x.fit]), survivor: rs.slice(0, K).map((x) => [x.id, x.fit]) };
+    const extra = await pool.run(reevalJobs({ hunters, survivors, topH: rh.slice(0, K).map((x) => x.idx), topS: rs.slice(0, K).map((x) => x.idx), rounds: opts.reevalRounds, R }));
+    const xH = agg(hunters.length), xS = agg(survivors.length);
+    for (const r of extra) {
+      if (r.only === 'hunter') { addHunter(H[r.h], r); addHunter(xH[r.h], r); }
+      else { addSurvivor(S[r.s], r); addSurvivor(xS[r.s], r); }
+    }
+    rh = rank(hunters, H); rs = rank(survivors, S);
+    const moved = (rk, b) => b.map(([id, f]) => { const i = rk.findIndex((x) => x.id === id); return { id, before: +f.toFixed(4), after: +rk[i].fit.toFixed(4), rank: i + 1 }; });
+    reeval = { matches: extra.length, hunter: moved(rh, before.hunter), survivor: moved(rs, before.survivor) };
+    // test-retest reliability of the top K: main-round mean vs the independent re-evaluation mean
+    const retest = (b, X, rk) => {
+      const pairs = b.map(([id, f]) => { const i = rk.find((x) => x.id === id).idx; return X[i].n ? [f, X[i].fit / X[i].n] : null; }).filter(Boolean);
+      return pairs.length >= 3 ? { n: pairs.length, rho: +(spearmanOf(pairs)).toFixed(3) } : null;
+    };
+    sel.hunter.retest = retest(before.hunter, xH, rh); sel.survivor.retest = retest(before.survivor, xS, rs);
+  }
+  return { rh, rs, tot, matches: results.length, extra: { ...(opts.paired ? { seeds: [...new Set(jobs.map((j) => j.seed))] } : {}), ...(reeval ? { reeval } : {}) }, sel };
+}
+const spearmanOf = (pairs) => spearman(pairs.map((p) => p[0]), pairs.map((p) => p[1])) ?? NaN;
+
+// ---------- panel evaluation (+ racing) ----------
+const fixedOpp = { hunter: [], survivor: [] };   // fixed external opponents FOR each side
+let hof = { hunter: [], survivor: [] };          // hall of fame OF each side
+let prevRanked = { hunter: null, survivor: null };
+let cma = null;                                  // { hunter: state, survivor: state }
+
+async function evalPanel(gen) {
+  const panels = {
+    hunter: buildPanel(opts.panel, { space: spaces.survivor, ranked: prevRanked.survivor, pop: survivors, mean: cma && fromNorm(spaces.survivor, cma.survivor.mean), hof: hof.survivor, fixed: fixedOpp.hunter }),
+    survivor: buildPanel(opts.panel, { space: spaces.hunter, ranked: prevRanked.hunter, pop: hunters, mean: cma && fromNorm(spaces.hunter, cma.hunter.mean), hof: hof.hunter, fixed: fixedOpp.survivor }),
+  };
+  const pops = { hunter: hunters, survivor: survivors };
+  const A = { hunter: agg(hunters.length), survivor: agg(survivors.length) };
+  const slotsDone = { hunter: 0, survivor: 0 };
+  const all = [];
+  const seedsUsed = { hunter: [], survivor: [] };
+  const play = async (plan) => {
+    // plan: { side: idx[] } with `n` new slots each -> one pool batch for both sides (no idle tail between them)
+    const jobs = [];
+    for (const side of ['hunter', 'survivor']) {
+      if (!plan[side] || !plan[side].idx.length) continue;
+      const sl = makeSlots(panels[side], plan[side].n, R, slotsDone[side]);
+      slotsDone[side] += plan[side].n;
+      seedsUsed[side].push(...sl.map((s) => s.seed));
+      jobs.push(...slotJobs({ side, pop: pops[side], panel: panels[side], idx: plan[side].idx, slots: sl }));
+    }
+    const res = await pool.run(jobs);
+    // results come back in job order = slot-major, so each individual's F stays in slot order
+    for (const r of res) (r.side === 'hunter' ? addHunter : addSurvivor)(A[r.side][r.i], r);
+    all.push(...res);
+  };
+  const idxAll = (side) => pops[side].map((_, i) => i);
+  await play({ hunter: { idx: idxAll('hunter'), n: opts.slots }, survivor: { idx: idxAll('survivor'), n: opts.slots } });
+  const sel = {};
+  for (const side of ['hunter', 'survivor']) sel[side] = { rel: reliability(A[side].map((a) => a.F.slice(0, opts.slots)), { centred: true }) };
+
+  let race = null;
+  const keep = cma ? cma.hunter.mu : keepCount();   // the selection cut: GA elites / CMA-ES parents (mu)
+  const order = {};
+  if (opts.race) {
+    const st = {}, F = {};
+    for (const side of ['hunter', 'survivor']) { F[side] = A[side].map((a) => a.F); st[side] = raceStep(F[side], { inSet: [], outSet: [], alive: idxAll(side) }, keep, opts.race.z); }
+    const stages = { hunter: [st.hunter.alive.length], survivor: [st.survivor.alive.length] };
+    while (true) {
+      const plan = {};
+      for (const side of ['hunter', 'survivor']) {
+        const room = opts.race.max - slotsDone[side];
+        if (st[side].alive.length && room > 0) plan[side] = { idx: st[side].alive.slice().sort((a, b) => a - b), n: Math.min(opts.race.step, room) };
+      }
+      if (!plan.hunter && !plan.survivor) break;
+      await play(plan);
+      for (const side of ['hunter', 'survivor']) if (plan[side]) {
+        st[side] = raceStep(F[side], st[side], keep, opts.race.z);
+        stages[side].push(st[side].alive.length);
+      }
+    }
+    race = {};
+    for (const side of ['hunter', 'survivor']) {
+      const fitOf = (i) => mean(F[side][i]);
+      const by = (list) => list.slice().sort((a, b) => fitOf(b) - fitOf(a) || a - b);
+      order[side] = [...by(st[side].inSet), ...by(st[side].alive), ...by(st[side].outSet)];
+      race[side] = { slots: slotsDone[side], contenders: stages[side], undecided: st[side].alive.length, matches: A[side].reduce((a, x) => a + x.n, 0) };
+    }
+  }
+  const ranked = {};
+  for (const side of ['hunter', 'survivor']) {
+    const sc = scored(pops[side], A[side]);
+    ranked[side] = order[side] ? order[side].map((i) => sc[i]) : sc.sort((a, b) => b.fit - a.fit);
+    if (race) sel[side].race = race[side];
+  }
+  return {
+    rh: ranked.hunter, rs: ranked.survivor, tot: outcomeOf(all), matches: all.length, sel,
+    extra: { panel: { hunter: panels.hunter.map((p) => p.name), survivor: panels.survivor.map((p) => p.name), slots: opts.slots } },
+  };
+}
+
 // ---------- main loop ----------
 let hunters, survivors, startGen = 1;
 const popFile = join(outDir, 'population.json');
 if (args.resume && existsSync(popFile)) {
   const saved = JSON.parse(readFileSync(popFile, 'utf8'));
   ({ hunters, survivors } = saved); startGen = saved.gen + 1; nextId = saved.nextId;
+  if (saved.hof) hof = saved.hof;
+  if (saved.prev) prevRanked = saved.prev;
+  if (saved.cma) cma = saved.cma;
+} else if (opt === 'cmaes') {
+  // start at the hand-tuned defaults (the GA keeps them as individual 0 for the same reason)
+  cma = {
+    hunter: cmaInit(spaces.hunter, defaults(spaces.hunter), { lambda: opts.pop, sigma0: opts.cma.sigma0, mirror: opts.cma.mirror, minSigma: opts.cma.minSigma }),
+    survivor: cmaInit(spaces.survivor, defaults(spaces.survivor), { lambda: opts.pop, sigma0: opts.cma.sigma0, mirror: opts.cma.mirror, minSigma: opts.cma.minSigma }),
+  };
 } else {
   hunters = initPop('hunter'); survivors = initPop('survivor');
+}
+if (opts.panel) for (const s of opts.panelFixed) {
+  const p = resolveParamSet(s, spaces);
+  if (p.survivor) fixedOpp.hunter.push({ name: p.name, params: p.survivor });
+  if (p.hunter) fixedOpp.survivor.push({ name: p.name, params: p.hunter });
 }
 // provenance: source snapshot (git HEAD + dirty flag), map pool fingerprint, the exact command and the full config
 const cfgFile = join(outDir, 'config.json');
@@ -133,79 +325,75 @@ writeFileSync(cfgFile, JSON.stringify({
   // a resumed run keeps the provenance of its earlier legs
   ...(prevCfg ? { previous: [...(prevCfg.previous ?? []), { ...prevCfg, previous: undefined, spaces: undefined }] } : {}),
 }, null, 2));
-console.log(`evolving on ${opts.map}: pop ${opts.pop}+${opts.pop}, ${opts.rounds} rounds/gen, ${opts.threads} threads -> ${outDir}`);
+console.log(`evolving on ${opts.map}: pop ${opts.pop}+${opts.pop}, ${opts.panel ? `panel ${opts.slots} slots${opts.race ? ` (race to ${opts.race.max})` : ''}` : `${opts.rounds} rounds/gen`}${opt === 'cmaes' ? ', sep-CMA-ES' : ''}, ${opts.threads} threads -> ${outDir}`);
 
+pool.takeStats();
 for (let gen = startGen; gen < startGen + opts.gens; gen++) {
   const t0 = Date.now();
-  // pairings: each round is a random permutation, so every individual plays exactly `rounds` matches
-  // (--paired: one shared seed per round, so every individual of a side sees the same seed/map set)
-  const jobs = roundJobs({ hunters, survivors, rounds: opts.rounds, R, paired: opts.paired });
-  const results = await pool.run(jobs);
-
-  const agg = (n) => Array.from({ length: n }, () => ({ fit: 0, bp: 0, n: 0, kills: 0, escapes: 0, gens: 0 }));
-  const H = agg(hunters.length), S = agg(survivors.length);
-  const tot = { survivalTime: 0, kills: 0, escapes: 0, gensDone: 0, genProgress: 0, hunterScore100: 0, hookStages: 0, hunterBP: 0, survivorBP: 0, durationS: 0, hooks: 0 };
-  for (const r of results) {
-    const h = H[r.h], s = S[r.s];
-    h.fit += r.hunterFit; h.bp += r.hunterBP; h.n++; h.kills += r.kills;
-    s.fit += r.survivorFit; s.bp += r.survivorBP; s.n++; s.escapes += r.escapes; s.gens += r.gensDone;
-    for (const k of Object.keys(tot)) tot[k] += r[k] ?? 0;
+  let cand = null;
+  if (cma) {
+    // sample this generation's populations from each side's search distribution
+    cand = { hunter: cmaAsk(spaces.hunter, cma.hunter, R), survivor: cmaAsk(spaces.survivor, cma.survivor, R) };
+    hunters = cand.hunter.map((c) => individual('hunter', c.params, null, gen));
+    survivors = cand.survivor.map((c) => individual('survivor', c.params, null, gen));
   }
-  for (const k of Object.keys(tot)) tot[k] = +(tot[k] / results.length).toFixed(3);
-  const mets = averageMetrics(results, 3);
-  if (mets) tot.metrics = mets;
-  // fitness sample per individual: this generation's games (+ its earlier generations' games with --carry)
-  const sample = (x, a) => (opts.carry && x.hist ? { fit: a.fit + x.hist.fit, n: a.n + x.hist.n } : { fit: a.fit, n: a.n });
-  const rank = (popn, A) => popn.map((x, i) => {
-    const s = sample(x, A[i]);
-    return { ...x, idx: i, fit: s.fit / s.n, games: s.n, ...(opts.carry ? { hist: s } : {}),
-      bp: A[i].bp / A[i].n, kills: A[i].kills / A[i].n, escapes: A[i].escapes / A[i].n, gensDone: A[i].gens / A[i].n };
-  }).sort((a, b) => b.fit - a.fit);
-  let rh = rank(hunters, H), rs = rank(survivors, S);
+  const ev = opts.panel ? await evalPanel(gen) : await evalCoevo();
+  const { rh, rs, tot } = ev;
+  const sel = ev.sel;
+  if (!cma) { sel.hunter.persist = persistence(prevRanked.hunter, rh); sel.survivor.persist = persistence(prevRanked.survivor, rs); }
 
-  // --reeval-top: extra games for the current top K of each side, then re-rank (the population outcome line
-  // stays main-round only, so it remains comparable with runs without re-evaluation)
-  let reeval = null;
-  if (opts.reevalTop > 0 && opts.reevalRounds > 0) {
-    const K = Math.min(opts.reevalTop, rh.length, rs.length);
-    const before = { hunter: rh.slice(0, K).map((x) => [x.id, x.fit]), survivor: rs.slice(0, K).map((x) => [x.id, x.fit]) };
-    const extra = await pool.run(reevalJobs({ hunters, survivors, topH: rh.slice(0, K).map((x) => x.idx), topS: rs.slice(0, K).map((x) => x.idx), rounds: opts.reevalRounds, R }));
-    for (const r of extra) {
-      if (r.only === 'hunter') { const a = H[r.h]; a.fit += r.hunterFit; a.bp += r.hunterBP; a.kills += r.kills; a.n++; }
-      else { const a = S[r.s]; a.fit += r.survivorFit; a.bp += r.survivorBP; a.escapes += r.escapes; a.gens += r.gensDone; a.n++; }
-    }
-    rh = rank(hunters, H); rs = rank(survivors, S);
-    const moved = (rk, b) => b.map(([id, f]) => { const i = rk.findIndex((x) => x.id === id); return { id, before: +f.toFixed(4), after: +rk[i].fit.toFixed(4), rank: i + 1 }; });
-    reeval = { matches: extra.length, hunter: moved(rh, before.hunter), survivor: moved(rs, before.survivor) };
+  let cmaLog = null;
+  if (cma) {
+    cma = { hunter: cmaTell(cma.hunter, rh.map((x) => cand.hunter[x.idx].x)), survivor: cmaTell(cma.survivor, rs.map((x) => cand.survivor[x.idx].x)) };
+    cmaLog = { hunter: cmaSummary(spaces.hunter, cma.hunter), survivor: cmaSummary(spaces.survivor, cma.survivor) };
+  }
+  // the side's best estimate of a champion: GA = rank 1; CMA-ES = the (updated) distribution mean
+  const champ = cma
+    ? { hunter: fromNorm(spaces.hunter, cma.hunter.mean), survivor: fromNorm(spaces.survivor, cma.survivor.mean), hunterId: `mean@${gen}`, survivorId: `mean@${gen}` }
+    : { hunter: rh[0].params, survivor: rs[0].params, hunterId: rh[0].id, survivorId: rs[0].id };
+  if (opts.panel && opts.hofEvery > 0 && gen % opts.hofEvery === 0) {
+    hof = { hunter: hofAdd(hof.hunter, { gen, id: champ.hunterId, params: champ.hunter }, opts.hofSize), survivor: hofAdd(hof.survivor, { gen, id: champ.survivorId, params: champ.survivor }, opts.hofSize) };
   }
 
   // fixed-opponent benchmark on held-out seeds: comparable across generations and across runs
   let bench = null;
   if (benchSet && (gen % opts.benchEvery === 0 || gen === startGen + opts.gens - 1)) {
-    const br = await pool.run(benchJobs({ champ: { hunter: rh[0].params, survivor: rs[0].params }, opponents: benchSet.opponents, seeds: benchSet.seeds }));
-    bench = { seeds: { first: benchSet.seeds[0], n: benchSet.seeds.length }, champ: { hunter: rh[0].id, survivor: rs[0].id }, vs: groupBench(br) };
+    const br = await pool.run(benchJobs({ champ: { hunter: champ.hunter, survivor: champ.survivor }, opponents: benchSet.opponents, seeds: benchSet.seeds }));
+    bench = { seeds: { first: benchSet.seeds[0], n: benchSet.seeds.length }, champ: { hunter: champ.hunterId, survivor: champ.survivorId }, vs: groupBench(br) };
   }
 
-  const brief = (x) => ({ id: x.id, born: x.born, parents: x.parents, ...(opts.carry || opts.reevalTop > 0 ? { fit: +x.fit.toFixed(4), games: x.games } : {}), bp: Math.round(x.bp), kills: x.kills !== undefined ? +x.kills.toFixed(2) : undefined, escapes: +(x.escapes ?? 0).toFixed(2), gensDone: +(x.gensDone ?? 0).toFixed(2), params: round(x.params) });
+  const showFit = opts.carry || opts.reevalTop > 0 || !!opts.panel || !!cma;
+  const brief = (x) => ({ id: x.id, born: x.born, parents: x.parents, ...(showFit ? { fit: +x.fit.toFixed(4), games: x.games } : {}), bp: Math.round(x.bp), kills: x.kills !== undefined ? +x.kills.toFixed(2) : undefined, escapes: +(x.escapes ?? 0).toFixed(2), gensDone: +(x.gensDone ?? 0).toFixed(2), params: round(x.params), fitSd: +x.fitSd.toFixed(4) });
+  const perf = pool.takeStats();
+  const r3 = (v) => (v === null || v === undefined ? null : v);
   appendFileSync(join(outDir, 'evo.jsonl'), JSON.stringify({
-    gen, seconds: (Date.now() - t0) / 1000, matches: results.length, outcome: tot,
-    ...(opts.paired ? { seeds: [...new Set(jobs.map((j) => j.seed))] } : {}),
-    ...(reeval ? { reeval } : {}), ...(bench ? { bench } : {}),
+    gen, seconds: (Date.now() - t0) / 1000, matches: ev.matches, outcome: tot,
+    ...ev.extra, ...(bench ? { bench } : {}), ...(cmaLog ? { cma: cmaLog } : {}),
     // edges: knobs with >= 25 % of the population within 5 % of a range bound (share at lo / hi)
     hunters: { ranking: rh.map(brief), knobs: knobStats('hunter', hunters), edges: edgeReport(spaces.hunter, hunters) },
     survivors: { ranking: rs.map(brief), knobs: knobStats('survivor', survivors), edges: edgeReport(spaces.survivor, survivors) },
+    selection: sel, perf,
   }) + '\n');
 
-  hunters = nextPopulation('hunter', rh, gen);
-  survivors = nextPopulation('survivor', rs, gen);
-  writeFileSync(popFile, JSON.stringify({ gen, nextId, hunters, survivors, best: { hunter: rh[0].params, survivor: rs[0].params } }, null, 2));
+  const keepPrev = (rk) => rk.slice(0, 16).map((x) => ({ id: x.id, fit: x.fit, params: x.params }));
+  prevRanked = { hunter: keepPrev(rh), survivor: keepPrev(rs) };
+  if (!cma) {
+    hunters = nextPopulation('hunter', rh, gen);
+    survivors = nextPopulation('survivor', rs, gen);
+  }
+  const extraState = opts.panel || cma ? { hof, prev: prevRanked, ...(cma ? { cma } : {}) } : {};
+  writeFileSync(popFile, JSON.stringify({ gen, nextId, hunters, survivors, best: { hunter: champ.hunter, survivor: champ.survivor }, ...extraState }, null, 2));
   // champions.json in the climb format, so the viewer/matchup can play the current best pair
-  writeFileSync(join(outDir, 'champions.json'), JSON.stringify({ gen, champ: { hunter: round(rh[0].params), survivor: round(rs[0].params) } }, null, 2));
+  writeFileSync(join(outDir, 'champions.json'), JSON.stringify({ gen, champ: { hunter: round(champ.hunter), survivor: round(champ.survivor) }, ...(cma ? { bestSample: { hunter: round(rh[0].params), survivor: round(rs[0].params) } } : {}) }, null, 2));
+  if (opts.panel) writeFileSync(join(outDir, 'hof.json'), JSON.stringify(hof, null, 2));
 
   const tk = knobStats('hunter', rh).tunnel;
+  const relTxt = (s) => (s.rel ? `rel ${s.rel.rel ?? '-'}${s.persist ? ` persist ${s.persist.rho ?? '-'}` : ''}` : 'rel -');
   console.log(`gen ${String(gen).padStart(3)}  kills ${tot.kills.toFixed(2)} esc ${tot.escapes.toFixed(2)} gens ${tot.gensDone.toFixed(2)}  ` +
     `H score ${tot.hunterScore100.toFixed(1)} (stages ${tot.hookStages.toFixed(1)})  S BP ${Math.round(tot.survivorBP)}  best H ${(100 * rh[0].fit).toFixed(1)} S ${Math.round(rs[0].bp)}  ` +
     (tk ? `tunnel med ${tk.med.toFixed(2)} [${tk.q25.toFixed(2)}..${tk.q75.toFixed(2)}]  ` : '') + `(${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  console.log(`        selection H ${relTxt(sel.hunter)} | S ${relTxt(sel.survivor)}  ${cmaLog ? `sigma H ${cmaLog.hunter.sigma} S ${cmaLog.survivor.sigma}  ` : ''}` +
+    `${perf.matches} matches ${perf.matchesPerS}/s util ${perf.util} ${r3(perf.msPerGameS)} ms/game-s`);
   if (bench) for (const [name, v] of Object.entries(bench.vs)) {
     console.log(`        bench vs ${name}: champ H ${v.hunter ? `kills ${v.hunter.kills.toFixed(2)} score ${v.hunter.hunterScore100.toFixed(1)}` : '-'}  |  ` +
       `champ S ${v.survivor ? `esc ${v.survivor.escapes.toFixed(2)} gens ${v.survivor.gensDone.toFixed(2)} fit ${v.survivor.survivorFit.toFixed(3)}` : '-'}`);
