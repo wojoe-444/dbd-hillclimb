@@ -1773,6 +1773,62 @@ test('route lookahead off (all knobs 0 / lookaheadMaxM 0) = identical matches; o
   }
 });
 
+test('fast-vault approach (survivor vaultLineup): funnel runs fast-vault in the engine; lineup geometry + tier pricing; off = inert, on = deterministic', () => {
+  const B = getBrains(), S = B.survivor.space;
+  for (const k of ['vaultLineup', 'vaultApproachM', 'vaultDetourW', 'vaultFunnelDeg', 'vaultAngleW']) ok(Array.isArray(S[k]) && S[k][0] <= S[k][2] && S[k][2] <= S[k][1], `${k} in survivorSpace with its default in range (${JSON.stringify(S[k])})`);
+  ok(S.vaultLineup[0] === 0 && S.vaultLineup[2] === 0, 'vaultLineup default off (0 = the pre-lineup approach, inside the range)');
+  // engine: a straight-in run steered at the aim point (window face, lane centre) from 20 deg off the axis, 4.2 m out -> fast
+  // win-house: cell (13, 8), axis z, open ground north; centre (13.5, 8.5); aim point 0.9 m out = (13.5, 7.6)
+  const straightIn = (x, z) => {
+    const { m, ctl } = mk(); place(m.survivors[0], x, z);
+    ctl.S[0] = (o) => ({ moveDir: { x: 13.5 - o.self.x, z: 7.6 - o.self.z } });
+    let dur = -1;
+    for (let i = 0; i < 40; i++) { m.step(); const v = m.survivors[0].vault; if (v) { dur = v.dur; break; } }
+    return dur;
+  };
+  const u = 4.2, t20 = Math.tan((20 * Math.PI) / 180);
+  near(straightIn(13.5 + t20 * (u - 0.9), 8.5 - u), 0.5, 1e-9, '20 deg straight-in run from 4.2 m out: fast vault');
+  near(straightIn(13.5, 8.5 - 3.9), 0.5, 1e-9, 'on-axis straight-in run from 3.9 m out (runNeed): fast vault');
+  near(straightIn(13.5, 8.5 - 3.0), 0.9, 1e-9, 'on-axis run from 3.0 m out: too short, medium vault');
+  // brain-side geometry (LoopModel with the lineup on)
+  let sctx = null;
+  const idle = () => ({ decide: () => ({}) });
+  createMatch({ map: smallMap, seed: 3, hunter: idle, survivors: [(c) => { sctx = c; return idle(); }, idle, idle, idle] });
+  const L1 = new LoopModel(sctx, { lineup: true, approachM: 4, detourW: 1, funnelDeg: 20, tierW: 1 });
+  const L0 = new LoopModel(sctx, { lineup: true, approachM: 4, detourW: 1, funnelDeg: 20, tierW: 0 });
+  const Loff = new LoopModel(sctx);
+  const w = L1.anchors.find((a) => a.kind === 'w' && a.id === 'win-house'), c = 2 * w.k;   // crossing entering from the north (s[0])
+  ok(L1.sidePt[c].z < w.c.z, 'crossing c enters from the north side');
+  near(L1.runNeed, 3.9, 1e-9, 'runNeed = vault start 1.2 m + run-up 2.5 m + 0.2 m slack');
+  ok(L1.lineup[c] && L1.lineup[c].D >= L1.runNeed - 1e-9 && L1.lineup[c].D <= 4 + 1e-9 && L1.lineup[c].opts.length >= 3, 'lineup options in front of win-house (D within [runNeed, approachM])');
+  ok(Loff.lineup.every((x) => x === null) && L1.lineup.some((x) => x !== null), 'no lineup points while the knob is off');
+  ok(L1.inFunnel(c, { x: 13.5, z: 3.5 }), 'on the axis 5 m out: in the funnel');
+  ok(!L1.inFunnel(c, { x: 13.5, z: 6.0 }), '2.5 m out: not in the funnel (run-up too short)');
+  ok(!L1.inFunnel(c, { x: 13.5 + 4, z: 3.5 }), '5 m out, 4 m sideways (> 20 deg): not in the funnel');
+  ok(!L1.inFunnel(c ^ 1, { x: 13.5, z: 3.5 }), 'the other crossing direction: not its funnel (wrong side)');
+  // pricing: a perpendicular arrival at the entry (8 m sideways) costs a long detour -> medium; a straight one -> fast
+  const P0 = L1.sidePt[c], perp = { x: P0.x + 8, z: P0.z }, str = { x: 13.5, z: 8.5 - 9 };
+  const dE = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
+  const xp = L1.lineupExt(c, perp, dE(perp, L1.lineup[c]), dE(perp, P0)), xs = L1.lineupExt(c, str, dE(str, L1.lineup[c]), dE(str, P0));
+  ok(xp.ext > 1.6 && !L1.lineupWorth(xp.ext), `perpendicular arrival: lineup detour ${xp.ext.toFixed(2)} m not worth 0.4 s`);
+  ok(xs.ext < 0.3 && L1.lineupWorth(xs.ext), `straight arrival: lineup is on the way (${xs.ext.toFixed(2)} m)`);
+  ok(Math.abs(xp.x - 13.5) > 0.3, 'the lineup option is angled toward a side arrival');
+  // RouteEval: with the lineup on, a window entered from the side costs a medium vault, a straight run-in a fast one
+  const st = { pallets: smallMap.pallets.map(() => 'up'), blockedWindows: [] }, hp = { x: 40.5, z: 30.5 };
+  const Q = L1.sidePt[c ^ 1];
+  const sd = (L, me) => { const r = new RouteEval(L, sctx); r.prepare(st, me, hp, 0); return r.sDist(Q.x, Q.z); };
+  const side = { x: 13.5 + 5, z: 6.5 }, front = { x: 13.5, z: 1.5 };
+  near(sd(L1, side) - sd(Loff, side), 0.4 * 4, 0.25, 'route field: side approach priced as a medium vault (+0.4 s x 4 m/s over the old flat fast price)');
+  near(sd(L1, front) - sd(Loff, front), 0, 0.25, 'route field: straight run-in priced as a fast vault (same as before)');
+  near(sd(L0, side) - sd(Loff, side), 0, 0.25, 'route field: vaultAngleW 0 = every window priced fast again');
+  // full matches: off ignores the other knobs (bit-identical events); on is deterministic
+  const go = (sp, seed) => JSON.stringify(runMatch({ map: smallMap, seed, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make({ ...defaults(B.survivor.space), ...sp }) }).events);
+  for (const seed of [51, 52]) {
+    ok(go({}, seed) === go({ vaultLineup: 0, vaultApproachM: 5.5, vaultDetourW: 0, vaultFunnelDeg: 8, vaultAngleW: 0.2 }, seed), `seed ${seed}: lineup off = the other vault knobs are inert`);
+    ok(go({ vaultLineup: 1 }, seed) === go({ vaultLineup: 1 }, seed), `seed ${seed}: lineup on is deterministic`);
+  }
+});
+
 test('entity blocker: 3 vaults of one window in the SAME chase block it for that survivor; out-of-chase vaults do not count', () => {
   const trial = (inChase, newChaseAfter2) => {
     const { m, ctl } = mk(); const s = m.survivors[0];

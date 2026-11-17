@@ -44,6 +44,22 @@ export const survivorSpace = {
   loopReactS:    [0, 1.5, 0.4],  // ...after seeing that for this long (reaction time; also filters a hunter's fake turn)
   vaultSafetyMarginM: [0, 3, 0.8], // vault only if the hunter's swing (range + windup lunge) misses by this margin in a 1D replay
   vaultClearanceS: [0, 3, 1],    // don't vault a window the hunter is in / cleared less than this long ago
+  // ---- fast-vault approach (a fast window vault needs a straight 2.5 m run-up ending at the window; arriving from the
+  // side at the 1.6 m entry point gives a 0.9 s medium vault). docs/research/fast-vaults.md ----
+  // >0.5: on. A running loop crossing may line up in front of the window and run straight in, and the planners price
+  // the vault tier that approach produces (loops.tsIn, routes.js run-up edges). Off (default) = the entry-point approach
+  // and the old pricing (bit-identical to before; on measured slightly worse in full matches, see the doc)
+  vaultLineup:   [0, 1, 0],
+  vaultApproachM: [3.9, 6, 4],   // how far out (m, from the window centre) the lineup starts at most (>= 3.9 for a 2.5 m run-up)
+  // line up when the extra path x this weight costs less than the 0.4 s a fast vault saves (and the lineup stays
+  // safe); 0 = always when the lane allows it, high = only when it's on the way
+  vaultDetourW:  [0, 4, 1],
+  // approach angle: the straight-in run may start up to this many degrees off the window's axis (the engine's
+  // fast-vault cone is 25 deg; wider = shorter lineup detours, less slack; the run is steered directly, not via the nav)
+  vaultFunnelDeg: [5, 24, 20],
+  // planners price a window crossing as fast + this x (the executed approach's extra time: medium vault, or the lineup
+  // detour); 1 = as executed, 0 = every window as a fast vault (optimistic: the medium-vs-fast trade-off weight)
+  vaultAngleW:   [0, 1.5, 1],
   loopScoutW:    [0, 2, 0.5],    // exploring: pull toward unseen windows / pallets that would complete a strong known loop
   chaseToMatesW: [-1, 1, 0],     // in a chase: >0 run toward teammates known to be repairing, <0 lead the hunter away from them
   edgeAvoidW:    [-1, 1, 0],     // in a chase: >0 avoid loops / flee points within 16 m of the map's outer wall, <0 prefer them
@@ -142,7 +158,7 @@ export function makeSurvivor(P) {
   return (ctx) => {
     const M = ctx.map;
     // survivors don't know where the generators are: obs.gens[i] gets id / position / slots once found (engine).
-    const loops = new LoopModel(ctx);            // anchors + distance-held circuits (static parts lazily, once per match)
+    const loops = new LoopModel(ctx, { lineup: (P.vaultLineup ?? 0) > 0.5, approachM: P.vaultApproachM ?? 4, detourW: P.vaultDetourW ?? 1, funnelDeg: P.vaultFunnelDeg ?? 20, tierW: P.vaultAngleW ?? 1 });   // anchors + distance-held circuits (static parts lazily, once per match)
     const anchors = loops.anchors;
     const know = new MapKnowledge(ctx, anchors);  // explored area + anchors seen
     const routes = new RouteEval(loops, ctx);     // short-horizon distance held for open-field routes
@@ -182,6 +198,7 @@ export function makeSurvivor(P) {
     const vaultCount = new Map(); let wasVaulting = false, lastChasedT = -99;   // window vaults in the current chase (entity blocker)
     let myVault = null;           // my vault in progress: { c (crossing), t }
     const occupiedUntil = new Map();   // anchor k -> time: the hunter is in / just cleared it (visible vault)
+    const hunterVaultT = new Map();    // anchor k -> last time I saw the hunter mid-vault through it (re-vault rule: no fast vault for revaultNoFastS)
     let blT0 = 0;                 // Bloodlust clock start (chase start / my hit / observed pallet break)
     let prevMyState = 'healthy', prevPal = null;
     let brk = null, brkSeenT = -99;   // visible hunter pallet break this tick ({ i, remainS }) / last tick one was seen
@@ -279,7 +296,7 @@ export function makeSurvivor(P) {
     let peek = null;              // current peek: { spot, look, since }
     let hide = null;              // { start, lastTrig, spot, spotT }
     let hideCooldownUntil = -99;
-    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0, trustTicks: 0, taskGlances: 0, candExplores: 0, fcReversals: 0, fcLeaves: 0, holdLeaves: 0, stationTicks: 0 };   // diagnostics (read by scripts via brain.stats)
+    const stats = { decides: 0, hideTicks: 0, hides: 0, found: 0, chases: 0, peekTicks: 0, peeks: 0, peekFound: 0, loopReversals: 0, trustTicks: 0, taskGlances: 0, candExplores: 0, fcReversals: 0, fcLeaves: 0, holdLeaves: 0, stationTicks: 0, lineup: { revault: 0, funnel: 0, cost: 0, unsafe: 0, chosen: 0, dropped: 0, realign: 0 } };   // diagnostics (read by scripts via brain.stats)
     let wasChased = false, lastHideTickT = -99, lastPeekT = -99, wasChasedV = false;
     const kick = makeKickPlanner(ctx, P, { belief, peekValue, hunterCouldSee, slots, stats, beliefOn });   // kicked-gen plan (kickplan.js)
     const genCover = M.generators.map(() => null);   // per known gen: mean cover of its repair slots (lazy)
@@ -493,13 +510,26 @@ export function makeSurvivor(P) {
       const ax = (loops.sidePt[c ^ 1].x - P0.x) / 3.2, az = (loops.sidePt[c ^ 1].z - P0.z) / 3.2;
       return L >= RUNUP_TO_CENTRE && (vx * ax + vz * az) / L >= Math.cos(25 * Math.PI / 180);
     };
-    // run-up point: further out than the entry, on the axis, so a straight run from there gives a fast vault (the
-    // engine starts the vault ~1.2 m from the window centre, and the run-up must reach 2.5 m by then)
-    const runupPt = (c) => {
-      const P0 = loops.sidePt[c], Q0 = loops.sidePt[c ^ 1], ax = (Q0.x - P0.x) / 3.2, az = (Q0.z - P0.z) / 3.2;
-      const out = RUNUP_TO_CENTRE + 0.2 - 1.6;
-      const A = { x: P0.x - ax * out, z: P0.z - az * out }, i = Math.floor(A.x), j = Math.floor(A.z);
-      return i >= 0 && j >= 0 && i < M.w && j < M.h && !loops.solid[j * M.w + i] && !loops.solid[Math.floor(P0.z - az) * M.w + Math.floor(P0.x - ax)] ? A : null;
+    // fast-vault lineup for a running window crossing c (knobs vaultLineup / vaultApproachM / vaultDetourW / vaultFunnelDeg;
+    // loops.lineup / inFunnel):
+    // returns where to line up (my own position if I'm already in the funnel: run straight in), or null = take the entry
+    // point (medium vault). The point is the lineup option angled toward me (loops.lineupExt). Lining up must be worth it (extra path x vaultDetourW < the 0.4 s a
+    // fast vault saves, same rule as loops.tsIn prices circuits with) and stay safe (vaultSafe from the lineup point with
+    // the hunter's lead over my run there); no lineup within revaultNoFastS of the hunter clearing the window (medium anyway)
+    let lastWhy = null;   // diagnostics: why the last lineup decision went the way it did
+    const lineupFor = (c, obs, me, hp, vH, lead, nav) => {
+      const lu = loops.lineup[c];
+      if (!lu) return null;
+      const hv = hunterVaultT.get(c >> 1);
+      if (hv !== undefined && obs.t - hv < (SV.revaultNoFastS ?? 2) + 0.2) { stats.lineup.revault++; lastWhy = 'revault'; return null; }
+      if (loops.inFunnel(c, me)) { stats.lineup.funnel++; lastWhy = 'funnel'; return { x: me.x, z: me.z }; }
+      const Pt = loops.sidePt[c], dP = nav.dist(me, Pt), x = loops.lineupExt(c, me, nav.dist(me, lu), dP);
+      if (!x || !(x.ext < Infinity) || !loops.lineupWorth(x.ext)) { stats.lineup.cost++; lastWhy = 'cost'; return null; }
+      // safety: no worse than the entry-point approach (both judged with the hunter's lead over my run there)
+      const okL = vaultSafe(anchors[c >> 1], c, x, hp, vH, SV.vaultFastS ?? 0.5, P.vaultSafetyMarginM, lead(x.dT / vS0 + 0.3));
+      if (!okL && vaultSafe(anchors[c >> 1], c, Pt, hp, vH, SV.vaultMediumS ?? 0.9, P.vaultSafetyMarginM, lead(dP / vS0 + 0.3))) { stats.lineup.unsafe++; lastWhy = 'unsafe'; return null; }
+      stats.lineup.chosen++; lastWhy = 'chosen';
+      return { x: x.x, z: x.z };
     };
     const hunterPos = (obs) => {             // visible hunter, else last sighting carried forward, else the belief's guess
       if (obs.hunter) return obs.hunter;
@@ -778,19 +808,33 @@ export function makeSurvivor(P) {
           const kk = circ.seq.length, legIn = loops.L(circ.seq[(circ.i - 1 + kk) % kk] ^ 1, c);
           // the first crossing of a new plan with the hunter on me is a running crossing too (no stop-and-hold)
           const running = (legIn >= 2 || circ.crossed === 0) && dhm < 20;
-          // lane alignment: approach from the run-up point (on the axis, 2 m out) when there's time, so the vault is fast
-          const A = null;   // run-up detours measured worse (docs: diag-infloop ablation); kept off
           const vH = routes.hunterSpeed(me.chased ? obs.t - blT0 : 0);
           const lead = (dt) => -(vH * dt) * Math.sign((hp.x - a.c.x) * (loops.sidePt[c ^ 1].x - Pt.x) + (hp.z - a.c.z) * (loops.sidePt[c ^ 1].z - Pt.z) || 1);
           const isUp = a.kind === 'p' && obs.pallets[a.i] === 'up';
-          // the run-up point only while a fast vault from there stays safe after walking over (else the entry itself)
-          if (A && !circ.runup && !isUp && !fastTier(c, me) && d2(me, A) > 0.6 && vaultSafe(a, c, A, hp, vH, 0.5, P.vaultSafetyMarginM, lead(d2(me, A) / vS0 + 0.3))) return { moveTo: A };
-          if (A && d2(me, A) <= 0.6) circ.runup = true;
-          if (circ.runup && !vaultSafe(a, c, me, hp, vH, 0.5, P.vaultSafetyMarginM, lead(0.3)) && d2(me, Pt) > 0.8 && dhm > 6) circ.runup = false;   // too late for the run-up: hold at the entry
+          // fast-vault approach (running window crossing): decided when the crossing becomes the next one (the earlier I
+          // head for the lineup, the shorter the detour), dropped if the lineup stops being safe; in the funnel -> straight in
+          let inFunnel = false;
+          const luKey = c * 4096 + circ.crossed;
+          // (re-checked every 0.3 s while too costly and still on the way: off -> on only, so it never flip-flops)
+          const reLu = circ.luKey === luKey && circ.lineup !== c && circ.luWhy === 'cost' && obs.t - circ.luT >= 0.3 && d2(me, Pt) > 2;
+          if (loops.lineup[c] && running && (circ.luKey !== luKey || reLu)) {
+            const L = lineupFor(c, obs, me, hp, vH, lead, api.nav);
+            if (!reLu) { circ.luKey = luKey; circ.luPt = L; circ.lineup = L ? c : null; circ.luWhy = lastWhy; }
+            else if (L) { circ.luPt = L; circ.lineup = c; circ.luWhy = 'late'; }
+            circ.luT = obs.t;
+          }
+          if (circ.luKey !== luKey) circ.luWhy = a.kind !== 'w' ? null : !loops.lineup[c] ? 'nolane' : 'notRunning';
+          if (circ.lineup === c && circ.luKey === luKey && running) {
+            inFunnel = loops.inFunnel(c, me);
+            const lu = circ.luPt;
+            // close to the lineup point and no longer safe from there (the hunter cut in): take the entry instead
+            if (!inFunnel && d2(me, lu) < 4 && !vaultSafe(a, c, lu, hp, vH, SV.vaultFastS ?? 0.5, P.vaultSafetyMarginM, lead(d2(me, lu) / vS0 + 0.3))) { circ.lineup = null; stats.lineup.dropped++; circ.luWhy = 'dropped'; }
+            else if (!inFunnel) return { moveTo: lu };
+          }
           // after a vault, waiting to go back over this window (stationMode): the spot on my side with the best expected
           // margin against the forecast hunter (vault-back vs run-round), and whether waiting beats running on at all
           const station = P.stationMode > 0.5 && !running && legIn < 2 && circ.crossed > 0 && a.kind === 'w' ? stationPlan(obs, api, me, h, hp, a, c, vH) : null;
-          if (!station && d2(me, Pt) > (running ? 1.6 : 0.8) && !(circ.runup && d2(me, Pt) < 2.8)) return { moveTo: Pt };
+          if (!station && !inFunnel && d2(me, Pt) > (running ? 1.6 : 0.8)) return { moveTo: Pt };
           // at the entry: cross when the hunter is close behind; otherwise hold here (mind-game) for a while
           const pressing = h && dhm < 16 && ((h.vx * (me.x - h.x) + h.vz * (me.z - h.z)) / Math.max(0.1, dhm)) > 1.0;
           const onMySide = hP <= hQ;
@@ -802,7 +846,7 @@ export function makeSurvivor(P) {
           }
           // vault safety (real attack envelope): go while a vault is still safe; a hold ends before it stops being
           // safe (the hunter 0.3 s closer); a window the hunter cleared moments ago (clearance) is not re-vaulted
-          const tv = a.kind === 'w' ? (fastTier(c, me) || circ.runup ? 0.5 : 0.9) : 1.1;
+          const tv = a.kind === 'w' ? (fastTier(c, me) || inFunnel ? 0.5 : 0.9) : 1.1;
           // a hold ends the moment waiting 0.3 s longer would make the vault unsafe (real attack envelope); waiting
           // after that only gets worse, so then go at once
           const safeSoon = isUp ? true : vaultSafe(a, c, me, hp, vH, tv, P.vaultSafetyMarginM, lead(0.3));
@@ -816,9 +860,7 @@ export function makeSurvivor(P) {
               stats.stationTicks++;
               return { moveTo: station.S, face: hp };
             }
-            // hold at the run-up point if there is one (a fast vault from standing), else at the entry
-            const Hpt = A && circ.runup ? A : Pt;
-            return { moveTo: Hpt, face: hp };
+            return { moveTo: Pt, face: hp };
           }
         }
         // crossing
@@ -849,8 +891,26 @@ export function makeSurvivor(P) {
           return { moveTo: Qt, face: hp };
         }
         // windows / dropped pallets: run through (the engine vaults); the circuit advances on my observed landing
+        // a lined-up window run: straight at the window face (moveDir) while still out in the lane, so the run-up
+        // stays one straight line (the nav would bend it through the approach cell centre)
+        if (a.kind === 'w' && circ.lineup === c && circ.luKey === c * 4096 + circ.crossed) {
+          if (loops.straightIn(c, me)) {
+            const ap = loops.aimPt(c), dx = ap.x - me.x, dz = ap.z - me.z, dl = Math.hypot(dx, dz) || 1;
+            // the engine keeps the run-up's FIRST heading until a turn > fastVaultAngleDeg: entering the run with a
+            // smaller turn from an off-axis heading would keep that heading (an "angled" medium vault). Then one short
+            // step (< 60% of a stride resets the run-up) so the run-up restarts on this straight line; once per crossing
+            const vl = Math.hypot(me.vx || 0, me.vz || 0), cone = Math.cos((((SV.fastVaultAngleDeg ?? 25) - 3) * Math.PI) / 180);
+            const q = loops.laneUW(c, me), nx = -q.ux, nz = -q.uz;
+            if (circ.realign !== circ.luKey && vl > 1) {
+              circ.realign = circ.luKey;
+              const vx = me.vx / vl, vz = me.vz / vl;
+              if (vx * nx + vz * nz < cone && (vx * dx + vz * dz) / dl > Math.cos((((SV.fastVaultAngleDeg ?? 25) + 2) * Math.PI) / 180)) { stats.lineup.realign++; return { moveTo: { x: me.x + (0.12 * dx) / dl, z: me.z + (0.12 * dz) / dl } }; }
+            }
+            return { moveDir: { x: dx, z: dz } };
+          }
+        }
         if (d2(me, Qt) > 0.8 && !(d2(me, Qt) < d2(me, Pt) - 1.5)) return { moveTo: Qt };
-        circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++; circ.runup = false;
+        circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++;
         return chase(obs, api, me, h, depth + 1);
       }
       // open flee (route chosen above); fallback when the route fields are unusable: a far, reachable point
@@ -988,7 +1048,7 @@ export function makeSurvivor(P) {
       // visible hunter vaults: that window is occupied now and for vaultClearanceS after
       if (obs.hunter && obs.hunter.vaulting && obs.hunter.vault && obs.hunter.vault.window) {
         const a = anchors.find((x) => x.kind === 'w' && x.id === obs.hunter.vault.window);
-        if (a) occupiedUntil.set(a.k, obs.t + 0.3 + P.vaultClearanceS);
+        if (a) { occupiedUntil.set(a.k, obs.t + 0.3 + P.vaultClearanceS); hunterVaultT.set(a.k, obs.t); }
       }
       // my own vaults = real crossings: the circuit follows what actually happened (auto-vaults included)
       if (me.vaulting && !wasVaulting) {
@@ -1008,7 +1068,7 @@ export function makeSurvivor(P) {
       }
       if (!me.vaulting && wasVaulting && myVault) {
         if (circ && circ.seq[circ.i] === myVault.c && circ.phase === 'cross') {
-          circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++; circ.runup = false; circ.lockT = Math.max(circ.lockT, obs.t + 0.6);
+          circ.i = (circ.i + 1) % circ.seq.length; circ.phase = 'toP'; circ.holdT = 0; circ.crossed++; circ.lockT = Math.max(circ.lockT, obs.t + 0.6);
         }
         myVault = null;
       }
@@ -1114,6 +1174,8 @@ export function makeSurvivor(P) {
 
     return {
       stats,
+      // diagnostics only (scripts/diag-fastvault.js): the loop runner's current crossing, null when not running a loop
+      get chaseDbg() { return circ ? { phase: circ.phase, c: circ.seq[circ.i], crossed: circ.crossed, lineup: circ.lineup ?? null, luWhy: circ.luWhy ?? null } : null; },
       know,
       loops,
       belief,

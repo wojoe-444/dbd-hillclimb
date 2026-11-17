@@ -1,8 +1,13 @@
 // Open-field "equivalent distance held" over a short horizon (per survivor brain instance; no module-level state).
 //
 // At ~2 Hz in a chase: two bounded Dijkstra fields on the static walk grid (loops.js `solid`, anchors handled here):
-//   survivor field from me   : windows = fast vault (0.5 s x run speed), dropped pallets = pallet vault (1.1 s),
-//                              standing / broken pallets = open gap, windows blocked for me = solid;
+//   survivor field from me   : windows = fast vault (0.5 s x run speed); with the brain's lineup on (knob vaultLineup):
+//                              medium vault (0.9 s x run speed) when entered from the cell in front, or a
+//                              fast vault (0.5 s) via a "run-up edge" from the lane cell ceil(runNeed) m straight out
+//                              (loops.js: the straight 2.5 m the engine needs), so the field prices the tier the path
+//                              actually produces (a side approach = medium; lining up costs the extra path);
+//                              dropped pallets = pallet vault (1.1 s), standing / broken pallets = open gap, windows
+//                              blocked for me = solid;
 //   hunter field from hunter : windows = vault 1.7 s, dropped pallets = break 2.34 s (+ walk), costs in metres at
 //                              hunter speed (incl. Bloodlust from my own chase time).
 // A candidate destination T is evaluated by backtracking my shortest path to T and rolling both forward in 0.25 s
@@ -42,6 +47,32 @@ export class RouteEval {
     this.RS = 34; this.RH = 40; this.R = 40;        // field radii (m): mine covers the first leg / loop entries, the hunter's my whole horizon
     this.buckets = [];
     this.blkS = new Uint8Array(N); this.blkH = new Uint8Array(N);
+    this.sFast = (cfg.survivor && cfg.survivor.vaultFastS) || 0.5;
+    this.sMed = (cfg.survivor && cfg.survivor.vaultMediumS) || 0.9;
+    // tier-aware pricing only with the brain's lineup on (loops.lineupOn, knob vaultLineup); off = every window a fast
+    // vault (the pre-lineup pricing). The medium premium is weighted like the circuits' (loops.tierW, knob vaultAngleW)
+    this.tierAware = !!loops.lineupOn;
+    this.winCost = Math.round((this.tierAware ? this.sFast + loops.tierW * (this.sMed - this.sFast) : this.sFast) * this.vS * 10);
+    // run-up edges: lane cell kF out on a window's side -> the window cell, cost kF m + a fast vault (survivor field only)
+    const kF = Math.ceil(loops.runNeed - 1e-9);
+    this.runEdge = new Map();     // lane cell -> [[windowCell, cost x10, anchor k], ...]
+    this.isRunCell = new Uint8Array(N);
+    // (with the brain's lineup options: one edge per option start cell, the straight-in runs it can steer)
+    const fastC = Math.round(this.sFast * this.vS * 10);
+    const addEdge = (lc, wc, k, len) => {
+      const list = this.runEdge.get(lc) || [];
+      if (list.some((e) => e[0] === wc)) return;
+      list.push([wc, Math.round(10 * len) + fastC, k]); this.runEdge.set(lc, list); this.isRunCell[lc] = 1;
+    };
+    for (let c = 0; c < loops.nSides; c++) {
+      const a = loops.anchors[c >> 1];
+      if (a.kind !== 'w') continue;
+      const wc = Math.floor(a.c.z) * this.W + Math.floor(a.c.x), lu = loops.lineup[c];
+      if (lu) { for (const o of lu.opts) addEdge(o.cell, wc, a.k, Math.hypot((o.cell % this.W) + 0.5 - a.c.x, Math.floor(o.cell / this.W) + 0.5 - a.c.z)); continue; }
+      if (loops.laneCells[c] < kF) continue;
+      const P0 = a.s[c & 1], ux = Math.round((P0.x - a.c.x) / 1.6), uz = Math.round((P0.z - a.c.z) / 1.6);
+      addEdge(wc + (uz * this.W + ux) * kF, wc, a.k, kF);
+    }
   }
 
   hunterSpeed(chaseS) {
@@ -54,7 +85,7 @@ export class RouteEval {
     const L = this.L, xs = this.extraS, xh = this.extraH;
     L.anchors.forEach((a, k) => {
       let cs, ch;
-      if (a.kind === 'w') { cs = obs.blockedWindows.includes(a.id) ? -1 : Math.round(0.5 * this.vS * 10); ch = Math.round(1.7 * vH * 10); }
+      if (a.kind === 'w') { cs = obs.blockedWindows.includes(a.id) ? -1 : this.winCost; ch = Math.round(1.7 * vH * 10); }
       else {
         const st = obs.pallets[a.i];
         if (st === 'dropped') { cs = Math.round(1.1 * this.vS * 10); ch = Math.round(2.34 * vH * 10); }
@@ -65,7 +96,7 @@ export class RouteEval {
   }
 
   // bounded bucket-queue Dijkstra (x10 m units, octile 10 / 14 + anchor entry costs); blk = per-cell blocked mask
-  field(f, touched, extra, blk, x, z, Rm) {
+  field(f, touched, extra, blk, x, z, Rm, runEdges = false) {
     for (let k = 0; k < touched.length; k++) f[touched[k]] = -1;
     touched.length = 0;
     const W = this.W, H = this.H, isA = this.isAnchor, R = Rm * 10;
@@ -78,6 +109,16 @@ export class RouteEval {
       const bk = buckets[b]; if (!bk || !bk.length) continue;
       for (let q = 0; q < bk.length; q++) {
         const c = bk[q]; if (f[c] !== b) continue;
+        if (runEdges && this.isRunCell[c]) {
+          for (const [n, cost] of this.runEdge.get(c)) {
+            if (blk[n]) continue;
+            const nd = b + cost, fn = f[n];
+            if (nd > R || (fn >= 0 && fn <= nd)) continue;
+            if (fn < 0) touched.push(n);
+            f[n] = nd;
+            (buckets[nd] || (buckets[nd] = [])).push(n);
+          }
+        }
         const i = c % W, j = (c - i) / W;
         const iL = i > 0, iR = i < W - 1, jU = j > 0, jD = j < H - 1;
         for (let k = 0; k < 8; k++) {
@@ -109,7 +150,7 @@ export class RouteEval {
     }
     this.vH = this.hunterSpeed(chaseS);
     this.costs(obs, this.vH);
-    this.field(this.fS, this.touchedS, this.extraS, this.blkS, me.x, me.z, this.RS);
+    this.field(this.fS, this.touchedS, this.extraS, this.blkS, me.x, me.z, this.RS, this.tierAware);
     this.field(this.fH, this.touchedH, this.extraH, this.blkH, hp.x, hp.z, this.RH);
     this.meCell = Math.floor(me.z) * this.W + Math.floor(me.x);
     return this.fS[this.meCell] === 0;
