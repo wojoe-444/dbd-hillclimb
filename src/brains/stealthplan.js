@@ -18,7 +18,7 @@
 //                search-viewpoint exposure after the horizon, own scratch trail the hunter can cross, uncertainty,
 //                lost repair seconds.
 //   decision   : utility = -(detection cost x risk) - lost repair seconds; a move is a preventive hide only if its risk
-//                <= hideRouteRiskMax; when nothing is safe I stay (a close visible hunter stays the chase logic's).
+//                <= hideRouteRiskMax; otherwise "stay": the old modes (work / sneak / visible hide / chase) run as before.
 //   plan       : depart -> cover (hold, observe, reposition when the spot turns risky) -> return to the original
 //                known generator once the walk back is safe (hideReturnRisk) for hideReturnDelayS.
 //
@@ -27,9 +27,9 @@
 // hunter's visibility of the moving body, e.g. for low cover; 1 = the engine's standing body).
 
 export const stealthSpace = {
-  stealthPlan:      [0, 1, 0],       // >0.5: the route-level stealth planner replaces sneak / unseen-hide / visible-hide (0 = old behaviour)
+  stealthPlan:      [0, 1, 0],       // >0.5: route-level planner: safe preventive hides + return (else the old modes; 0 = old behaviour exactly)
   hideLosMarginS:   [0, 3, 0.6],     // extra arrival slack (s) against each hunter hypothesis (my progress is delayed by this)
-  hideRouteRiskMax: [0.02, 0.8, 0.2],// max modelled risk of discovery before stable cover for a preventive move
+  hideRouteRiskMax: [0.02, 0.8, 0.05],// max modelled (distance-weighted) risk of discovery before stable cover for a preventive move (review proposed .2: measured worse)
   hideScratchW:     [0, 4, 1],       // cost of a scratch trail (old marks + new marks if running) the hunter can cross
   hideApproachW:    [0, 3, 1],       // weight of search-viewpoint exposure of the cover spot after the horizon
   hideUncertaintyW: [0, 3, 1],       // caution from stale evidence / belief mass outside the hypotheses (x route openness)
@@ -43,6 +43,7 @@ const MAX_ROUTES = 5, PROMISE_POOL = 24, SECTORS = 8, REPLAN_S = 1.25, MIN_REPLA
 const DET_COST_S = 30;         // a discovery costs ~ this many repair-seconds when healthy (scaled by injury / hook stage)
 const HOLD_MIN_S = 3;          // a hide costs at least ~ this long away from the generator besides the trip
 const SEARCH_R = 10;           // a hunter at the worked gen looks around (omnidirectional) within this
+const CLOSE_GAP = 8, FAR_GAP = 28, CLOSE_MIN = 0.35;   // discovery cost x1 within 8 m of the hunter, falling to x0.35 from 28 m
 
 export const GAITS = {
   walk: { speed: 2.26, marks: false, act: { walk: true }, visMult: 1 },
@@ -315,14 +316,21 @@ export function makeStealthPlanner(ctx, P, belief, opts = {}) {
       if (g && g.marks) { marks = marks.slice(); const L = Math.min(opt.len, g.speed * HORIZON_S); for (let s = 0; s <= L; s += g.speed * markEvery) { along(path, s, o); marks.push({ x: o.x, z: o.z, dt: -s / g.speed }); } }
       if (marks.length) lead = Math.max(0, 1 - dist(marks[marks.length - 1], g && g.marks ? { x: sx[K], z: sz[K] } : end) / 15);
     }
-    let pDet = 0, tLOS = Infinity, linger = 0, scratch = 0;
+    let pDet = 0, hit = 0, tLOS = Infinity, linger = 0, scratch = 0;
     const noisy = opt.base && !g && ctxE.working;   // staying on the gen = repairing = audible
     for (const tr of H.hyps) {
       let kd = -1;
       if (noisy) for (let k = 1; k <= K; k++) if ((tr.x[k] - sx[k]) ** 2 + (tr.z[k] - sz[k]) ** 2 < noiseR * noiseR) { kd = k; break; }
       // k = 0 is sunk: being visible right now is not something a plan can prevent (only later samples count)
       if (kd < 0) for (let k = 1; k <= K; k++) if (sees(api, tr, k, sx[k], sz[k], g ? g.visMult : 1, injured)) { kd = k; break; }
-      if (kd >= 0) { pDet += tr.w; if (tr.w >= 0.08) tLOS = Math.min(tLOS, kd * STEP_S); continue; }
+      if (kd >= 0) {
+        pDet += tr.w; if (tr.w >= 0.08) tLOS = Math.min(tLOS, kd * STEP_S);
+        // how bad a discovery is depends on the gap it leaves: found at close range ~ a hit, from afar ~ a chase I start
+        // with distance (chase fallback)
+        const gap = hyp(tr.x[kd] - sx[kd], tr.z[kd] - sz[kd]);
+        hit += tr.w * Math.min(1, Math.max(CLOSE_MIN, (FAR_GAP - gap) / (FAR_GAP - CLOSE_GAP)));
+        continue;
+      }
       // not seen within the horizon: the hunter then searches where its track ends (omni) -> my end spot in view?
       if (P.hideApproachW > 0) {
         const ex = tr.x[K], ez = tr.z[K], d2 = (ex - sx[K]) ** 2 + (ez - sz[K]) ** 2;
@@ -331,10 +339,10 @@ export function makeStealthPlanner(ctx, P, belief, opts = {}) {
       // ...or crosses my trail and follows it (about half the time) to my spot
       if (lead > 0 && trailHit(tr, marks)) scratch += 0.5 * tr.w * lead;
     }
-    const risk = pDet + P.hideApproachW * 0.5 * linger + P.hideScratchW * scratch + P.hideUncertaintyW * 0.3 * H.unc * open;
+    const risk = hit + P.hideApproachW * 0.5 * linger + P.hideScratchW * scratch + P.hideUncertaintyW * 0.3 * H.unc * open;
     const lostS = opt.base ? 0 : 2 * tArr + HOLD_MIN_S;
     const U = -ctxE.detCost * risk - lostS;
-    return { gait: opt.base ? 'stay' : gaitName, base: !!opt.base, spot: end, path, tArr, pDet, tLOS, margin: tLOS - tArr, linger, scratch, open, risk, lostS, U };
+    return { gait: opt.base ? 'stay' : gaitName, base: !!opt.base, spot: end, path, tArr, pDet, hit, tLOS, margin: tLOS - tArr, linger, scratch, open, risk, lostS, U };
   }
 
   // travel: null (standing / working) or { to, walk } = the trip the normal flow is on (carry on = the base option)
@@ -362,10 +370,9 @@ export function makeStealthPlanner(ctx, P, belief, opts = {}) {
   }
   const pathLen = (path) => { let L = 0; for (let k = 1; k < path.length; k++) L += dist(path[k - 1], path[k]); return L; };
   const tripPath = (api, from, to) => (api.walkClear(from, to) ? [from, to] : [from, ...descend(field(to.x, to.z), from.x, from.z, 60).slice(1)]);
-  // A move is taken only as a preventive hide (risk <= hideRouteRiskMax) that beats staying on utility. When nothing is
-  // safe, stay: measured, "evasive" runs to cover with a high modelled risk and switching to the chase logic for a
-  // hunter that hasn't seen me both cost far more repair time than they saved (gens 3.06 / 1.56 vs 3.94 on 16 paired
-  // seeds); a close visible hunter is still the threat state's chase.
+  // A move is taken only as a preventive hide (risk <= hideRouteRiskMax) that beats staying on utility; otherwise the
+  // base option ("stay": the caller's old modes decide). Measured: forcing moves when nothing is safe ("evasive" runs
+  // to cover, or chase mode against a hunter that hasn't seen me) cost far more repair time than it saved.
   function choose(ev) {
     let best = ev.stay;
     for (const o of ev.opts) if (o !== ev.stay && o.risk <= P.hideRouteRiskMax && o.U > best.U) best = o;

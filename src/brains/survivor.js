@@ -194,7 +194,7 @@ export function makeSurvivor(P) {
     const beliefFull = beliefOn || P.rescueCampFear > 0;       // the rescue's camp estimate needs the full belief update
     const rescue = makeRescuePlanner(ctx, P, belief);          // hooked teammates, teammate whereabouts, rescue utility
     const heal = makeHealPlanner(ctx, P, rescue.tracker);      // heal / pick-up choice + healer <-> patient handshake
-    // route-level stealth (off unless stealthPlan > 0.5): replaces sneak / unseen hide / visible hide when on. Cover
+    // route-level stealth (off unless stealthPlan > 0.5): preempts the old stealth modes with a preventive hide when one is safe; when it "stays", sneak / visible hide / unseen hide run as before. Cover
     // spots near a known loop anchor keep a chase fallback.
     const stealth = makeStealthPlanner(ctx, P, belief, { fallbackAt: (pt) => {
       let b = 0;
@@ -857,7 +857,7 @@ export function makeSurvivor(P) {
         if (me.chased) { mode = 'chase'; lastThreatT = obs.t; }      // chase music: the hunter is on me even if I can't see it
         else if (h && dh < P.fleeSeenDist) { mode = 'chase'; lastThreatT = obs.t; }
         else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
-          if (mode !== 'chase' && mode !== 'sneak' && !stealth.on) { mode = 'sneak'; sneakStart = obs.t; }
+          if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
           lastThreatT = obs.t;
         }
         else if (mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS) { mode = 'work'; circ = null; }
@@ -882,7 +882,7 @@ export function makeSurvivor(P) {
         }
 
         // ---- stealth: the hunter is around but not on me -> get out of its view (and back to work once it's gone) ----
-        if (!stealth.on && mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
+        if (mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
           if (hunterCouldSee(api, h, me)) {
             const spot = findHide(obs, api, me, h);
             if (spot) { hiddenUntil = obs.t + P.hideHoldS; return { moveTo: spot, walk: P.hideWalk > 0.5, look: h }; }
@@ -899,11 +899,11 @@ export function makeSurvivor(P) {
             const hp = hunterPos(obs);
             if (hp) return { moveDir: { x: me.x - hp.x, z: me.z - hp.z } };
           }
-          mode = stealth.on ? 'work' : 'sneak'; sneakStart = obs.t;
+          mode = 'sneak'; sneakStart = obs.t;
         }
 
         // ---- hide from an unseen hunter that my belief / the terror radius says is close or closing in ----
-        if (mode === 'chase' || h || me.chased || obs.gatesPowered || stealth.on) {
+        if (mode === 'chase' || h || me.chased || obs.gatesPowered || stealth.active) {
           hide = null;
         } else {
           const trig = hideTrigger(obs, me, !!hide);
