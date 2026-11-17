@@ -3,6 +3,7 @@
 
 import { mergeConfig, deepFreeze } from './config.js';
 import { makeRng } from './rng.js';
+import { selectGenerators } from './gen-selection.js';
 import { prepareMap, K_SOLID, K_WIN_X, K_WIN_Z, K_PAL_X, K_PAL_Z } from './mapdata.js';
 import { rayVis } from './sight.js';
 import { NavView, getShared, circleFree } from './nav.js';
@@ -78,9 +79,7 @@ export class Match {
 
     // ---- generators (7 of the candidates, seeded) ----
     const cands = md.genCands;
-    const order = cands.map((_, i) => i);
-    this.world.shuffle(order);
-    const chosen = order.slice(0, Math.min(cfg.gens.placed, cands.length)).sort((a, b) => a - b);
+    const chosen = selectGenerators(md, cfg.gens.placed, this.world, makeRng(this.seed, 'generator-placement'));
     this.gens = chosen.map((ci, gi) => {
       const c = cands[ci];
       return { idx: gi, ci, id: c.id, x: c.x, z: c.z, i: c.i, j: c.j, x0: c.x0, z0: c.z0, x1: c.x1, z1: c.z1,

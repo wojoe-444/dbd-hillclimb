@@ -64,6 +64,9 @@ const tile = def => { T.push({ optionalChance: 0.7, choiceChance: 0.75, palletSa
 
 tile({
   id: 'shack', name: 'Shack', size: 16, category: 'landmark', palletSafety: 'god',
+  // Override the old outside G marker without changing owner-protected collision geometry.
+  // An optional indoor spawn, never a guaranteed match generator.
+  genSlots: [[7, 8]],
   notes: 'Square 10x10 m tall-walled shack: north door, east window, south-east pallet door. Loop: in the north door, out the window, around the outside, back in through the pallet. Hunter has to play reactively and force the pallet.',
   rate: () => 'strong',
   rows: [
@@ -393,6 +396,15 @@ export function resolveTile(tileDef, rng, { rot = 0, mirror = false, mode = 'rol
   for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
     if (g[z][x] === 'G') { genSlots.push([x, z]); g[z][x] = '.'; }
     else if (g[z][x] === 'H') { hookSlots.push([x, z]); g[z][x] = '.'; }
+  }
+  if (tileDef.genSlots) {
+    genSlots.length = 0;
+    for (const slot of tileDef.genSlots) {
+      let [x, z] = slot;
+      if (mirror) x = n - 1 - x;
+      for (let k = 0; k < ((rot % 4) + 4) % 4; k++) [x, z] = [n - 1 - z, x];
+      genSlots.push([x, z]);
+    }
   }
   return { rows: g.map(r => r.join('')), pallets, genSlots, hookSlots };
 }

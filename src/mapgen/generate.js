@@ -10,6 +10,7 @@ import { makeRng, hashSeed } from './rng.js';
 import { TILES, resolveTile, isSolidChar } from './tiles.js';
 import { composeFeatures, OUTSIDE } from './compose.js';
 import { generateOutline, outlineToCells } from './outline.js';
+import { generatorSets } from '../sim/gen-selection.js';
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -213,23 +214,39 @@ export function generateFromLayout(baseLayout, seed, opts = {}) {
 
   // ---- 5. generator candidates from tile slots ------------------------------------------------------
   const genSlotList = instances.flatMap(inst => inst.genSlots.map(([x, z]) => ({ x, z, inst })))
-    .filter(s => plainFloor(s.x, s.z) && !nearFeature(s.x, s.z, 1) && DIRS4.every(([dx, dz]) => walk(s.x + dx, s.z + dz)))
+    .filter(s => [-1, 0, 1].every(dz => [-1, 0, 1].every(dx => plainFloor(s.x + dx, s.z + dz))))
     .filter(s => outlineInset(s.x + 0.5, s.z + 0.5, layout.outline) >= (layout.gens.minEdgeM ?? 0));   // user: gens never hug the outer wall
   const [gMin, gMax] = layout.gens.count;
   const genTarget = gMin + rng.int(gMax - gMin + 1);
-  const gens = [];
-  for (const req of layout.gens.require ?? []) {
-    const opts = genSlotList.filter(s => s.inst.tile === req);
-    if (opts.length) gens.push(rng.pick(opts));
+  // Restart a failed packing; never silently weaken the advertised spacing. A distinct stream leaves
+  // downstream rolls independent of the number of packing attempts within this step.
+  const genRng = makeRng(hashSeed('generator-candidates', seed));
+  let gens = null;
+  for (let attempt = 0; attempt < 96 && !gens; attempt++) {
+    const trial = [];
+    for (const req of layout.gens.require ?? []) {
+      const opts = genSlotList.filter(s => s.inst.tile === req && trial.every(g => g.inst !== s.inst && Math.hypot(g.x - s.x, g.z - s.z) >= layout.gens.minSpacing));
+      if (!opts.length) break;
+      trial.push(genRng.pick(opts));
+    }
+    if (trial.length !== (layout.gens.require ?? []).length) continue;
+    while (trial.length < genTarget) {
+      const scored = genSlotList.filter(s => trial.every(g => g.inst !== s.inst))
+        .map(s => ({ s, d: Math.min(60, ...trial.map(g => Math.hypot(g.x - s.x, g.z - s.z))) }))
+        .filter(e => e.d >= layout.gens.minSpacing);
+      if (!scored.length) break;
+      trial.push(genRng.weighted(scored.map(e => [e.s, e.d ** 2])));
+    }
+    if (trial.length !== genTarget) continue;
+    if (layout.gens.selection) {
+      const sets = generatorSets(trial, 7, layout.gens.selection);
+      // Every emitted candidate must really be spawnable. This also prevents a nominal 11-12
+      // candidate map with only one possible seven-gen layout and four permanent wrecks.
+      if (new Set(sets.flat()).size !== trial.length) continue;
+    }
+    gens = trial;
   }
-  let spacing = layout.gens.minSpacing;
-  while (gens.length < genTarget && spacing > 4) {
-    const scored = genSlotList.filter(s => !gens.includes(s)).map(s => ({ s, d: Math.min(Infinity, ...gens.map(g => Math.hypot(g.x - s.x, g.z - s.z))) }))
-      .filter(e => e.d >= spacing);
-    if (!scored.length) { spacing -= 2; continue; }
-    gens.push(rng.weighted(scored.map(e => [e.s, Math.min(e.d, 60) ** 2])));
-  }
-  if (gens.length < gMin) return { ok: false, error: `only ${gens.length} gen slots usable` };
+  if (!gens) return { ok: false, error: `no feasible ${genTarget} gen candidates with match spread` };
   for (const g of gens) genCells.add(g.z * w + g.x);
 
   // ---- 6. spawns -------------------------------------------------------------------------------------
@@ -436,6 +453,7 @@ export function generateFromLayout(baseLayout, seed, opts = {}) {
     id: layout.id, name: layout.name,
     size: { w, h }, outline: layout.outline, eyeHeight: layout.eyeHeight,
     obstacles, windows, pallets, generators, hooks: hookList, exitGates,
+    ...(layout.gens.selection ? { generatorRules: { ...layout.gens.selection } } : {}),
     spawns: { hunter: hunterSpawns, survivors: survivorSpawns },
     labels: [...(layout.labels ?? []).map(({ text, x, z }) => ({ text, x, z })), ...lmLabels],
     spawnRules: { inset: layout.spawns.inset, survivorAnchors: true },
