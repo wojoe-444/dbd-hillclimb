@@ -18,6 +18,8 @@ import { RouteLookahead } from '../src/brains/lookahead.js';
 import { HunterForecast } from '../src/brains/hunterforecast.js';
 import { makeCanary, mergeCanary, findInfLoopTile } from '../src/diag/canary.js';
 import { defaultConfig } from '../src/sim/index.js';
+import { makeRescuePlanner } from '../src/brains/rescue.js';
+import { makeEndgame } from '../src/brains/endgame.js';
 import { generateOutline, checkOutlineCells, outlineToCells, OUTLINE_FAMILIES, generateFromLayout, gasHeavenLayout, makeRng, outlineInset, TILES } from '../src/mapgen/index.js';
 import { analyzeMap } from './validate-map.js';
 import { makeHealPlanner, healSpace } from '../src/brains/healplan.js';
@@ -2929,5 +2931,179 @@ test('survivor unblock sidestep keeps the action\'s gait (walk) and look', () =>
   }
 });
 
+
+// ---------------------------------------------------------------- rescue claims / deadlines / endgame (survivor brain)
+// A survivor ctx from a real match on test-small; obs are synthetic (only the fields the planners read).
+function survivorCtx(id = 0) {
+  let sctx = null;
+  const idle = () => ({ decide: () => ({}) });
+  createMatch({ map: smallMap, seed: 3, hunter: idle, survivors: [0, 1, 2, 3].map((i) => (c) => { if (i === id) sctx = c; return idle(); }) });
+  return sctx;
+}
+const hudRow = (id, o = {}) => ({ id, state: 'healthy', hookCount: 0, hookStage: 0, hookStages: 0, beingHealed: false, activity: null, activityProgress: 0, chased: false, resolve: 0, deepWound: null, ...o });
+function rObs(t, me, hud, extra = {}) {
+  return { t, self: { id: 0, x: me.x, z: me.z, state: 'healthy', deepWoundS: null, chased: false, act: null, ...(extra.self || {}) }, hud, hunter: null, lastHunter: null, terror: null,
+    teammates: extra.teammates || [], downedAuras: [], notifications: extra.notes || [], gates: extra.gates || [], endgame: extra.endgame || null };
+}
+
+test('matetrack: rescue claims keep their first-heard time, expire on chase / back to work / age', () => {
+  const tr = new MateTracker(survivorCtx(0));
+  const hud = [hudRow(0), hudRow(1, { state: 'hooked', hookStage: 1 }), hudRow(2), hudRow(3)];
+  const notes = [{ type: 'hooked', who: 1, x: 24.5, z: 14.5, t: 1 }, { type: 'intent', from: 2, intent: 'goingForUnhook', t: 2 }];
+  const o = (t, h = hud) => ({ t, hud: h, teammates: [], downedAuras: [], notifications: notes });
+  tr.update(o(2));
+  ok(tr.liveClaim(2, 1, 2) && tr.liveClaim(2, 1, 2).t0 === 2, 'claim heard: live, t0 = 2');
+  ok(!tr.liveClaim(2, 3, 4), 'a claim from before this hooking does not count');
+  notes.push({ type: 'intent', from: 2, intent: 'goingForUnhook', t: 12 }); tr.update(o(12));
+  ok(tr.liveClaim(2, 1, 12).t0 === 2 && tr.liveClaim(2, 1, 12).t === 12, 're-announced: first-heard time kept, last-heard updated');
+  ok(!tr.liveClaim(2, 1, 30, 15), 'not heard again within maxAge: expired');
+  const hw = hud.map((x) => (x.id === 2 ? { ...x, activity: 'repair', activityProgress: 0.3 } : x));
+  tr.update(o(13, hw)); ok(!!tr.liveClaim(2, 1, 13), 'repairing for 1 s: still live');
+  tr.update(o(15.5, hw)); ok(!tr.liveClaim(2, 1, 15.5), 'repairing for > 2 s: interrupted (went back to work)');
+  ok(tr.claimedUnhook(2, 1, 15.5) === false, 'claimedUnhook agrees');
+  notes.push({ type: 'intent', from: 2, intent: 'goingForUnhook', t: 16 }); tr.update(o(16));
+  ok(tr.liveClaim(2, 1, 16) && tr.liveClaim(2, 1, 16).t0 === 16, 'new claim after an interrupted one: fresh t0');
+  tr.update(o(17, hud.map((x) => (x.id === 2 ? { ...x, chased: true } : x))));
+  ok(!tr.liveClaim(2, 1, 17), 'claimant HUD-chased: interrupted');
+  notes.push({ type: 'intent', from: 3, intent: 'goingForUnhook', t: 18 }); tr.update(o(18));
+  tr.update(o(19, hud.map((x) => (x.id === 3 ? { ...x, state: 'downed' } : x))));
+  ok(!tr.liveClaim(3, 1, 19), 'claimant downed: interrupted');
+  notes.push({ type: 'intent', from: 3, intent: 'goingForUnhook', t: 20 }); tr.update(o(20));
+  ok(!!tr.liveClaim(3, 1, 20), 'claimant 3 claims again');
+  notes.push({ type: 'unhooked', who: 1, by: 3, t: 21 }); tr.update(o(21));
+  ok(!tr.liveClaim(3, 1, 21), 'claimant unhooked someone: the claim is spent (no cover for another hook)');
+});
+
+test('rescue planner: deadline (travel + unhook + buffer), claim cap / stall / fallback, own-chase trail, endgame clock', () => {
+  const B = getBrains();
+  const ctx = survivorCtx(0), api = { nav: ctx.nav };
+  const hk = { x: 24.5, z: 14.5 };
+  const me = { x: 24.5, z: 26.5 };
+  const myD = ctx.nav.dist(me, hk);
+  ok(isFinite(myD) && myD > 8 && myD < 20, `test geometry: my path to the hook ${myD.toFixed(1)} m`);
+  const P0 = { ...defaults(B.survivor.space), rescueClaimDefer: 0, rescueCampFear: 0, rescueSelfRiskW: 0, rescueThreshold: -2, rescueClosestW: 0 };
+  const say = (a, msg) => ({ ...a, intent: msg });
+  const opts = { holdProtection: false, say, beliefFull: false };
+  // victim 1 hooked at t=0 (the stage timer counts from the hook): remaining = 70 - t
+  const scene = (P, { t = 60, stage = 2, claim = null, hudX = {}, chasedUntil = null, endgame, teammates = [] } = {}) => {
+    const R = makeRescuePlanner(ctx, P, null);
+    const notes = [{ type: 'hooked', who: 1, x: hk.x, z: hk.z, t: 0 }];
+    const hud = [hudRow(0), hudRow(1, { state: 'hooked', hookStage: stage }), hudRow(2, hudX[2]), hudRow(3, { state: 'dead' })];
+    if (chasedUntil !== null) { R.update(rObs(0.5, me, hud, { notes, self: { chased: true } })); R.update(rObs(chasedUntil, me, hud, { notes, self: { chased: true } })); }
+    if (claim) {
+      notes.push({ type: 'intent', from: 2, intent: 'goingForUnhook', t: claim.t });
+      R.tracker.setFix(2, claim.x, claim.z, claim.t, 0.5);
+      R.update(rObs(claim.t, me, hud, { notes }));
+      R.decide(rObs(claim.t, me, hud, { notes }), api, opts);      // first sight of the claim (its ETA)
+      R.tracker.setFix(2, claim.x, claim.z, claim.t, 0.5);
+    }
+    R.update(rObs(t, me, hud, { notes }));
+    return { a: R.decide(rObs(t, me, hud, { notes, teammates }), api, { ...opts, endgame }), R };
+  };
+  const travel = myD / 4;
+  const tOk = 70 - (travel + 1 + 3) - 1, tLate = 70 - (travel + 1 + 3) + 1;
+  ok(scene(P0, { t: tOk }).a?.moveTo, `remaining ${(70 - tOk).toFixed(1)} s > travel ${travel.toFixed(1)} + unhook 1 + buffer 3: go`);
+  const late = scene(P0, { t: tLate });
+  ok(late.a === null && late.R.stats.late > 0, `remaining ${(70 - tLate).toFixed(1)} s: too late with the 3 s buffer -> keep working`);
+  ok(scene({ ...P0, rescueArrivalBufferS: 0 }, { t: tLate }).a?.moveTo, 'same, buffer 0: go');
+  // claims: teammate 2 claimed first from right next to the hook -> cap (rescueMaxGoers 1) keeps me working
+  const near2 = { x: 24.5, z: 17.5, t: 30 };
+  const cap = scene(P0, { t: 32, stage: 1, claim: near2 });
+  ok(cap.a === null && cap.R.stats.capped > 0, 'stage 1, an earlier live claim from a teammate near the hook: capped, keep working');
+  ok(scene({ ...P0, rescueMaxGoers: 3 }, { t: 32, stage: 1, claim: near2 }).a?.moveTo, 'rescueMaxGoers 3 (penalty only; defer weight 0 here): go');
+  ok(scene(P0, { t: 32, stage: 2, claim: near2 }).a?.moveTo, 'struggle stage: no cap (a second goer is the fallback save; claims only lower the score)');
+  ok(scene(P0, { t: 32, stage: 1, claim: near2, hudX: { 2: { chased: true } } }).a?.moveTo, 'claimant HUD-chased: no cover, go');
+  ok(scene(P0, { t: 32, stage: 1, claim: near2, teammates: [{ id: 2, x: 24.5, z: 19.5, vx: 0, vz: 4, state: 'healthy' }] }).a?.moveTo, 'claimant seen running away from the hook: no cover, go');
+  ok(scene(P0, { t: 32, stage: 1, claim: near2, teammates: [{ id: 2, x: 24.5, z: 19.5, vx: 0, vz: -4, state: 'healthy' }] }).a === null, 'claimant seen running to the hook: still capped');
+  ok(scene({ ...P0, claimRefreshS: 0 }, { t: 30 + 1 + 3 / 4 + 8 + 3, stage: 1, claim: near2 }).a?.moveTo, 'claimant way past its ETA + claimStallS: stalled, go');
+  // a claimant whose estimated arrival (claim + its path / 4 + unhook) + buffer misses the struggle deadline, while I can make it
+  const far2 = { x: 3.5, z: 33.5 }, dc = ctx.nav.dist(far2, hk);
+  ok(dc >= myD + 6, `test geometry: the far claimant's path ${dc.toFixed(1)} m`);
+  far2.t = 70 - (dc / 4 + 1 + 3) + 0.5;
+  ok(scene(P0, { t: far2.t + 0.5, claim: far2 }).a?.moveTo, 'claimant too far to beat the struggle deadline: no cover, fallback save');
+  {
+    const R = makeRescuePlanner(ctx, { ...P0, claimRefreshS: 5 }, null);
+    const notes = [{ type: 'hooked', who: 1, x: hk.x, z: hk.z, t: 0 }];
+    const hud = [hudRow(0), hudRow(1, { state: 'hooked', hookStage: 1 }), hudRow(2, { state: 'dead' }), hudRow(3, { state: 'dead' })];
+    const said = [];
+    for (let t = 10; t <= 22; t += 0.5) { R.update(rObs(t, me, hud, { notes })); const a = R.decide(rObs(t, me, hud, { notes }), api, opts); if (a && a.intent) said.push(t); }
+    ok(said.join() === '10,15,20', `claim announced at 10 s and re-announced every claimRefreshS = 5 s while going (${said.join(', ')})`);
+  }
+  const tr1 = scene(P0, { t: 20, stage: 1, chasedUntil: 18 });
+  ok(tr1.a === null && tr1.R.stats.trail > 0, 'my chase ended 2 s ago (rescueTrailS 6): stay away from the hook');
+  ok(scene(P0, { t: 30, stage: 1, chasedUntil: 18 }).a?.moveTo, '12 s after my chase: go');
+  ok(scene({ ...P0, rescueTrailS: 0 }, { t: 20, stage: 1, chasedUntil: 18 }).a?.moveTo, 'rescueTrailS 0: go at once');
+  ok(scene(P0, { t: 62, stage: 2, chasedUntil: 61 }).a?.moveTo, 'struggle with < 15 s of slack: go even right after my chase');
+  const exitS = () => 10;
+  const need = 0.5 * (travel + 1) + 10 + 10;
+  ok(scene(P0, { t: 20, stage: 1, endgame: { exitS, collapseS: need + 1 } }).a?.moveTo, `endgame: collapse ${(need + 1).toFixed(1)} s covers the save: go`);
+  const eg = scene(P0, { t: 20, stage: 1, endgame: { exitS, collapseS: need - 1 } });
+  ok(eg.a === null && eg.R.stats.egLate > 0, 'endgame: collapse too short for the save + walk out: leave');
+  ok(scene(P0, { t: 20, stage: 1, endgame: { exitS, collapseS: null } }).a?.moveTo, 'endgame, no gate open yet (no clock): go');
+  const Pn = { ...P0, rescueThreshold: 0.5, rescueStageGo: 0, rescueBusyBonus: 0 };
+  ok(scene({ ...Pn, endgameRescueW: 1 }, { t: 20, stage: 1, endgame: { exitS, collapseS: null } }).a?.moveTo && scene({ ...Pn, endgameRescueW: 0 }, { t: 20, stage: 1, endgame: { exitS, collapseS: null } }).a === null
+    && scene({ ...Pn, endgameRescueW: 1 }, { t: 20, stage: 1 }).a === null, 'endgameRescueW lifts the score over the threshold, only in the endgame');
+});
+
+test('endgame planner: free lever -> work it; lever held by a teammate -> wait, no duplicate work; optional hold near completion', () => {
+  const B = getBrains();
+  const ctx = survivorCtx(0), api = { nav: ctx.nav };
+  const G = smallMap.exitGates, lever = G[0].lever;
+  const at = { x: lever.x + 0.5, z: lever.z + 0.6 };
+  const gates = (p = 0.3) => [{ id: G[0].id, powered: true, open: false, progress: p }, { id: G[1].id, powered: true, open: false }];
+  const hud = (o = {}) => [hudRow(0), hudRow(1, o[1]), hudRow(2, o[2]), hudRow(3, o[3])];
+  const mk2 = (P) => { const tr = new MateTracker(ctx); return { E: makeEndgame(ctx, P, tr), tr }; };
+  const P = defaults(B.survivor.space);
+  ok(P.gateHoldProg === 1, 'default: never hold a lever (open and leave)');
+  let { E } = mk2(P);
+  let o = rObs(100, at, hud(), { gates: gates() }); E.update(o);
+  let a = E.decide(o, api, {});
+  ok(a.act === 'openGate' && a.target === G[0].id, 'at a free lever: open it');
+  ({ E } = mk2(P));
+  o = rObs(100, at, hud({ 2: { activity: 'gate', activityProgress: 0.4 } }), { gates: gates(0.4), teammates: [{ id: 2, x: lever.x - 0.5, z: lever.z + 0.5, state: 'healthy' }] }); E.update(o);
+  a = E.decide(o, api, {});
+  ok(!a.act && E.stats.heldWait === 1, `a visible teammate working the lever: wait near it, no openGate (${JSON.stringify(a)})`);
+  {
+    const { E: E2, tr } = mk2(P);
+    tr.setFix(2, lever.x - 0.5, lever.z + 0.5, 90, 0.5, 'gate', 0.2);
+    const far = { x: 24.5, z: 12.5 };
+    const o2 = rObs(100, far, hud({ 2: { activity: 'gate', activityProgress: 0.6 } }), { gates: [{ id: G[0].id, powered: true, open: false }, { id: G[1].id, powered: true, open: false }] });
+    tr.update(o2); E2.update(o2);
+    ok(E2.heldByMate(o2, o2.gates[0], G[0]), 'teammate anchored at the lever by HUD gate continuity (not visible now): held');
+    ok(!E2.heldByMate(o2, o2.gates[1], G[1]), '...the other lever is free');
+  }
+  ({ E } = mk2(P));
+  o = rObs(100, at, hud(), { gates: [{ id: G[0].id, powered: true, open: true, progress: 1 }, { id: G[1].id, powered: true, open: false }] }); E.update(o);
+  a = E.decide(o, api, {});
+  ok(a.moveTo && a.moveTo.x === G[0].exit.x && a.moveTo.z === G[0].exit.z, 'an open gate: walk out');
+  const PH = { ...P, gateHoldProg: 0.9 };
+  ({ E } = mk2(PH));
+  const hooked1 = { 1: { state: 'hooked', hookStage: 1 } };
+  o = rObs(100, at, hud(hooked1), { gates: gates(0.95) }); E.update(o);
+  a = E.decide(o, api, {});
+  ok(!a.act && E.stats.holdTicks === 1, 'gateHoldProg 0.9, lever at 95 %, teammate hooked, collapse not begun: hold');
+  o = rObs(100, at, hud(hooked1), { gates: gates(0.95) }); o.hunter = { x: at.x + 8, z: at.z + 4 };
+  ok(E.decide(o, api, {}).act === 'openGate', 'hunter seen within gateHoldThreatM: finish the lever');
+  o = rObs(100, at, hud({ ...hooked1, 2: { chased: true } }), { gates: gates(0.95) });
+  ok(E.decide(o, api, {}).act === 'openGate', 'a teammate is chased (needs an open exit): finish the lever');
+  o = rObs(100, at, hud(), { gates: gates(0.95) });
+  ok(E.decide(o, api, {}).act === 'openGate', 'nobody incapacitated: finish the lever');
+  o = rObs(100, at, hud(hooked1), { gates: gates(0.5) });
+  ok(E.decide(o, api, {}).act === 'openGate', 'below gateHoldProg: keep working');
+});
+
+test('determinism with the rescue / endgame knobs (full + short-gen matches, forward vs reverse order)', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  const sp = { ...defaults(B.survivor.space), gateHoldProg: 0.9, rescueMaxGoers: 2, claimRefreshS: 6 };
+  const go = ([seed, needed]) => {
+    const r = runMatch({ map: gh, seed, config: { gens: { needed } }, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(sp) });
+    return JSON.stringify([r.durationS, r.kills, r.escapes, r.events]);
+  };
+  const cases = [[1012, 5], [3001, 2], [3002, 2], [3003, 2]];
+  const fwd = cases.map(go), rev = [...cases].reverse().map(go).reverse();
+  for (let i = 0; i < cases.length; i++) ok(fwd[i] === rev[i], `seed ${cases[i][0]} gens.needed ${cases[i][1]}: identical forward vs reverse`);
+  ok(fwd.slice(1).some((k) => JSON.parse(k)[3].some((e) => e.type === 'gatesPowered')), 'short-gen cases reach the endgame');
+});
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('\nFailures:\n' + failures.map(f => ' * ' + f).join('\n')); process.exit(1); }

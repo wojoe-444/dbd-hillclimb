@@ -21,6 +21,7 @@ export const survivorSpace = {
   // ---- HUD-driven teamwork (solo queue: no comms, but the HUD shows states / gens / chases / hooks / downed auras) ----
   ...rescueSpace,
   ...healSpace,                  // heal handshake (healer says "healing", patient pauses) + slug pick-up priorities: healplan.js                // rescue utility (closest / stage urgency / camping / busy hunter / claims / own risk) + chaseFromHookW: rescue.js
+  ...endgameSpace,               // gates powered: lever / exit choice, no duplicate lever work, optional lever hold: endgame.js
   trustChase:    [0, 1, 0.6],    // >0.5: don't abandon my gen on terror while another survivor is being chased
   downedStillDist: [0, 40, 12],  // downed: lie still (auto-recover to 95%) unless the hunter is seen within this; then crawl away
   seekHeal:      [0, 1, 0.4],    // >0.5: when injured, walk to a visible healthy teammate and stand still to be healed
@@ -143,6 +144,7 @@ import { healSpace, makeHealPlanner } from './healplan.js';
 import { kickSpace, makeKickPlanner } from './kickplan.js';
 import { profileSpace, makeKillerProfile } from './killerprofile.js';
 import { stealthSpace, makeStealthPlanner } from './stealthplan.js';
+import { endgameSpace, makeEndgame } from './endgame.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -262,6 +264,7 @@ export function makeSurvivor(P) {
       for (const a of anchors) if (know.anchorKnown[a.k]) { const d = d2(a.c, pt); if (d < 20) b = Math.max(b, 1 - d / 20); }
       return b;
     } });
+    const endgame = makeEndgame(ctx, P, rescue.tracker);       // gates powered: levers / exits
     // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
     const CAM = ctx.config.survivor.camera || { enabled: false };
     const camAt = (x, z, yaw) => {
@@ -1090,24 +1093,13 @@ export function makeSurvivor(P) {
     }
 
     // endgame: open a gate and leave (action, or null when no gate is usable)
+    // endgame: open a gate and leave via the endgame planner (endgame.js: lever choice, no duplicate lever work,
+    // optional hold); null when no gate is usable. The cascade calls endgame directly (after an endgame rescue check);
+    // goal brains call this
     function gateStep(obs, api, holdProtection) {
-      const me = obs.self, nav = api.nav;
-      if (obs.gatesPowered) {
-        let best = null, bd = Infinity;
-        for (const g of obs.gates) {
-          const gd = M.exitGates.find((x) => x.id === g.id);
-          let d = nav.dist(me, g.open ? gd.exit : gd.lever);
-          if (!g.open && obs.teammates.some((t) => d2(t, gd.lever) < 1.6) && d2(me, gd.lever) > 1.6) d += 60; // lever taken: one opener per lever
-          if (d < bd) { bd = d; best = { g, gd }; }
-        }
-        if (best) {
-          const { g, gd } = best;
-          if (g.open) return { moveTo: gd.exit };
-          if (d2(gd.lever, me) <= 1.4 && !holdProtection) return { act: 'openGate', target: g.id };
-          return { moveTo: gd.lever };
-        }
-      }
-      return null;
+      if (!obs.gatesPowered) return null;
+      endgame.update(obs);
+      return endgame.decide(obs, api, { holdProtection }) || null;
     }
 
     // generators (only the ones I've found) vs exploring for more. only: undefined (combined choice) | 'gen' | 'explore'
@@ -1212,6 +1204,7 @@ export function makeSurvivor(P) {
         get exploreTo() { return exploreTo; },
       },
       stealth,
+      endgame,
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -1348,8 +1341,18 @@ export function makeSurvivor(P) {
         // ---- fresh off the hook: keep the protections (no conspicuous actions) for a while ----
         const holdProtection = me.protectedS !== null && me.protectedS !== undefined && me.protectedS > 10 - P.protectHoldS;
 
-        // ---- endgame: open a gate and leave ----
-        if (obs.gatesPowered) { const ga = gateStep(obs, api, holdProtection); if (ga) return ga; }
+        // ---- endgame: go back for a hooked teammate if the save still pays (rescue.js, endgame-aware deadline), else
+        // open a gate (no duplicate lever work, optional hold) and leave (endgame.js) ----
+        if (obs.gatesPowered) {
+          endgame.update(obs);
+          if (P.altruism > 0.25) {
+            const eg = { exitS: (pt) => endgame.exitS(obs, nav, pt), collapseS: obs.endgame ? obs.endgame.remainingS : null };
+            const ra = rescue.decide(obs, api, { holdProtection, say, beliefFull, endgame: eg });
+            if (ra) return ra;
+          }
+          const ea = endgame.decide(obs, api, { holdProtection });
+          if (ea) return ea;
+        }
 
         if (mode === 'sneak') {
           // move away from the last sighting toward the farthest unfinished gen
