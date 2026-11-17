@@ -23,6 +23,7 @@
 // Solo-queue legal: features come only from this survivor's obs (HUD, own sight, notifications, own belief).
 // Viewer: debug() adds { goal, since, scores, top (largest contributing features of the chosen goal), features }.
 import { survivorSpace, makeSurvivor } from './survivor.js';
+import { makeCoverRoute } from './coverroute.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
 const d2 = (a, b) => hyp(a.x - b.x, a.z - b.z);
@@ -77,6 +78,16 @@ export const FEATURES = {
   seeNear: 'hCanSee x hNear',
   progTerror: 'genProg x terror',
   hookGens: 'hooked x gens',
+  // ---- reflex-oriented (conditions read these; also weighted like any feature) ----
+  matesHookedFrac: 'hooked teammates / teammates still in the match (HUD)',
+  allOthersOut: 'no other teammate standing: every one still in the match is hooked / downed / carried (HUD)',
+  lastAlive: 'every other teammate is dead or escaped (HUD)',
+  hunterChasingOther: 'another teammate is being chased (HUD)',
+  mateCarried: 'a teammate is being carried (HUD)',
+  hunterNearHook: 'the hunter is seen / was seen < 8 s ago within 16 m of the nearest hooked teammate',
+  hookTimeLeft: 'time until the most urgent hooked teammate dies / 140 s (1 = nobody hooked)',
+  endgameLeft: 'endgame collapse time left / 120 s (0 = no collapse)',
+  danger: 'max(hNear, hMem, terror, threat)',
 };
 const FEATS = Object.keys(FEATURES), NF = FEATS.length, FI = Object.fromEntries(FEATS.map((k, i) => [k, i]));
 
@@ -136,6 +147,68 @@ for (const g of GOALS) {
   survivorGoalSpace[`g_${g}_fatigue`] = [-4, 2, FATIGUE[g] ?? 0];
 }
 
+// ---- motor modes (per goal that moves): gait, route preference, timing ----
+//   stealth = m_<g>_stealth + m_<g>_stealthDanger * danger : < -0.5 run | < 0 the routine's own gait | < 0.5 walk | crouch
+//   covered = m_<g>_cover + m_<g>_coverDanger * danger > 0 : covered / low-exposure steps (coverroute.js) instead of shortest
+//   wait    = m_<g>_wait (0..1)                            : hold (watching) while the hunter is near the target
+//             (target danger > 1 - wait), unless it is busy elsewhere (chasing / carrying another), at most 25 s per entry
+// Defaults: the routine's own gait, shortest route, go now = today's behaviour.
+export const MOVE_GOALS = ['repair', 'explore', 'kicked', 'hide', 'sneak', 'rescue', 'heal', 'pickup', 'getHealed', 'gate', 'protect'];
+export const GAITS = ['own', 'run', 'walk', 'crouch'];
+for (const g of MOVE_GOALS) {
+  survivorGoalSpace[`m_${g}_stealth`] = [-1, 1, -0.25];
+  survivorGoalSpace[`m_${g}_stealthDanger`] = [-2, 2, 0];
+  survivorGoalSpace[`m_${g}_cover`] = [-1, 1, -0.5];
+  survivorGoalSpace[`m_${g}_coverDanger`] = [-2, 2, 0];
+  survivorGoalSpace[`m_${g}_wait`] = [0, 1, 0];
+}
+
+// ---- reflexes: K evolvable condition -> response slots (all off by default) ----
+//   IF f[fa] (>|<) ta [AND f[fb] (>|<) tb] THEN score[goal] += bonus, and while that goal runs: gait / covered / wait
+// Genes per slot k (integer genes are continuous and floored, so params.js mutation / crossover / CMA-ES need nothing new):
+//   r<k>_on >0.5 enables · r<k>_fa, r<k>_fb feature index [0, NF) · r<k>_ta, r<k>_tb threshold [0,1] · r<k>_da, r<k>_db
+//   direction (>= 0: '>', < 0: '<') · r<k>_and >0.5 adds the second condition · r<k>_goal goal index [0, NG) ·
+//   r<k>_bonus [-8, 8] · r<k>_gait [0, 4) GAITS (0 = no override) · r<k>_cover >0.5 covered route · r<k>_wait >0.5 wait
+// A firing condition stays latched for 1 s (no flicker at the threshold).
+export const REFLEX_SLOTS = 10;
+const RX_LATCH_S = 1;
+const idx = (v, n) => Math.max(0, Math.min(n - 1, Math.floor(v ?? 0)));
+for (let k = 0; k < REFLEX_SLOTS; k++) {
+  Object.assign(survivorGoalSpace, {
+    [`r${k}_on`]: [0, 1, 0], [`r${k}_fa`]: [0, NF, 0], [`r${k}_ta`]: [0, 1, 0.5], [`r${k}_da`]: [-1, 1, 1],
+    [`r${k}_and`]: [0, 1, 0], [`r${k}_fb`]: [0, NF, 0], [`r${k}_tb`]: [0, 1, 0.5], [`r${k}_db`]: [-1, 1, 1],
+    [`r${k}_goal`]: [0, GOALS.length, 0], [`r${k}_bonus`]: [-8, 8, 0], [`r${k}_gait`]: [0, GAITS.length, 0],
+    [`r${k}_cover`]: [0, 1, 0], [`r${k}_wait`]: [0, 1, 0],
+  });
+}
+// active slots of a param set, decoded: [{ k, fa, ta, gt, and, fb, tb, gtb, goal, bonus, gait, cover, wait, text }]
+export function parseReflexes(params) {
+  const out = [];
+  for (let k = 0; k < REFLEX_SLOTS; k++) {
+    if (!((params[`r${k}_on`] ?? 0) > 0.5)) continue;
+    const r = {
+      k, fa: idx(params[`r${k}_fa`], NF), ta: params[`r${k}_ta`] ?? 0.5, gt: (params[`r${k}_da`] ?? 1) >= 0,
+      and: (params[`r${k}_and`] ?? 0) > 0.5, fb: idx(params[`r${k}_fb`], NF), tb: params[`r${k}_tb`] ?? 0.5, gtb: (params[`r${k}_db`] ?? 1) >= 0,
+      goal: idx(params[`r${k}_goal`], GOALS.length), bonus: params[`r${k}_bonus`] ?? 0,
+      gait: idx(params[`r${k}_gait`], GAITS.length), cover: (params[`r${k}_cover`] ?? 0) > 0.5, wait: (params[`r${k}_wait`] ?? 0) > 0.5,
+    };
+    const c = (fi, gt, th) => `${FEATS[fi]} ${gt ? '>' : '<'} ${th.toFixed(2)}`;
+    const mods = [r.gait ? GAITS[r.gait] : null, r.cover ? 'covered' : null, r.wait ? 'wait' : null].filter(Boolean);
+    r.text = `IF ${c(r.fa, r.gt, r.ta)}${r.and ? ' AND ' + c(r.fb, r.gtb, r.tb) : ''} THEN ${GOALS[r.goal]}${mods.length ? '[' + mods.join(',') + ']' : ''} ${r.bonus >= 0 ? '+' : ''}${r.bonus.toFixed(1)}`;
+    out.push(r);
+  }
+  return out;
+}
+export const decodeReflexes = (params) => parseReflexes(params).map((r) => r.text);
+// genes for a readable reflex, e.g. reflexGenes(0, { if: ['allOthersOut', '>', 0.5], and: ['hNear', '<', 0.3], goal: 'rescue', bonus: 6, gait: 'crouch', cover: true })
+export function reflexGenes(k, spec) {
+  const g = { [`r${k}_on`]: 1, [`r${k}_fa`]: FI[spec.if[0]] + 0.5, [`r${k}_da`]: spec.if[1] === '<' ? -1 : 1, [`r${k}_ta`]: spec.if[2],
+    [`r${k}_goal`]: GOALS.indexOf(spec.goal) + 0.5, [`r${k}_bonus`]: spec.bonus ?? 0, [`r${k}_gait`]: GAITS.indexOf(spec.gait ?? 'own') + 0.5,
+    [`r${k}_cover`]: spec.cover ? 1 : 0, [`r${k}_wait`]: spec.wait ? 1 : 0, [`r${k}_and`]: spec.and ? 1 : 0 };
+  if (spec.and) Object.assign(g, { [`r${k}_fb`]: FI[spec.and[0]] + 0.5, [`r${k}_db`]: spec.and[1] === '<' ? -1 : 1, [`r${k}_tb`]: spec.and[2] });
+  return g;
+}
+
 export function makeSurvivorGoal(params) {
   const P = { ...params };
   for (const [k, v] of Object.entries(DROPPED)) P[k] = v ?? survivorSpace[k][2];
@@ -144,6 +217,10 @@ export function makeSurvivorGoal(params) {
   const W = GOALS.map((g) => Float64Array.from(FEATS, (f) => params[wName(g, f)] ?? DEF[g][f] ?? 0));
   const fatigueW = GOALS.map((g) => params[`g_${g}_fatigue`] ?? FATIGUE[g] ?? 0);
   const stick = params.goalStick ?? 0.75;
+  const isMove = GOALS.map((g) => MOVE_GOALS.includes(g));
+  const mk = (n, d) => GOALS.map((g) => (MOVE_GOALS.includes(g) ? params[`m_${g}_${n}`] ?? d : 0));
+  const mSt = mk('stealth', -0.25), mStD = mk('stealthDanger', 0), mCv = mk('cover', -0.5), mCvD = mk('coverDanger', 0), mWait = mk('wait', 0);
+  const RX = parseReflexes(params);
   return (ctx) => {
     const base = makeSurvivor(P)(ctx);
     const S = base.skills, { belief, rescue, heal, know, loops } = base, M = ctx.map;
@@ -160,6 +237,14 @@ export function makeSurvivorGoal(params) {
     let closeT = -99, closeKey = '', closeV = 0;
     let chaseSentT = -99, helpSentT = -99;
     let memX = 0, memZ = 0, memT = -2e9, memClose = 0, canSeeT = -1e9;   // own hunter memory (features hMem / hCanSee)
+    const route = makeCoverRoute(ctx, belief);     // covered-route steps (extension point: stealth planner)
+    const rxUntil = new Float64Array(RX.length).fill(-1);   // reflex latch
+    const rxFired = new Uint8Array(RX.length);
+    const modeRx = new Array(GOALS.length).fill(null);      // this decision's reflex mode override per goal
+    let waitAcc = 0, lastMode = null;
+    goalStats.reflexFired = new Float64Array(RX.length);   // decisions on which each reflex fired
+    goalStats.reflexWon = new Float64Array(RX.length);     // ... and its goal ran
+    goalStats.modes = { run: 0, walk: 0, crouch: 0, covered: 0, wait: 0 };
 
     function features(obs, api) {
       const me = obs.self, h = obs.hunter, hud = obs.hud || [], t = obs.t, nav = api.nav, mine = hud[me.id] || {};
@@ -267,6 +352,8 @@ export function makeSurvivorGoal(params) {
           } else closeV = 0;
         }
         f[FI.iClosest] = closeV;
+        const lh = obs.lastHunter;
+        f[FI.hunterNearHook] = (h ? d2(h, hk) < 16 : !!lh && t - lh.t < 8 && d2(lh, hk) < 16) ? 1 : 0;
       }
       // teammates I can see / downed auras
       let dn = Infinity, inj = Infinity, hl = Infinity;
@@ -301,6 +388,29 @@ export function makeSurvivorGoal(params) {
       f[FI.seeNear] = f[FI.hCanSee] * f[FI.hNear];
       f[FI.progTerror] = f[FI.genProg] * f[FI.terror];
       f[FI.hookGens] = f[FI.hooked] * f[FI.gens];
+      let inGame = 0, standing = 0, chasedO = 0, carried = 0;
+      for (const x of hud) {
+        if (!x || x.id === me.id || x.state === 'dead' || x.state === 'escaped') continue;
+        inGame++;
+        if (x.state === 'healthy' || x.state === 'injured') standing++;
+        if (x.chased) chasedO = 1;
+        if (x.state === 'carried') carried = 1;
+      }
+      f[FI.matesHookedFrac] = inGame ? hooked / inGame : 0;
+      f[FI.allOthersOut] = inGame > 0 && standing === 0 ? 1 : 0;
+      f[FI.lastAlive] = inGame === 0 ? 1 : 0;
+      f[FI.hunterChasingOther] = chasedO;
+      f[FI.mateCarried] = carried;
+      let left = 1;
+      for (const k of Object.keys(rescue.hooked)) {
+        const j = +k, e = rescue.hooked[k];
+        if (j === me.id) continue;
+        const struggle = (hud[j] ? hud[j].hookStage : e.stage) >= deathStage - 1;
+        left = Math.min(left, clamp01((stageS - (t - e.stageT) + (struggle ? 0 : stageS)) / (2 * stageS)));
+      }
+      f[FI.hookTimeLeft] = left;
+      f[FI.endgameLeft] = obs.endgame ? clamp01(obs.endgame.remainingS / 120) : 0;
+      f[FI.danger] = Math.max(f[FI.hNear], f[FI.hMem], f[FI.terror], f[FI.threat]);
     }
 
     // physical preconditions only (not habits): can this goal do anything at all right now?
@@ -418,6 +528,42 @@ export function makeSurvivorGoal(params) {
       if (g === 'hide') S.hide = null;
     }
 
+    // hunter near a point: seen (1 at the point .. 0 at 24 m), else my belief's P(within 16 m)
+    function dangerAt(pt, obs) {
+      const h = obs.hunter;
+      if (h) return clamp01(1 - d2(h, pt) / 24);
+      return S.beliefOn ? clamp01(belief.pHunterWithin(pt, 16)) : 0;
+    }
+    // motor mode of the running goal: timing (wait), route (covered), gait. The defaults change nothing.
+    function applyMode(gi, a, obs, api) {
+      const s = mSt[gi] + mStD[gi] * f[FI.danger];
+      let gait = s < -0.5 ? 1 : s < 0 ? 0 : s < 0.5 ? 2 : 3;
+      let cover = mCv[gi] + mCvD[gi] * f[FI.danger] > 0, wait = mWait[gi];
+      const rx = modeRx[gi];
+      if (rx) { if (rx.gait) gait = rx.gait; if (rx.cover) cover = true; if (rx.wait) wait = Math.max(wait, 0.7); }
+      if (a.act || !(a.moveTo || a.moveDir)) return a;
+      if (!gait && !cover && !(wait > 0)) return a;
+      const me = obs.self;
+      lastMode = { gait: GAITS[gait], cover: false, wait: false, rx: rx ? rx.by.slice() : null };
+      if (wait > 0 && a.moveTo && waitAcc < 25 && !(f[FI.hunterChasingOther] || f[FI.mateCarried]) && dangerAt(a.moveTo, obs) > 1 - wait) {
+        waitAcc += (ctx.config.decisionEvery || 1) / (ctx.config.tickHz || 10);
+        goalStats.modes.wait++; lastMode.wait = true;
+        const h = obs.hunter, e = h || (S.beliefOn ? belief.expectedPos() : null) || a.moveTo;
+        const out = { look: { x: e.x, z: e.z } };
+        if (gait === 3) out.crouch = true;
+        return out;
+      }
+      let out = a;
+      if (cover && a.moveTo) {
+        const wp = route.step(obs, api, me, a.moveTo, { crouch: gait === 3 });
+        if (wp) { out = { ...out, moveTo: wp }; goalStats.modes.covered++; lastMode.cover = true; }
+      }
+      if (gait === 1) { out = { ...out }; delete out.walk; delete out.crouch; goalStats.modes.run++; }
+      else if (gait === 2) { out = { ...out, walk: true }; delete out.crouch; goalStats.modes.walk++; }
+      else if (gait === 3) { out = { ...out, crouch: true }; goalStats.modes.crouch++; }
+      return out;
+    }
+
     function decideInner(obs, api) {
       const me = obs.self, h = obs.hunter, nav = api.nav;
       if (me.state === 'hooked') return me.canSelfUnhook ? { act: 'selfUnhook' } : {};
@@ -445,6 +591,23 @@ export function makeSurvivorGoal(params) {
         if (g === goal) s += stick + fatigueW[g] * Math.min(1, (t - goalSince) / 30);
         score[g] = s;
       }
+      // reflexes: conditions over the same features; a firing one adds its bonus and its mode override to its goal
+      modeRx.fill(null);
+      for (let i = 0; i < RX.length; i++) {
+        const r = RX[i];
+        const ca = r.gt ? f[r.fa] > r.ta : f[r.fa] < r.ta;
+        if (ca && (!r.and || (r.gtb ? f[r.fb] > r.tb : f[r.fb] < r.tb))) rxUntil[i] = t + RX_LATCH_S;
+        rxFired[i] = t < rxUntil[i] ? 1 : 0;
+        if (!rxFired[i]) continue;
+        goalStats.reflexFired[i]++;
+        if (score[r.goal] === -Infinity) continue;
+        score[r.goal] += r.bonus;
+        if (r.gait || r.cover || r.wait) {
+          const o = modeRx[r.goal] || (modeRx[r.goal] = { gait: 0, cover: false, wait: false, by: [] });
+          if (r.gait) o.gait = r.gait;
+          o.cover = o.cover || r.cover; o.wait = o.wait || r.wait; o.by.push(r.k);
+        }
+      }
       const canSay = !(me.intentCooldownS > 0);
       const cx = {
         walk: P.walkWhenTR > 0.5 && obs.terror !== null,
@@ -458,17 +621,20 @@ export function makeSurvivorGoal(params) {
         for (let g = 0; g < NG; g++) if (!tried[g] && score[g] > bs) { bs = score[g]; bi = g; }
         if (bi < 0) break;
         tried[bi] = 1;
-        const a = run(bi, obs, api, cx);
+        let a = run(bi, obs, api, cx);
         if (!a) { goalStats.fallbacks++; failed.push(bi); continue; }
         if (bi !== goal) {   // switching: release the old goal's motor state
           if (goal >= 0) leave(goal);
-          prevGoal = goal; goal = bi; goalSince = t;
+          prevGoal = goal; goal = bi; goalSince = t; waitAcc = 0;
           goalStats.switches++; goalStats.enters[bi]++;
           const key = (prevGoal >= 0 ? GOALS[prevGoal] : '-') + '>' + GOALS[bi];
           goalStats.trans[key] = (goalStats.trans[key] || 0) + 1;
         }
         S.mode = GOALS[bi] === 'flee' ? 'chase' : GOALS[bi] === 'sneak' ? 'sneak' : 'work';
         goalStats.ticks[bi]++;
+        for (let i = 0; i < RX.length; i++) if (rxFired[i] && RX[i].goal === bi) goalStats.reflexWon[i]++;
+        lastMode = null;
+        if (isMove[bi]) a = applyMode(bi, a, obs, api);
         return a;
       }
       if (goal >= 0) { leave(goal); goal = -1; }
@@ -500,7 +666,8 @@ export function makeSurvivorGoal(params) {
           top.sort((a, b) => Math.abs(b.c) - Math.abs(a.c));
           top = top.slice(0, 5);
         }
-        out.goal = { name: goal >= 0 ? GOALS[goal] : null, failed: failed.map((g) => GOALS[g]), prev: prevGoal >= 0 ? GOALS[prevGoal] : null, since: goalSince, scores, top, features: feats };
+        const reflexes = RX.map((r, i) => ({ k: r.k, text: r.text, fired: !!rxFired[i] }));
+        out.goal = { reflexes, mode: lastMode ? { ...lastMode } : null, name: goal >= 0 ? GOALS[goal] : null, failed: failed.map((g) => GOALS[g]), prev: prevGoal >= 0 ? GOALS[prevGoal] : null, since: goalSince, scores, top, features: feats };
         return out;
       },
     };
