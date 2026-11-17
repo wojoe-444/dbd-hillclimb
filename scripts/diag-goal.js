@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { createMatch } from '../src/sim/index.js';
 import { getBrains } from '../src/brains/index.js';
-import { GOALS } from '../src/brains/survivor-goal.js';
+import { GOALS, parseReflexes } from '../src/brains/survivor-goal.js';
 import { defaults, clampParams } from '../src/hillclimb/params.js';
 import { loadMapPool } from '../src/hillclimb/maps.js';
 
@@ -18,6 +18,7 @@ const hp = defaults(B.hunter.space);
 let sp = defaults(B.survivor.space);
 if (a.champ) sp = clampParams(B.survivor.space, { ...sp, ...JSON.parse(readFileSync(a.champ, 'utf8')).champ.survivor });
 const n = +(a.n ?? 8);
+const RX = parseReflexes(sp), rxFired = new Float64Array(RX.length), rxWon = new Float64Array(RX.length), modes = {};
 const ticks = new Float64Array(GOALS.length), enters = new Float64Array(GOALS.length), trans = {};
 const flipPairs = {};
 let switches = 0, aliveS = 0, flipBacks = 0, fallbacks = 0, kills = 0, esc = 0, gens = 0;
@@ -42,6 +43,8 @@ for (let i = 0; i < n; i++) {
     const gs = s.brain.goalStats;
     for (let g = 0; g < GOALS.length; g++) { ticks[g] += gs.ticks[g]; enters[g] += gs.enters[g]; }
     switches += gs.switches; fallbacks += gs.fallbacks;
+    gs.reflexFired.forEach((v, i) => { rxFired[i] += v; rxWon[i] += gs.reflexWon[i]; });
+    for (const [k, v] of Object.entries(gs.modes)) modes[k] = (modes[k] || 0) + v;
     for (const [k, v] of Object.entries(gs.trans)) trans[k] = (trans[k] || 0) + v;
   }
 }
@@ -52,3 +55,8 @@ GOALS.forEach((g, i) => console.log(`${g.padEnd(10)} ${(100 * ticks[i] / tot).to
 console.log(`switches ${(switches / (aliveS / 60)).toFixed(2)}/survivor-min, flip-backs (A>B>A within 1 s) ${flipBacks} = ${(flipBacks / (aliveS / 60)).toFixed(3)}/survivor-min, fallbacks/decision ${(fallbacks / Math.max(1, tot)).toFixed(3)}`);
 console.log('top transitions: ' + Object.entries(trans).sort((x, y) => y[1] - x[1]).slice(0, 14).map(([k, v]) => `${k} ${(v / n).toFixed(1)}`).join(', '));
 console.log('flip-backs by pair: ' + Object.entries(flipPairs).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => `${k} ${v}`).join(', '));
+console.log('motor modes (decisions/match): ' + Object.entries(modes).map(([k, v]) => `${k} ${(v / n).toFixed(1)}`).join('  '));
+if (RX.length) {
+  console.log('reflexes (decisions fired / its goal ran, per match):');
+  RX.forEach((r, i) => console.log(`  [${r.k}] ${r.text}   fired ${(rxFired[i] / n).toFixed(1)}  won ${(rxWon[i] / n).toFixed(1)}`));
+} else console.log('reflexes: none enabled');

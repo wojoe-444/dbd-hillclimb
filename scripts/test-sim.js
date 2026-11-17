@@ -24,6 +24,8 @@ import { makeEndgame } from '../src/brains/endgame.js';
 import { generateOutline, checkOutlineCells, outlineToCells, OUTLINE_FAMILIES, generateFromLayout, gasHeavenLayout, makeRng, outlineInset, TILES } from '../src/mapgen/index.js';
 import { analyzeMap } from './validate-map.js';
 import { makeHealPlanner, healSpace } from '../src/brains/healplan.js';
+import { reflexGenes, decodeReflexes, FEATURES as GOAL_FEATURES } from '../src/brains/survivor-goal.js';
+import { reflexScenario } from './demo-reflex.js';
 import os from 'node:os';
 import { rng as climbRng } from '../src/hillclimb/params.js';
 import { makePlayer } from '../src/hillclimb/play.js';
@@ -137,6 +139,38 @@ test("'goal' survivor (learned goal layer): deterministic, debug polling inert, 
   ok(!!c.dbg && typeof c.dbg.goal.scores[c.dbg.goal.name] === 'number' && c.dbg.goal.top.every(x => typeof x.f === 'string' && Number.isFinite(x.c)) && Number.isFinite(c.dbg.goal.features.hNear), 'debug().goal: chosen goal, scores, top contributing features, feature vector');
   const x = run(false, 9, true), y = run(false, 9, true);
   ok(x.r === y.r && x.r !== a.r, 'mixed goal / param team: deterministic');
+});
+
+test("'goal' survivor reflexes + motor modes: decoding, gating, crouch / walk / covered / wait, determinism, defaults inert", () => {
+  const R = { if: ['allOthersOut', '>', 0.5], and: ['hNear', '<', 0.3], goal: 'rescue', bonus: 4, gait: 'crouch', cover: true };
+  const g = reflexGenes(2, R);
+  ok(JSON.stringify(decodeReflexes(g)) === JSON.stringify(['IF allOthersOut > 0.50 AND hNear < 0.30 THEN rescue[crouch,covered] +4.0']), 'decoder: ' + decodeReflexes(g)[0]);
+  ok(decodeReflexes({ ...g, r2_on: 0.4 }).length === 0, 'slot gated by its enable gene (r_on <= 0.5 = off)');
+  ok(decodeReflexes({ ...g, r2_fa: 1e9, r2_goal: -5 })[0].startsWith('IF ' + Object.keys(GOAL_FEATURES).at(-1)) && decodeReflexes({ ...g, r2_goal: -5 })[0].includes('THEN repair'), 'integer genes are floored and clamped into range');
+  // scripted scenario (scripts/demo-reflex.js): teammates all hooked, hunter far
+  const base = reflexScenario({ ticks: 150 });
+  const crouch = reflexScenario({ ticks: 150, reflexes: [{ if: ['allOthersOut', '>', 0.5], goal: 'rescue', bonus: 6, gait: 'crouch', cover: true }] });
+  const share = (r, k) => r.trace.filter(x => x[k]).length / r.trace.length;
+  ok(share(base, 'crouch') === 0 && base.stats.modes.covered === 0 && base.trace.some(x => x.goal === 'rescue'), 'defaults: runs to the rescue (no crouch, no covered steps)');
+  ok(share(crouch, 'crouch') > 0.9 && share(crouch, 'crouched') > 0.8 && crouch.stats.reflexFired[0] > 100 && crouch.stats.reflexWon[0] > 100, 'reflex "all others hooked -> rescue[crouch]": crouch-walks (engine crouched)');
+  ok(crouch.stats.modes.covered > 50 && crouch.dbg.goal.reflexes[0].fired && crouch.dbg.goal.mode && crouch.dbg.goal.mode.gait === 'crouch', 'covered route steps used; debug shows the fired reflex and the mode');
+  const dBase = Math.hypot(base.trace[100].x - 24.5, base.trace[100].z - 24.5), dCr = Math.hypot(crouch.trace[100].x - 24.5, crouch.trace[100].z - 24.5);
+  ok(dCr < dBase * 0.6, `crouch-walk is slow (${dCr.toFixed(1)} vs ${dBase.toFixed(1)} m in 10 s)`);
+  const again = reflexScenario({ ticks: 150, reflexes: [{ if: ['allOthersOut', '>', 0.5], goal: 'rescue', bonus: 6, gait: 'crouch', cover: true }] });
+  ok(JSON.stringify(again.trace) === JSON.stringify(crouch.trace), 'reflex scenario deterministic');
+  const walk = reflexScenario({ ticks: 60, reflexes: [{ if: ['allOthersOut', '>', 0.5], goal: 'rescue', bonus: 6, gait: 'walk' }] });
+  ok(share(walk, 'walk') > 0.9 && share(walk, 'crouch') === 0, 'gait walk');
+  // timing: the hunter idles next to the hooks' area -> wait (stand, watch) instead of going
+  const wait = reflexScenario({ ticks: 60, hunterAt: { x: 10.5, z: 19.5 }, reflexes: [{ if: ['allOthersOut', '>', 0.5], goal: 'rescue', bonus: 8, wait: true }] });
+  ok(wait.stats.modes.wait > 20, `timing: waits while the hunter is near the target (${wait.stats.modes.wait} decisions)`);
+  // per-goal mode weights (no reflex): danger-free scenario, stealth base 0.3 -> walk
+  const B = getBrains('param', 'goal'), map = bigMap || smallMap;
+  const run = (sp) => { const m = createMatch({ map, seed: 5, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(sp) }); while (!m.over && m.tick < 1500) m.step(); return { r: JSON.stringify(m.result()), m }; };
+  const d0 = defaults(B.survivor.space);
+  const off = run(d0), offGated = run({ ...d0, ...reflexGenes(0, R), r0_on: 0.4 });
+  ok(off.r === offGated.r, 'a disabled reflex slot changes nothing (full match identical)');
+  const mw = run({ ...d0, m_repair_stealth: 0.3, m_explore_stealth: 0.3 });
+  ok(mw.m.survivors.some(s => s.brain.goalStats.modes.walk > 50) && mw.r !== off.r, 'per-goal mode weights: repair / explore walk');
 });
 
 test('setup: 7 of 11 generator candidates chosen (seeded), distinct per-agent rng/ctx/obs objects', () => {
