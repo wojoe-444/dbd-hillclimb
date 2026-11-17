@@ -238,7 +238,7 @@ test('solo queue: teammate positions only by sight (HUD states only); gens progr
   const keys = Object.keys(obs[0]).sort().join();
   const allowed = 'blockedWindows,downedAuras,endgame,gates,gatesPowered,gens,gensDone,gensNeeded,hud,hunter,lastHunter,lastSeen,mateAuras,newNotifications,notifications,pallets,self,t,teammates,terror,tick';
   ok(keys === allowed, 'survivor obs has exactly the perceived-info + HUD keys: ' + keys);
-  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,cam,chased,deepWoundS,elusiveS,facing,healProgress,hookCount,hookStage,hookStages,hookTimerS,id,intentCooldownS,mendProgress,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
+  ok(Object.keys(obs[0].self).sort().join() === 'act,bleedS,boosted,cam,chased,crouched,deepWoundS,elusiveS,facing,healProgress,hookCount,hookStage,hookStages,hookTimerS,id,intentCooldownS,mendProgress,progress,protectedS,state,vaulting,vx,vz,wiggle,x,z', 'self has only own state');
   ok(!('hookCount' in (obs[0].gens[0])) && !obs[0].gens.some(g => 'hooked' in g), 'no hidden state in gens');
   // survivor 1 is downed far away: survivor 0 gets it only through the HUD + downed aura, not through sight memory
   m.survivors[1].st = DOWNED; m.survivors[1].bleedT = 100; run(m, 3);
@@ -519,6 +519,81 @@ test('Bloodlust: +0.2/+0.4/+0.6 m/s at 15/25/35 s of chase; reset by a hit, a pa
   ctl.H = () => ({}); m.blT = 30; m.chaseSeenT = m.t; run(m, 1); ok(m.blTier === 2, 'tier back');
   place(s0, 3.5, 33.5); run(m, 2);
   ok(m.chaseTgt === -1 && m.blTier === 0 && m.blT === 0, 'chase over: Bloodlust gone');
+});
+
+test('crouch: 1.13 m/s, no scratch marks, slow quiet vaults, posture after 0.3 s, standing states only', () => {
+  const { m, ctl } = mk();
+  const s = m.survivors[0];
+  place(s, 30.5, 26.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, crouch: true });
+  m.marks.length = 0;
+  run(m, 10); near(s.x, 31.63, 0.01, 'crouch 1.13 m/s');
+  ok(m.marks.length === 0, 'crouching leaves no scratch marks');
+  ok(s.crouch, 'crouched posture after 0.3 s');
+  ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, crouch: true, walk: true }); run(m, 10); near(s.x, 32.76, 0.01, 'crouch wins over walk');
+  ctl.S[0] = () => ({ moveDir: { x: -1, z: 0 } }); run(m, 1);
+  ok(!s.crouch && s.crouchT === 0, 'standing up is instant');
+  ok(m.marks.length > 0, 'running leaves scratch marks again');
+  ctl.S[0] = () => ({ crouch: true }); run(m, 2); ok(!s.crouch, 'posture needs crouchEnterS (0.2 s < 0.3 s)');
+  run(m, 1); ok(s.crouch, 'posture at 0.3 s');
+  s.st = DOWNED; s.bleedT = 200; run(m, 1); ok(!s.crouch, 'downed: no crouch posture');
+  s.st = HEALTHY; run(m, 4);
+  const ob = []; ctl.S[0] = (o) => (ob.push(o), { crouch: true }); run(m, 2); ok(ob[ob.length - 1].self.crouched === true, 'obs.self.crouched');
+  // a window vault from a crouch is the slow (quiet) vault
+  const u = mk(); place(u.m.survivors[0], 13.5, 6.9); u.ctl.S[0] = () => ({ moveDir: { x: 0, z: 1 }, crouch: true });
+  let v0 = -1, v1 = -1;
+  for (let k = 0; k < 60; k++) { u.m.step(); const vv = !!u.m.survivors[0].vault; if (vv && v0 < 0) v0 = k; if (!vv && v0 >= 0 && v1 < 0) v1 = k; }
+  ok(v0 >= 0 && v1 > v0, 'crouch-vaults the window');
+  near((v1 - v0) * 0.1, u.m.cfg.survivor.vaultSlowS, 0.11, 'crouched: slow window vault');
+});
+
+test('crouch sight: hidden in the shadow of low cover (geometry from heights), visible close / in the open', () => {
+  const { m } = mk();
+  const api = m.survivors[0].api;
+  const v = (ax, az, bx, bz, c) => api.visibility({ x: ax, z: az }, { x: bx, z: bz }, c);
+  // car c3: height 1.2, cells x 40-41, z 12 (exit edge z = 13). need = (1.6 - 1.2) / (1.6 - 0.95) = 0.615
+  near(v(40.5, 3.5, 40.5, 13.5, true), 0, 1e-9, 'tucked behind a 1.2 m car, viewer 10 m away: hidden');
+  near(v(40.5, 3.5, 40.5, 13.5, false), 0.6, 1e-9, 'standing: still x0.6');
+  near(v(40.5, 1.5, 40.5, 15.5, true), 0, 1e-9, '2.5 m behind the car, viewer 14 m away: hidden (t = 0.82)');
+  near(v(40.5, 10.5, 40.5, 15.5, true), 0.6, 1e-9, '2.5 m behind the car, viewer 2 m in front: looks down over it (t = 0.5)');
+  // crate c1: height 1.0, cells x 22-23, z 10-11 (exit z = 12). need = 0.6 / 0.65 = 0.923
+  near(v(22.5, 1.5, 22.5, 12.5, true), 0, 1e-9, 'behind a 1.0 m crate from 11 m: hidden');
+  near(v(22.5, 7.5, 22.5, 12.5, true), 0.6, 1e-9, 'behind a 1.0 m crate from 5 m: visible');
+  near(v(15, 20, 30, 20, true), 1, 1e-9, 'crouched in the open: visible');
+  // window (sill 1.0 m) in the house wall at (13, 8): crouched right under it inside
+  near(v(13.5, 1.5, 13.5, 9.5, true), 0, 1e-9, 'crouched under a window: hidden from afar');
+  // generator candidate g6 (30.5, 18.5), height 1.3 m: need 0.46
+  near(v(30.5, 12.5, 30.5, 19.5, true), 0, 1e-9, 'crouched behind a generator: hidden');
+  near(v(31.5, 18.5, 25.5, 18.5, true), 0.6, 1e-9, 'far behind a gen with the viewer at it: visible (t = 0.25)');
+  // pallets give no crouch cover by default
+  near(v(25.5, 20.5, 25.5, 24.5, true), 0.6, 1e-9, 'pallet: no crouch cover (palletCoverM 0)');
+  // the hunter's perception uses it: crouched behind the car = not seen; standing = seen; posture needs 0.3 s
+  const { m: m2, ctl } = mk();
+  const H = m2.hunter, s = m2.survivors[0];
+  place(H, 40.5, 3.5); H.face = Math.PI / 2; place(s, 40.5, 13.5);
+  ctl.S[0] = () => ({ crouch: true }); ctl.H = () => ({ face: { x: 40.5, z: 20 } });
+  run(m2, 2); ok(H.seen[0], 'still seen during the crouch transition');
+  run(m2, 4); ok(!H.seen[0], 'crouched behind the car: hunter does not see it');
+  ctl.S[0] = () => ({}); run(m2, 4); ok(H.seen[0], 'stands up: seen');
+  ok(m2._obsHunter().survivors[0].crouched === false, 'hunter obs: crouched flag');
+  // teammate camera sight respects it too (survivor 1 looking from the hunter's spot)
+  place(H, 3.5, 3.5); ctl.S[0] = () => ({ crouch: true });
+  const t = m2.survivors[1]; place(t, 40.5, 3.5); m2.cfg.survivor.camera.enabled && (t.camYaw = Math.PI / 2);
+  ctl.S[1] = () => ({ look: { x: 40.5, z: 20 } });
+  run(m2, 6); ok(!t.seesMate[0], 'teammate camera: crouched mate behind the car not seen');
+  ctl.S[0] = () => ({}); run(m2, 4); ok(t.seesMate[0], 'teammate camera: standing mate seen');
+});
+
+test('crouch: determinism and default survivor knobs never crouch (off = old behaviour)', () => {
+  const B = getBrains();
+  const o = { map: bigMap || smallMap, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: B.survivor.make(defaults(B.survivor.space)) };
+  let crouched = 0;
+  const m = createMatch({ ...o, seed: 5 });
+  while (!m.over) { m.step(); for (const s of m.survivors) if (s.lastAction && s.lastAction.crouch) crouched++; }
+  ok(crouched === 0, 'default knobs: no crouch actions (' + crouched + ')');
+  const P = { ...defaults(B.survivor.space), crouchHideW: 1, crouchSneakDist: 30, crouchMaxS: 10 };
+  const o2 = { ...o, survivors: B.survivor.make(P) };
+  const a = runMatch({ ...o2, seed: 7 }), b = runMatch({ ...o2, seed: 7 });
+  ok(JSON.stringify(a) === JSON.stringify(b), 'crouching brains: same seed => identical result');
 });
 
 test('movement: speeds, collision, walk vs run, boost, crawl', () => {
@@ -1019,7 +1094,7 @@ test('unhook protections: 10 s haste/endurance/elusive, deep wound, mend, conspi
   const b = unhook(t.m, 1); place(t.m.hunter, b.x + 3, b.z); t.m.hunter.face = Math.PI;
   run(t.m, 2); ok(so.self.protectedS > 9 && so.self.deepWoundS === null, 'self.protectedS shown, deepWoundS null');
   const hs = ho.survivors.find(x => x.id === 1);
-  ok(hs && Object.keys(hs).sort().join() === 'deepWound,facing,hookCount,id,state,vaulting,vx,vz,x,z' && hs.deepWound === false, 'hunter obs: no protection info; deepWound presence only');
+  ok(hs && Object.keys(hs).sort().join() === 'crouched,deepWound,facing,hookCount,id,state,vaulting,vx,vz,x,z' && hs.deepWound === false, 'hunter obs: no protection info; deepWound presence only');
   // endurance: downing hit -> injured + deep wound (consumed); next hit downs
   t.m._hurt(b);
   ok(b.st === INJURED && b.dwT === 20 && !b.endure && b.boostT > 1.5, 'endurance absorbs the downing hit: injured + Deep Wound 20 s + burst');

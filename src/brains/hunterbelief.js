@@ -17,6 +17,9 @@
 // Cover: per 1 m cell, computed lazily on demand (memoised per instance): mean over 16 ray directions of how much
 // of the ray (out to `coverR` m) is hidden — a tall obstacle hides everything behind it, low obstacles / windows /
 // pallets / generators are semi-transparent (each distinct one x0.6; hidden once visibility < 0.5, like the engine).
+// coverAt(x, z, true) = the same for a CROUCHED body: low objects also cast the engine's crouch shadow.
+
+import { coverNeed } from '../sim/sight.js';
 
 const TAU = Math.PI * 2;
 
@@ -63,11 +66,23 @@ export class HunterBelief {
       }
     };
     for (const o of M.obstacles) put(o.x, o.z, o.x + o.w, o.z + o.d, o.height >= M.eyeHeight);
-    for (const g of [...(M.generatorCandidates || []), ...(M.generators || []).filter(Boolean)]) { const i = Math.floor(g.x), j = Math.floor(g.z); put(i, j, i + 1, j + 1, false); }
+    const gensAll = [...(M.generatorCandidates || []), ...(M.generators || []).filter(Boolean)], nGen = gensAll.length;
+    for (const g of gensAll) { const i = Math.floor(g.x), j = Math.floor(g.z); put(i, j, i + 1, j + 1, false); }
     for (const w of M.windows) { const id = oid++; if (opq[w.z * W + w.x] === -1) opq[w.z * W + w.x] = id; }
     for (const q of M.pallets) { const id = oid++; for (let j = q.z0 ?? q.z; j < (q.z1 ?? q.z + 1); j++) for (let i = q.x0 ?? q.x; i < (q.x1 ?? q.x + 1); i++) if (i >= 0 && j >= 0 && i < W && j < H && opq[j * W + i] === -1) opq[j * W + i] = id; }
     this.fine = fine; this.opq = opq;
     this.cover = new Float32Array(W * H).fill(-1);   // lazy memo
+    // crouched cover (sim README 'Crouching'): per object id, the crouch-shadow threshold (sight.js coverNeed) seen from
+    // the hunter's eye; object heights as in the engine (low obstacles = map height, windows / gens / pallets = config)
+    const sc = cfg.sight || {}, eye = sc.hunterEyeM ?? M.eyeHeight ?? 1.6, body = sc.crouchBodyM ?? 0.95;
+    const need = new Float32Array(oid).fill(2);
+    let k = 0;
+    for (const o of M.obstacles) need[k++] = coverNeed(eye, body, o.height);
+    for (let g = 0; g < nGen; g++) need[k++] = coverNeed(eye, body, sc.genCoverM ?? 0);
+    for (let w = 0; w < M.windows.length; w++) need[k++] = coverNeed(eye, body, sc.windowCoverM ?? 0);
+    for (let q = 0; q < M.pallets.length; q++) need[k++] = coverNeed(eye, body, sc.palletCoverM ?? 0);
+    this.need = need;
+    this.coverC = new Float32Array(W * H).fill(-1);  // lazy memo (crouched)
 
     // ---- coarse belief grid ----
     this.W = Math.ceil(W / cs); this.H = Math.ceil(H / cs);
@@ -332,12 +347,12 @@ export class HunterBelief {
 
   // expected exposure of pt: probability mass (over the k likeliest hunter cells, renormalised) with line of sight to pt
   // within sight range. Ignores the hunter's facing (it turns at 450 deg/s).
-  exposure(api, pt, top) {
+  exposure(api, pt, top, crouch = false) {
     let m = 0, tot = 0;
     const r2 = this.range * this.range;
     for (const c of top) {
       tot += c.p;
-      if ((c.x - pt.x) ** 2 + (c.z - pt.z) ** 2 <= r2 && api.los(c, pt)) m += c.p;
+      if ((c.x - pt.x) ** 2 + (c.z - pt.z) ** 2 <= r2 && api.los(c, pt, crouch)) m += c.p;
     }
     return tot > 0 ? m / tot : 0;
   }
@@ -345,23 +360,25 @@ export class HunterBelief {
   heat() { return Float32Array.from(this.p); }   // per coarse cell (W x H, cs m), for a viewer overlay
 
   // ---- cover ----
-  coverAt(x, z) {
+  coverAt(x, z, crouch = false) {
     const W = this.M.w, H = this.M.h, i = Math.floor(x), j = Math.floor(z);
     if (i < 0 || j < 0 || i >= W || j >= H) return 0;
-    const k = j * W + i;
-    if (this.cover[k] >= 0) return this.cover[k];
-    const v = this.computeCover(i + 0.5, j + 0.5);
-    this.cover[k] = v;
+    const k = j * W + i, memo = crouch ? this.coverC : this.cover;
+    if (memo[k] >= 0) return memo[k];
+    const v = this.computeCover(i + 0.5, j + 0.5, crouch);
+    memo[k] = v;
     return v;
   }
 
-  computeCover(x, z) {
+  // crouch: a crouched body at (x,z); a low object first met at distance e along the ray hides it from viewers at
+  // distance >= e / (1 - need) (the engine's crouch shadow, seen from the far side)
+  computeCover(x, z, crouch = false) {
     const W = this.M.w, H = this.M.h, R = this.coverR, opq = this.opq, step = 0.5;
     let sum = 0;
     const D = 16;
     for (let k = 0; k < D; k++) {
       const a = (k / D) * TAU, ux = Math.cos(a), uz = Math.sin(a);
-      let vis = 1, lastId = -1, hiddenAt = R;
+      let vis = 1, lastId = -1, hiddenAt = R, shadowAt = R;
       const startCell = Math.floor(z) * W + Math.floor(x);
       for (let s = step; s <= R; s += step) {
         const i = Math.floor(x + ux * s), j = Math.floor(z + uz * s);
@@ -370,9 +387,12 @@ export class HunterBelief {
         if (cell === startCell) continue;
         const o = opq[cell];
         if (o === -2) { hiddenAt = s; break; }
-        if (o >= 0 && o !== lastId) { lastId = o; vis *= this.semi; if (vis < this.visT) { hiddenAt = s; break; } }
+        if (o >= 0 && o !== lastId) {
+          if (crouch && this.need[o] < 1) { const hs = s / (1 - this.need[o]); if (hs < shadowAt) shadowAt = hs; }
+          lastId = o; vis *= this.semi; if (vis < this.visT) { hiddenAt = s; break; }
+        }
       }
-      sum += 1 - hiddenAt / R;
+      sum += 1 - Math.min(hiddenAt, shadowAt) / R;
     }
     return sum / D;
   }

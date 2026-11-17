@@ -4,7 +4,7 @@
 import { mergeConfig, deepFreeze } from './config.js';
 import { makeRng } from './rng.js';
 import { prepareMap, K_SOLID, K_WIN_X, K_WIN_Z, K_PAL_X, K_PAL_Z } from './mapdata.js';
-import { rayVis } from './sight.js';
+import { rayVis, coverNeedTable } from './sight.js';
 import { NavView, getShared, circleFree } from './nav.js';
 
 const S_HEALTHY = 0, S_INJURED = 1, S_DOWNED = 2, S_CARRIED = 3, S_HOOKED = 4, S_DEAD = 5, S_ESCAPED = 6;
@@ -68,6 +68,10 @@ export class Match {
     this.winOfCell = new Map(md.windows.map((w, i) => [w.cell, i]));
     this.palVersion = 0; this.droppedCount = 0;
     this.shared = getShared(md, cfg);
+    // crouch shadows (README "Crouching"): per-sight-id thresholds for the hunter's eye and a survivor camera's eye
+    const eyeH = cfg.sight.hunterEyeM ?? md.info.eyeHeight, eyeS = cfg.sight.survivorEyeM ?? md.info.eyeHeight;
+    this.needH = coverNeedTable(md, cfg.sight, eyeH);
+    this.needS = eyeS === eyeH ? this.needH : coverNeedTable(md, cfg.sight, eyeS);
     this.events = [];
     this.recordOn = !!opts.record;
     this.frames = [];
@@ -116,7 +120,7 @@ export class Match {
         crawled: false, ranTick: -9, mendTick: -9, healSlots: mkSlots(cfg.survivor.maxHealers), mendSlots: mkSlots(cfg.unhook.mendHelpers),
         intNext: 0, intCd: cfg.intent.minCooldownS, intLast: -1e9,
         vault: null, curAct: null, curTgt: null, prog: 0, hitT: -1e9, bodyT: 0, ghostT: 0, gruntT: 0, scratchT: 0, outcome: null, cause: null, tOut: -1, repairS: 0, repairC: 0, leverS: 0,
-        camYaw: 0, camX: spawns[i].x, camZ: spawns[i].z, camTick: -1,
+        camYaw: 0, camX: spawns[i].x, camZ: spawns[i].z, camTick: -1, crouchT: 0, crouch: false,
         seesHunter: false, trLayer: 0, trPend: 0, trPendT: 0, seesMate: [false, false, false, false], gSeen: new Uint8Array(G), pSeen: new Uint8Array(P),
         mem: { lastHunter: null, lastSeen: [null, null, null, null], gens: this.gens.map(() => ({ progress: 0, done: false, workers: null, seenT: -1, known: false })), pal: new Uint8Array(P) },
         inbox: [], inboxRead: 0, lastAction: IDLE, nav: null, brain: null, api: null, ctx: null, spawn: spawns[i],
@@ -224,8 +228,9 @@ export class Match {
     const m = this;
     const api = a.api = {
       role, id: a.id, dt: this.dt, nav,
-      visibility(p, q) { return rayVis(m.md, p.x, p.z, q.x, q.z, m.cfg.sight.semiTransparency, 0); },
-      los(p, q) { return rayVis(m.md, p.x, p.z, q.x, q.z, m.cfg.sight.semiTransparency, m.cfg.sight.visThreshold) >= m.cfg.sight.visThreshold; },
+      // crouch (optional): q is a CROUCHED survivor seen from p at the hunter's eye height (README "Crouching")
+      visibility(p, q, crouch) { return rayVis(m.md, p.x, p.z, q.x, q.z, m.cfg.sight.semiTransparency, 0, crouch ? m.needH : undefined); },
+      los(p, q, crouch) { return rayVis(m.md, p.x, p.z, q.x, q.z, m.cfg.sight.semiTransparency, m.cfg.sight.visThreshold, crouch ? m.needH : undefined) >= m.cfg.sight.visThreshold; },
       walkClear(p, q) { return nav.walkClear(p.x, p.z, q.x, q.z); },
       cellOf(x, z) { return nav.cell(x, z); },
     };
@@ -353,16 +358,17 @@ export class Match {
         if (s.st >= S_DEAD) continue;
         const dx = s.x - H.x, dz = s.z - H.z, d2 = dx * dx + dz * dz;
         if (d2 <= range2) {
-          const vis = rayVis(md, H.x, H.z, s.x, s.z, semi, thr);      // the hunter sees the survivor's BODY
+          // the hunter sees the survivor's BODY (crouched: low objects may hide it fully, README "Crouching")
+          const vis = rayVis(md, H.x, H.z, s.x, s.z, semi, thr, s.crouch ? this.needH : undefined);
           if (vis >= thr) {
             if (!cam) s.seesHunter = true;           // old model: survivors see 360 deg from the body (symmetric)
             if (d2 < 1e-6 || (dx * hfx + dz * hfz) >= Math.sqrt(d2) * cosH) H.seen[i] = true;
-          }
+          } else if (!cam && s.crouch && rayVis(md, H.x, H.z, s.x, s.z, semi, thr) >= thr) s.seesHunter = true;   // the hunter stands tall
         }
         if (cam) {                                   // camera model: from the camera, in its FOV (+ body awareness)
           this._camPos(s);
           s.seesHunter = this._camSees(s, H.x, H.z);
-          for (let j = 0; j < 4; j++) { const o = S[j]; if (j !== i && o.st < S_DEAD) s.seesMate[j] = this._camSees(s, o.x, o.z); }
+          for (let j = 0; j < 4; j++) { const o = S[j]; if (j !== i && o.st < S_DEAD) s.seesMate[j] = this._camSees(s, o.x, o.z, o.crouch ? this.needS : undefined); }
           continue;
         }
         for (let j = i + 1; j < 4; j++) {
@@ -370,7 +376,9 @@ export class Match {
           if (o.st >= S_DEAD) continue;
           const ex = o.x - s.x, ez = o.z - s.z;
           if (ex * ex + ez * ez > range2) continue;
-          if (rayVis(md, s.x, s.z, o.x, o.z, semi, thr) >= thr) { s.seesMate[j] = true; o.seesMate[i] = true; }
+          if (!s.crouch && !o.crouch) { if (rayVis(md, s.x, s.z, o.x, o.z, semi, thr) >= thr) { s.seesMate[j] = true; o.seesMate[i] = true; } continue; }
+          if (rayVis(md, s.x, s.z, o.x, o.z, semi, thr, o.crouch ? this.needS : undefined) >= thr) s.seesMate[j] = true;
+          if (rayVis(md, o.x, o.z, s.x, s.z, semi, thr, s.crouch ? this.needS : undefined) >= thr) o.seesMate[i] = true;
         }
       }
       // hunter: scratch marks in cone
@@ -422,6 +430,14 @@ export class Match {
     }
   }
 
+  // Crouch posture (README "Crouching"): held by a standing (healthy / injured) survivor that is not vaulting and has no
+  // interaction this tick; the low silhouette counts for sight after survivor.crouchEnterS; standing up is instant.
+  _posture(s, A) {
+    const ok = !!A.crouch && (s.st === S_HEALTHY || s.st === S_INJURED) && !s.vault && (s.curAct === null || s.curAct === undefined);
+    s.crouchT = ok ? s.crouchT + this.dt : 0;
+    s.crouch = ok && s.crouchT >= this.cfg.survivor.crouchEnterS - EPS;
+  }
+
   // ---- survivor camera (README "Survivor camera") ----
   // yaw: turns toward the action's look point (else the movement direction, else stays) at <= turnRateDegS
   _camTurn(s, A) {
@@ -460,14 +476,15 @@ export class Match {
     if (d2 < 1e-6) return true;
     return dx * Math.cos(s.camYaw) + dz * Math.sin(s.camYaw) >= Math.sqrt(d2) * Math.cos(this.cfg.survivor.camera.fovDeg * 0.5 * DEG);
   }
-  // does survivor s perceive point (x,z): body awareness (360 deg, LOS from the body) or camera (range, FOV, LOS)
-  _camSees(s, x, z) {
+  // does survivor s perceive point (x,z): body awareness (360 deg, LOS from the body) or camera (range, FOV, LOS).
+  // need: crouch table when the target is a crouched teammate (README "Crouching"), else undefined
+  _camSees(s, x, z, need) {
     const sc = this.cfg.sight, ca = this.cfg.survivor.camera, thr = sc.visThreshold, semi = sc.semiTransparency;
     const bx = x - s.x, bz = z - s.z;
-    if (bx * bx + bz * bz <= ca.bodyAwareM * ca.bodyAwareM && rayVis(this.md, s.x, s.z, x, z, semi, thr) >= thr) return true;
+    if (bx * bx + bz * bz <= ca.bodyAwareM * ca.bodyAwareM && rayVis(this.md, s.x, s.z, x, z, semi, thr, need) >= thr) return true;
     const dx = x - s.camX, dz = z - s.camZ;
     if (dx * dx + dz * dz > sc.range * sc.range || !this._inCone(s, x, z)) return false;
-    return rayVis(this.md, s.camX, s.camZ, x, z, semi, thr) >= thr;
+    return rayVis(this.md, s.camX, s.camZ, x, z, semi, thr, need) >= thr;
   }
 
   // Which generator candidates / pallets are visible from the centre of the cell containing (x,z). Pure function of
@@ -555,7 +572,7 @@ export class Match {
     const self = {
       id: s.id, x: s.x, z: s.z, vx: s.vx, vz: s.vz, facing: s.face, state: S_NAME[s.st],
       hookCount: s.hookCount, hookStage: s.st === S_HOOKED ? s.hookStage : 0, hookStages: s.hookStage, hookTimerS: s.st === S_HOOKED ? s.hookTimer : null,
-      boosted: s.boostT > 0, vaulting: !!s.vault, act: s.curAct, progress: s.prog,
+      boosted: s.boostT > 0, vaulting: !!s.vault, crouched: s.crouch, act: s.curAct, progress: s.prog,
       bleedS: s.st === S_DOWNED || s.st === S_CARRIED ? s.bleedT : null, healProgress: s.heal / cfg.survivor.healS, wiggle: s.wiggle / cfg.survivor.wiggleS,
       deepWoundS: s.dwT >= 0 ? s.dwT : null, mendProgress: s.dwT >= 0 ? s.mendP : null,
       protectedS: s.protT > 0 ? s.protT : null, elusiveS: s.elusT > 0 ? s.elusT : null, chased: this.chaseTgt === s.id,
@@ -586,7 +603,7 @@ export class Match {
       if (j === s.id) continue;
       const o = this.survivors[j];
       if (!s.seesMate[j] || o.st >= S_DEAD) continue;
-      teammates.push({ id: j, x: o.x, z: o.z, vx: o.vx, vz: o.vz, facing: o.face, state: S_NAME[o.st] });
+      teammates.push({ id: j, x: o.x, z: o.z, vx: o.vx, vz: o.vz, facing: o.face, state: S_NAME[o.st], crouched: o.crouch });
       m.lastSeen[j] = { x: o.x, z: o.z, state: S_NAME[o.st], t: this.t };
     }
     const gens = [];
@@ -671,7 +688,7 @@ export class Match {
     for (let i = 0; i < 4; i++) {
       const s = this.survivors[i];
       if (!H.seen[i] || s.st >= S_DEAD) continue;
-      survivors.push({ id: i, x: s.x, z: s.z, vx: s.vx, vz: s.vz, facing: s.face, state: S_NAME[s.st], hookCount: s.hookCount, vaulting: !!s.vault, deepWound: s.dwT >= 0 });   // Deep Wound: presence only
+      survivors.push({ id: i, x: s.x, z: s.z, vx: s.vx, vz: s.vz, facing: s.face, state: S_NAME[s.st], hookCount: s.hookCount, vaulting: !!s.vault, crouched: s.crouch, deepWound: s.dwT >= 0 });   // Deep Wound: presence only
       H.lastSeen[i] = { x: s.x, z: s.z, state: S_NAME[s.st], t };
     }
     const gm = cfg.senses.gruntMemoryS;
@@ -849,7 +866,7 @@ export class Match {
         dur = isHunter ? this.cfg.hunter.vaultS : this._survivorVaultS(a, nx, nz, wc);
       } else if ((k === K_PAL_X || k === K_PAL_Z) && !isHunter && this.ps[md.palIdx[wc] - 1] === 1) {
         if ((k === K_PAL_X) !== (nx !== 0)) continue;
-        dur = a.lastAction && a.lastAction.walk ? this.cfg.survivor.palletVaultSlowS : this.cfg.survivor.palletVaultFastS;
+        dur = a.lastAction && (a.lastAction.walk || a.lastAction.crouch) ? this.cfg.survivor.palletVaultSlowS : this.cfg.survivor.palletVaultFastS;
       } else continue;
       if (this.coll[fj * W + fi] !== 0) continue;
       if (this._vaultCellBusy(wc, a)) continue;   // someone is already vaulting through it: bodies collide
@@ -860,7 +877,7 @@ export class Match {
       a.vault = { t: 0, dur, x0: a.x, z0: a.z, x1: fi + 0.5, z1: fj + 0.5, cell: wc };
       if (!isHunter) {
         if (dur === this.cfg.survivor.vaultFastS && (k === K_WIN_X || k === K_WIN_Z)) this._loudNoise('vault', a.x, a.z);
-        else if ((k === K_PAL_X || k === K_PAL_Z) && !(a.lastAction && a.lastAction.walk)) this._loudNoise('palletVault', a.x, a.z);   // rushed pallet vault
+        else if ((k === K_PAL_X || k === K_PAL_Z) && !(a.lastAction && (a.lastAction.walk || a.lastAction.crouch))) this._loudNoise('palletVault', a.x, a.z);   // rushed pallet vault
         a.runD = 0;
       }
       if (!isHunter && (k === K_WIN_X || k === K_WIN_Z)) this._noteWindowVault(this.winOfCell.get(wc), a.id);
@@ -875,7 +892,7 @@ export class Match {
   // Window vault tier for a survivor vaulting in direction (nx, nz): walking = slow; running with a straight run-up = fast.
   _survivorVaultS(a, nx, nz, wc) {
     const sv = this.cfg.survivor;
-    if (a.lastAction && a.lastAction.walk) return sv.vaultSlowS;
+    if (a.lastAction && (a.lastAction.walk || a.lastAction.crouch)) return sv.vaultSlowS;
     // re-vaulting a window the hunter just came through: no momentum, no fast vault
     const cl = this.winHunterClearT.get(wc);
     if (cl !== undefined && this.t - cl < sv.revaultNoFastS) return sv.vaultMediumS;
@@ -975,6 +992,7 @@ export class Match {
     for (let k = 0; k < 4; k++) {
       const s = S[(this.tick + k) & 3];
       this._survivorAct(s, s.lastAction);
+      this._posture(s, s.lastAction);
     }
     if (cfg.survivor.camera && cfg.survivor.camera.enabled) for (const s of S) if (s.st < S_DEAD) this._camTurn(s, s.lastAction);
     this._finishGens();
@@ -1052,7 +1070,7 @@ export class Match {
       } else s.selfT = -1;
       return;
     }
-    if (s.vault) { this._advanceVault(s); s.curAct = 'vault'; if (!(A.walk)) s.ranTick = this.tick; return; }   // a rushed vault counts as running
+    if (s.vault) { this._advanceVault(s); s.curAct = 'vault'; if (!(A.walk || A.crouch)) s.ranTick = this.tick; return; }   // a rushed vault counts as running
     if (s.st === S_CARRIED) {
       s.vx = s.vz = 0;
       if (A.act === 'wiggle') {
@@ -1064,7 +1082,9 @@ export class Match {
     const crawl = s.st === S_DOWNED;
     // genre: once the hunter has started picking a downed survivor up, they're locked in place (can't crawl out of reach)
     if (crawl && this.hunter.curAct === 'pickup' && this.hunter.curTgt === s.id) { s.vx = s.vz = 0; s.prog = 0; s.curAct = null; return; }
-    let speed = crawl ? sv.crawlSpeed : (A.walk ? sv.walkSpeed : sv.runSpeed);
+    // crouch: standing survivors only (README "Crouching"); quiet like walking (no scratch marks, slow vaults)
+    const quiet = !!(A.walk || A.crouch);
+    let speed = crawl ? sv.crawlSpeed : (A.crouch ? sv.crouchSpeed : A.walk ? sv.walkSpeed : sv.runSpeed);
     if (!crawl) {
       const haste = s.protT > 0 ? 1 + cfg.unhook.haste : 1;
       speed *= s.boostT > 0 ? Math.max(sv.boostMult, haste) : haste;   // on-hit burst takes precedence
@@ -1077,7 +1097,7 @@ export class Match {
       // fast-vault run-up: continuous running distance with a steady heading (reset on walk / stop / blocked / turn)
       if (!s.vault) {
         const mx = s.x - px, mz = s.z - pz, ml = Math.sqrt(mx * mx + mz * mz);
-        if (crawl || A.walk || ml < 0.6 * step) s.runD = 0;
+        if (crawl || quiet || ml < 0.6 * step) s.runD = 0;
         else {
           const ux = mx / ml, uz = mz / ml;
           if (s.runD > 0 && ux * s.runDx + uz * s.runDz >= Math.cos(sv.fastVaultAngleDeg * DEG)) s.runD += ml;
@@ -1087,8 +1107,8 @@ export class Match {
       if (!A.face) s.face = Math.atan2(this._sdz, this._sdx);
       moved = true;
       if (crawl) s.crawled = (s.x - px) ** 2 + (s.z - pz) ** 2 > 1e-8;   // crawling pauses downed recovery
-      else if (!A.walk && !s.vault) s.ranTick = this.tick;              // running pauses the Deep Wound timer
-      if (!crawl && !A.walk && !s.vault && s.elusT <= 0) {   // elusive: no scratch marks
+      else if (!quiet && !s.vault) s.ranTick = this.tick;              // running pauses the Deep Wound timer
+      if (!crawl && !quiet && !s.vault && s.elusT <= 0) {   // elusive / walking / crouching: no scratch marks
         s.scratchT -= dt;
         if (s.scratchT <= 0) { this.marks.push({ x: s.x, z: s.z, t: this.t, dx: this._sdx, dz: this._sdz }); s.scratchT = cfg.senses.scratchEveryS; }
       }
@@ -1684,7 +1704,7 @@ export class Match {
     this.frames.push({
       t: r2(this.tick * this.dt),
       h: [r2(H.x), r2(H.z), r2(H.face), H.carrying, hs],
-      s: this.survivors.map(s => [r2(s.x), r2(s.z), r2(s.face), s.st, s.vault ? 7 : (ACT_CODE[s.curAct] || 0), s.boostT > 0 ? 1 : 0]),
+      s: this.survivors.map(s => [r2(s.x), r2(s.z), r2(s.face), s.st, s.vault ? 7 : (ACT_CODE[s.curAct] || 0), s.boostT > 0 ? 1 : 0, s.crouch ? 1 : 0]),
       g: this.gens.map(g => Math.round(g.p / this.need * 1000) / 1000),
       p,
       ...(final ? { final: true } : {}),

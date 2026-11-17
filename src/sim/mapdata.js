@@ -43,11 +43,13 @@ function build(map) {
   }
 
   let sid = 0;
+  // per sight id (crouch cover, sight.js coverNeedTable): kind 1 low obstacle (sidH = its height), 2 window, 3 pallet, 4 generator
+  const sidKind = [0], sidH = [0];
   const inb = (i, j) => i >= 0 && j >= 0 && i < w && j < h;
 
   for (const o of map.obstacles || []) {
     const tall = o.height >= eye;
-    const id = ++sid;
+    const id = ++sid; sidKind.push(1); sidH.push(o.height);
     const i1 = Math.ceil(o.x + o.w), j1 = Math.ceil(o.z + o.d);
     for (let j = Math.floor(o.z); j < j1; j++) for (let i = Math.floor(o.x); i < i1; i++) {
       if (!inb(i, j)) continue;
@@ -61,14 +63,14 @@ function build(map) {
   for (const wd of map.windows || []) {
     const c = wd.z * w + wd.x;
     kind[c] = wd.axis === 'x' ? K_WIN_X : K_WIN_Z;
-    sight[c] = ++sid;
+    sight[c] = ++sid; sidKind.push(2); sidH.push(0);
     windows.push({ id: wd.id, x: wd.x, z: wd.z, axis: wd.axis, cell: c });
   }
 
   const pallets = [];
   (map.pallets || []).forEach((p, index) => {
     const len = p.length || 1;
-    const id = ++sid;
+    const id = ++sid; sidKind.push(3); sidH.push(0);
     const cells = [];
     let x0 = p.x, z0 = p.z, x1, z1;
     if (p.axis === 'x') { x1 = p.x + 1; z1 = p.z + len; } else { x1 = p.x + len; z1 = p.z + 1; }
@@ -86,7 +88,7 @@ function build(map) {
   for (const g of map.generators || []) {
     const i = Math.floor(g.x), j = Math.floor(g.z), c = j * w + i;
     kind[c] = K_SOLID;
-    sight[c] = ++sid;
+    sight[c] = ++sid; sidKind.push(4); sidH.push(0);
     genCands.push({ id: g.id, x: g.x, z: g.z, i, j, cell: c, x0: i, z0: j, x1: i + 1, z1: j + 1 });
   }
 
@@ -142,7 +144,7 @@ function build(map) {
   });
 
   return {
-    map, w, h, N, kind, sight, palIdx, nbMask, keyCell, coll0, windows, pallets, genCands, info,
+    map, w, h, N, kind, sight, sidKind: Uint8Array.from(sidKind), sidH: Float32Array.from(sidH), palIdx, nbMask, keyCell, coll0, windows, pallets, genCands, info,
     hooks: info.hooks, gates: info.exitGates, spawns: info.spawns,
     nav: null, // lazily created NavShared (fields cache + scratch buffers)
   };
