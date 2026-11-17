@@ -69,6 +69,10 @@ export const survivorSpace = {
   hideNerveM:    [0, 30, 8],       // hiding and the hunter shows up without seeing me: stay frozen unless it comes closer than this
   genCoverW:     [-1, 2, 0],       // generator choice: prefer gens with well-covered repair slots
   genThreatW:    [0, 3, 0.5],      // generator choice: avoid gens where my belief puts the hunter (P within 24 m)
+  // ---- crouching (engine: 1.13 m/s, no scratch marks, fully hidden in the shadow of low cover; sim README 'Crouching') ----
+  crouchHideW:   [0, 1, 0],        // hiding: blend a spot's cover toward its crouched cover (low walls / gens count) and crouch while holding a hidden spot; >0.5 also judges spots / exposure as crouched. 0 = off
+  crouchSneakDist: [0, 40, 0],     // stealth moves (slipping out of view, to a hide spot, sneaking off): crouch-walk while the hunter is within this (seen distance, else the terror layer's approx). 0 = off
+  crouchMaxS:    [1, 30, 8],       // stop crouch-walking (walk instead) after this long continuously
   // ---- exploration (survivors only know the generators / loop anchors they have found) ----
   exploresMap:   [0, 1, 0.5],      // propensity to explore unexplored areas instead of working a known gen (0 = only when no gen is known)
   exploreRadM:   [10, 80, 35],     // preferred distance of exploration targets (score = unexplored share - distance / this)
@@ -197,7 +201,7 @@ export function makeSurvivor(P) {
       if (d > 75) return false;
       const fx = Math.cos(h.facing), fz = Math.sin(h.facing);
       if (d > 1.5 && (dx * fx + dz * fz) < d * Math.cos((50 * Math.PI) / 180)) return false;   // outside its 100 deg cone
-      return api.visibility(h, pt) >= 0.5;
+      return api.visibility(h, pt, !!pt.crouched) >= 0.5;   // pt.crouched: judged as a crouched body (obs.self.crouched / crouchHideW)
     }
     // a spot near me the hunter can't see (its cone + line of sight), not toward it; among those prefer peek spots
     // (body out of its line of sight whatever its facing, camera sees it) by peekW vs the walk there
@@ -210,7 +214,7 @@ export function makeSurvivor(P) {
       const hkN = rescue.nearestHook(me);   // peek-spot score is ~1-scaled: the route bias enters at a tenth
       for (let rr = 2; rr <= P.peekMoveMaxM && nFound < 8; rr += 2) {
         for (let k = 0; k < 12; k++) {
-          const a = (k / 12) * 2 * Math.PI, pt = { x: me.x + Math.cos(a) * rr, z: me.z + Math.sin(a) * rr };
+          const a = (k / 12) * 2 * Math.PI, pt = { x: me.x + Math.cos(a) * rr, z: me.z + Math.sin(a) * rr, crouched: P.crouchHideW > 0.5 };
           if (hunterCouldSee(api, h, pt) || d2(pt, h) < d2(me, h) - 2) continue;   // hidden, and not toward the hunter
           if (!api.walkClear(me, pt)) continue;
           nFound++;
@@ -349,6 +353,32 @@ export function makeSurvivor(P) {
       return a / fl.length;
     };
 
+    // hide-spot cover: standing cover, blended toward the crouched cover (low objects shadow a crouched body) by crouchHideW
+    const coverOf = (pt) => {
+      const cs = belief.coverAt(pt.x, pt.z);
+      return P.crouchHideW > 0 ? cs + P.crouchHideW * (belief.coverAt(pt.x, pt.z, true) - cs) : cs;
+    };
+    // Crouch hook (applied to every decision, see decide()): crouch while holding a hidden spot (crouchHideW) and
+    // crouch-walk stealth moves while the hunter is near (crouchSneakDist, at most crouchMaxS at a time). Off => unchanged.
+    let crouchMoveS = 0, crouchPrevT = -99;
+    function crouchPost(obs, a) {
+      if (P.crouchHideW <= 0 && P.crouchSneakDist <= 0) return a;
+      const me = obs.self, dt = Math.min(1, Math.max(0, obs.t - crouchPrevT));
+      crouchPrevT = obs.t;
+      if (!a || a.act || me.chased || mode === 'chase' || (me.state !== 'healthy' && me.state !== 'injured')) { crouchMoveS = 0; return a; }
+      const holding = !!hide || obs.t < hiddenUntil;
+      const tgt = a.moveTo || null, moving = !!(a.moveTo || a.moveDir);
+      if (holding && P.crouchHideW > 0 && (!moving || (tgt && d2(tgt, me) < 1.5))) return { ...a, crouch: true };   // settle in / hold crouched
+      if (moving && P.crouchSneakDist > 0 && (holding || mode === 'sneak')) {
+        const h = obs.hunter, d = h ? d2(h, me) : obs.terror ? obs.terror.approx : Infinity;
+        if (d < P.crouchSneakDist && crouchMoveS < P.crouchMaxS) { crouchMoveS += dt; return { ...a, crouch: true }; }
+        if (d >= P.crouchSneakDist) crouchMoveS = 0;
+        return a;
+      }
+      crouchMoveS = 0;
+      return a;
+    }
+
     function pickHideSpot(obs, api, me) {
       const fl = fleeingMates(obs, me);
       const cc = P.genClusterW !== 0 ? genCluster(obs, me) : null;
@@ -367,7 +397,7 @@ export function makeSurvivor(P) {
         }
       }
       // cheap pre-score (cover - straight-line walk), then threat + path distance for the best few
-      for (const c of cands) c.s = P.coverW * belief.coverAt(c.pt.x, c.pt.z) - 0.5 * c.d / R;
+      for (const c of cands) c.s = P.coverW * coverOf(c.pt) - 0.5 * c.d / R;
       cands.sort((a, b) => b.s - a.s);
       const top = beliefOn && P.exposeW > 0 ? belief.topCells(12) : null;
       // the hunter will come to check the generator I was working on: count it as a likely viewpoint too
@@ -380,8 +410,8 @@ export function makeSurvivor(P) {
         if (c.d && !api.walkClear(me, c.pt)) continue;    // straight-line reachable only (cheap; no A*)
         tried++;
         const d = c.d;
-        let s = P.coverW * belief.coverAt(c.pt.x, c.pt.z) - 0.5 * d / R - 2 * belief.threatAt(c.pt, P.hideThreatR);
-        if (top) s -= P.exposeW * belief.exposure(api, c.pt, top);
+        let s = P.coverW * coverOf(c.pt) - 0.5 * d / R - 2 * belief.threatAt(c.pt, P.hideThreatR);
+        if (top) s -= P.exposeW * belief.exposure(api, c.pt, top, P.crouchHideW > 0.5);
         if (fl.length) s += P.followFleeW * 10 * alignTo(fl, me, c.pt);
         if (cc) s += P.genClusterW * 10 * clusterAt(cc, c.pt);
         if (hkN) s += rescue.fromHookTerm(me, hkN, c.pt);
@@ -946,7 +976,7 @@ export function makeSurvivor(P) {
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
-        if (st === 'healthy' || st === 'injured') a = unblock(obs, a);
+        if (st === 'healthy' || st === 'injured') a = crouchPost(obs, unblock(obs, a));
         return withLook(obs, a, api);
       },
       decideInner(obs, api) {

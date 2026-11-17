@@ -151,6 +151,7 @@ meaningful actions are `act: 'selfUnhook'` (when offered) and `intent`. An excep
 { moveTo: {x,z} | null,      // engine nav (hunter variant avoids dropped pallets); wins unless moveDir is given
   moveDir: {x,z} | null,     // raw steering (normalised); {0,0} = stand
   walk: bool,                // survivors: 2.26 m/s, no scratch marks, slow (quiet) vaults
+  crouch: bool,              // survivors (standing): 1.13 m/s (wins over walk), no scratch marks, slow vaults, low silhouette (see "Crouching")
   face: {x,z}?,              // POINT to look at (hunter vision cone / attack direction follows facing)
   look: {x,z}?,              // survivors: POINT the camera should look toward (see "Survivor camera"); absent = movement direction
   act: null | 'repair' | 'heal' | 'rescue' | 'mend' | 'dropPallet' | 'openGate' | 'wiggle' | 'selfUnhook'          // survivor
@@ -194,7 +195,7 @@ can't vault. Characters are circles r = 0.4 m that collide with each other (see 
 Survivor `obs`:
 ```js
 { t, tick,
-  self: { id,x,z,vx,vz,facing,cam /* {x,z,yaw} camera, null if camera off */,state,hookCount,hookStage,hookStages,hookTimerS,boosted,vaulting,act,progress,
+  self: { id,x,z,vx,vz,facing,cam /* {x,z,yaw} camera, null if camera off */,state,hookCount,hookStage,hookStages,hookTimerS,boosted,vaulting,crouched,act,progress,
           bleedS /* remaining cumulative bleed-out budget while downed/carried, else null */, healProgress, wiggle,
           deepWoundS /* null if none */, mendProgress /* 0..1, null if no Deep Wound */,
           protectedS /* remaining Endurance+Haste, null if none */, elusiveS /* remaining Elusive, null if none */,
@@ -205,7 +206,7 @@ Survivor `obs`:
             actProgress /* 0..1 of the interaction's duration, null if none */ } | null,   // only if visible now (previous tick's act)
   lastHunter: { x,z,vx,vz,facing,t } | null,
   terror: { layer: 1|2|3, approx } | null,   // heard terror-radius layer (thirds of 32 m, 1 = outermost), lagged; approx = band midpoint m
-  teammates: [{ id,x,z,vx,vz,facing,state }],                                       // visible now
+  teammates: [{ id,x,z,vx,vz,facing,state,crouched }],                                      // visible now
   lastSeen: [ {x,z,state,t} | null ×4 ],                                            // own memory, index = survivor id
   hud: [{ id, state, hookCount, hookStage, hookStages, beingHealed, activity, activityProgress, chased, resolve, deepWound } ×4],  // game HUD, no positions, no object ids
   downedAuras: [{ id,x,z }],                                                        // live positions of downed (not carried) teammates
@@ -226,7 +227,7 @@ Hunter `obs`:
 ```js
 { t, tick,
   self: { x,z,vx,vz,facing,fx,fz,carrying: id|null,cooldownS,windupS,stunS,vaulting,act,progress,bloodlust /*0..3*/,speed /*current normal move speed*/ },
-  survivors: [{ id,x,z,vx,vz,facing,state,hookCount,vaulting,deepWound /*bool*/ }],     // in the 100° cone, range 75 m, visibility ≥ 0.5
+  survivors: [{ id,x,z,vx,vz,facing,state,hookCount,vaulting,crouched,deepWound /*bool*/ }],    // in the 100° cone, range 75 m, visibility ≥ 0.5
   lastSeen: [ {x,z,state,t}|null ×4 ],
   grunts: [{x,z,t}],            // injured survivors within 10 m, ±2 m noise, no identity, kept 2 s (none while Elusive)
   scratches: [{x,z,t,dx,dz}],   // sprint marks of the last 10 s inside the cone (≤ 30 m, visible)
@@ -289,6 +290,35 @@ Obs objects are freshly allocated every call and owned by the receiving brain.
   `perceptionEvery` = 2 ticks; generators/pallets use per-cell cached visibility masks (from the cell centre), shared across matches.
 * **Entity blocker** [S]: a survivor's 3rd vault of the same window **within the same chase** (while that survivor is the chase target) blocks
   that window for that survivor only, for 30 s; vaults outside a chase don't count and a new chase restarts the count (`obs.blockedWindows`).
+
+## Crouching (report §22; action `crouch: true`)
+
+* **Movement**: a standing (healthy / injured) survivor with `crouch: true` moves at `survivor.crouchSpeed` **1.13 m/s** [S] (crouch wins
+  over `walk`), leaves **no scratch marks**, does not count as running (no chase start, no Deep Wound pause, no fast-vault run-up) and
+  vaults like a walker (slow window vault, slow quiet pallet vault). Downed / carried / hooked survivors and interactions ignore it.
+* **Posture**: the low silhouette counts for sight once `crouch` has been held for `survivor.crouchEnterS` (0.3 s [A]) by a standing
+  survivor with no interaction that is not vaulting; standing up (dropping the flag, an interaction, a vault, going down) is instant.
+  Visible as `crouched` in `obs.self`, on visible teammates and on the hunter's visible survivors; recorded frames append it to each
+  survivor entry (`s[i][6]`, 0/1).
+* **Sight = geometric shadow behind low objects.** A crouched body is `sight.crouchBodyM` (0.95 m [A]) tall; the viewer's eye is
+  `sight.hunterEyeM` (hunter) / `sight.survivorEyeM` (survivor camera), both default to the map's `eyeHeight` (1.6 m). Along a ray from the
+  eye (t = 0) to the target (t = 1) the line to the top of the crouched body has height E − (E − 0.95)·t, so a semi-transparent object of
+  height h hides the crouched body **fully** (visibility 0 instead of ×0.6) iff the ray leaves the object's cell at **t ≥ (E − h) / (E − 0.95)**;
+  otherwise the usual ×0.6 applies. With E = 1.6: a 1.0 m wall needs t ≥ 0.92 (tucked within ~8 % of the distance behind it: 1.5 m at
+  20 m, 0.4 m at 5 m), 1.1 m t ≥ 0.77, 1.2 m t ≥ 0.62, a generator (1.3 m) t ≥ 0.46. Close to the cover the viewer looks down over it; in the
+  open crouching changes nothing (no universal invisibility). Object heights: low obstacles = their map `height`; windows
+  `sight.windowCoverM` 1.0 m [A] (the sill: crouched under a window = hidden from afar); generators (and the inert candidate wrecks)
+  `sight.genCoverM` 1.3 m [A] (in game crouching behind a gen hides you); pallets `sight.palletCoverM` 0 [A] (no crouch cover: the sight grid
+  is static, so up / dropped / broken pallets look the same).
+* Applies to the hunter seeing survivors and to survivors seeing crouched teammates (camera and body awareness; the old non-camera model
+  per direction). Not to: the attack hit check (standing ray), scratch marks, generator / pallet / lever masks.
+* Implementation: per-sight-id thresholds (`sight.js` `coverNeedTable`, built per match from `mapdata` `sidKind` / `sidH`);
+  `rayVis(..., need)` tests only semi-transparent cells and only for crouched targets (standing rays are unchanged).
+* **Brain API**: `api.visibility(p, q, true)` / `api.los(p, q, true)` = q is a crouched body seen from the hunter's eye height.
+* Not modelled: crows (§29, none in the engine), a lower camera while crouched, partial silhouettes.
+* **Owner questions (assumed numbers)**: crouched body 0.95 m; eye height 1.6 m for both roles (killers are taller in game: a higher
+  `hunterEyeM` shortens every shadow); posture delay 0.3 s (the only documented crouch time, 0.8 s, is Ghost Face's killer power); window
+  sill 1.0 m; generator 1.3 m; pallets give no crouch cover.
 
 ## Survivor camera (`config.survivor.camera`)
 
@@ -412,7 +442,7 @@ survivors' teammate auras · §4 anti-tap (8 kicks, 5 % to cancel regression) ·
 §9 (partial) on-hit sprint 6.6 m/s · §10 collapse (half speed while incapacitated, hunter gate opening, crawl-out) · §11 Resolve 16 m /
 fill-only camp time / choice / disabled when powered · §12 split 10.1.0 protections · §14 repair noise 20 m · §15 pallet vault tiers ·
 §17 carrying hunter collides (+ official 10 s AFK collision loss) · §27 window blocker per chase · §31 spawn cluster 12 m · §32 two healers +
-patient participation · §33 hook 1.5 s.
+patient participation · §33 hook 1.5 s · §22 crouching (see "Crouching"; crow triggers not modelled: no crows in the engine).
 
 **Sourced vs assumed**: config comments mark each number `[S]` (report / official notes / wiki) or `[A]` (our choice). Main assumptions:
 chase `runSpeed` 3 m/s and the Bloodlust reset at chase end (the report mentions a decay); anti-tap partial-cancel reset on interruption;
@@ -426,7 +456,7 @@ gate opening.
 **Deferred / not implemented** (by request): skill checks of any kind (§13; the legacy random repair fumble is off by default and no
 longer part of obs expectations), quick-vs-lunge attack phases / swept hit volume (§9), generator sound / progress-band perception (§14
 beyond the 20 m radius), §13, interrupt grabs (§16), sound channels (§18), red stain (§19), scratch-mark patches (§20), blood pools (§21),
-crouching (§22), lockers (§23), breakable walls (§24), hook breaking / basement (§25), struggle checks / 4 % attempts (§26), gate
+lockers (§23), breakable walls (§24), hook breaking / basement (§25), struggle checks / 4 % attempts (§26), gate
 lights / escape geometry (§28), crows (§29), camera model (§30), finisher mori / surrender (§34), totems (§35), height / falls (§36),
 loadout items L1–L7 (med-kits, toolboxes, flashlights, fog vials, chests, keys, maps), carry sway.
 

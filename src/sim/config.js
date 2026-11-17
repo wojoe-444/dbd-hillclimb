@@ -18,6 +18,13 @@ export const defaultConfig = {
     perceptionEvery: 2,     // ticks between hunter/teammate visibility refreshes (reaction latency 0.2 s)
     staticPerceptionEvery: 2, // ticks between generator/pallet visibility refreshes (survivors, staggered; cheap: cached per cell)
     adjacentReach: 2.0,     // m: a generator/pallet this close (to its rectangle) is always "seen"
+    // crouching (README "Crouching"): a crouched survivor is fully hidden in the geometric shadow of a low object
+    crouchBodyM: 0.95,      // [A] top of a crouched survivor's body (m)
+    hunterEyeM: null,       // [A] hunter eye height (m); null = the map's eyeHeight (1.6)
+    survivorEyeM: null,     // [A] survivor camera height (m) for spotting crouched teammates; null = map eyeHeight
+    windowCoverM: 1.0,      // [A] window sill height: crouched under a window = hidden from afar
+    genCoverM: 1.3,         // [A] generator height (in game crouching behind a gen hides you); also the inert wrecks
+    palletCoverM: 0,        // [A] pallets give no crouch cover (sight grid is static: up / dropped / broken look the same)
   },
 
   senses: {
@@ -52,6 +59,8 @@ export const defaultConfig = {
     },
     runSpeed: 4.0,
     walkSpeed: 2.26,        // walking leaves no scratch marks
+    crouchSpeed: 1.13,      // action crouch:true (standing survivors): no scratch marks, slow (quiet) vaults, low silhouette
+    crouchEnterS: 0.3,      // [A] crouch held this long before the low silhouette counts for sight (standing up is instant)
     crawlSpeed: 0.7,
     hitBoostS: 1.8,         // speed boost after being hit (wiki: 1.8 s)
     boostMult: 1.65,        // [S] on-hit sprint 6.6 m/s = 1.65 x 4.0 for hitBoostS (takes precedence over unhook haste: max of the two)
