@@ -22,6 +22,8 @@
 // entity blocker (3 vaults of one window per chase per survivor), so the expected held per chase is
 //   lap1 + (laps - 1) * lapWithoutPallets,  laps = min over the circuit's windows of floor(vaultsLeft / uses).
 
+import { accelCosts } from './accel.js';
+
 const SQ2 = Math.SQRT2;
 
 export class LoopModel {
@@ -30,12 +32,17 @@ export class LoopModel {
     this.M = M;
     this.vS = (cfg.survivor && cfg.survivor.runSpeed) || 4.0;
     this.vH = (cfg.hunter && cfg.hunter.speed) || 4.6;
-    this.hVault = (cfg.hunter && cfg.hunter.vaultS) || 1.7;
-    this.hBreak = (cfg.hunter && cfg.hunter.breakPalletS) || 2.34;
+    // crossing times include the re-acceleration after standing (accel.js): a medium vault lands at 0 speed, a pallet
+    // drop / break is done standing, the hunter lands its vault at 0 (hunter.vaultExitReset); a fast window vault and
+    // a rushed pallet vault keep their speed
+    const ac = accelCosts(cfg);
+    this.hVault = ((cfg.hunter && cfg.hunter.vaultS) || 1.7) + ac.hVaultLoss;
+    this.hBreak = ((cfg.hunter && cfg.hunter.breakPalletS) || 2.34) + ac.hLoss;
     this.sFast = (cfg.survivor && cfg.survivor.vaultFastS) || 0.5;
-    this.sMed = (cfg.survivor && cfg.survivor.vaultMediumS) || 0.9;
+    this.sMed = ((cfg.survivor && cfg.survivor.vaultMediumS) || 0.9) + ac.sLoss;
     this.sPalVault = (cfg.survivor && cfg.survivor.palletVaultFastS) || 1.1;
-    this.sDrop = (cfg.survivor && cfg.survivor.palletDropS) || 0.3;
+    this.sDrop = ((cfg.survivor && cfg.survivor.palletDropS) || 0.3) + ac.sLoss;
+    this.coneCos = Math.cos((((cfg.survivor && cfg.survivor.fastVaultAngleDeg) || 25) * Math.PI) / 180);
     this.runup = (cfg.survivor && cfg.survivor.fastVaultRunupM) || 2.5;
     // fast-vault run-up geometry: the engine starts a window vault when the body is within radius + 0.3 m of the window
     // cell (0.5 + 0.4 + 0.3 = 1.2 m from its centre); a fast vault needs >= runup m of straight running by then, so the
@@ -293,7 +300,7 @@ export class LoopModel {
       if (from) {
         const P0 = this.sidePt[c], Q0 = this.sidePt[c ^ 1], ax = (Q0.x - P0.x) / 3.2, az = (Q0.z - P0.z) / 3.2;
         const vx = P0.x - from.x, vz = P0.z - from.z, L = Math.hypot(vx, vz) || 1;
-        if ((vx * ax + vz * az) / L < Math.cos(25 * Math.PI / 180)) return this.sMed;
+        if ((vx * ax + vz * az) / L < this.coneCos) return this.sMed;
       }
       return this.sFast;
     }

@@ -55,8 +55,8 @@ export const survivorSpace = {
   // safe); 0 = always when the lane allows it, high = only when it's on the way
   vaultDetourW:  [0, 4, 1],
   // approach angle: the straight-in run may start up to this many degrees off the window's axis (the engine's
-  // fast-vault cone is 25 deg; wider = shorter lineup detours, less slack; the run is steered directly, not via the nav)
-  vaultFunnelDeg: [5, 24, 20],
+  // fast-vault cone is 45 deg; wider = shorter lineup detours, less slack; the run is steered directly, not via the nav)
+  vaultFunnelDeg: [5, 44, 20],
   // planners price a window crossing as fast + this x (the executed approach's extra time: medium vault, or the lineup
   // detour); 1 = as executed, 0 = every window as a fast vault (optimistic: the medium-vs-fast trade-off weight)
   vaultAngleW:   [0, 1.5, 1],
@@ -133,6 +133,7 @@ import { HunterBelief } from './hunterbelief.js';
 import { LoopModel } from './loops.js';
 import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
+import { accelCosts } from './accel.js';
 import { HunterForecast } from './hunterforecast.js';
 import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } from './lookahead.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
@@ -477,6 +478,7 @@ export function makeSurvivor(P) {
     const HC = ctx.config.hunter, vS0 = ctx.config.survivor.runSpeed;
     // a window vault starts when my body is within R + 0.3 of the window cell (0.5 + 0.7 = 1.2 m from its centre); fast
     // needs a straight run-up of fastVaultRunupM (2.5 m) by then, + 0.2 m slack for steering
+    const ACC = accelCosts(ctx.config), sAcc = ctx.config.survivor.accelMS2 ?? Infinity;   // re-acceleration after standing (accel.js)
     const SV = ctx.config.survivor, RUNUP_TO_CENTRE = (SV.fastVaultRunupM ?? 2.5) + 0.5 + (ctx.config.radius ?? 0.4) + 0.3 + 0.2;
     const range = HC.attackRange ?? 2.2, windup = Math.ceil((HC.windupS ?? 0.35) * 10 - 1e-9) / 10, lunge = HC.lungeSpeedMult ?? 1.5;
     function vaultSafe(a, c, me, hp, vH, tv, margin = P.vaultSafetyMarginM, hunterLead = 0) {
@@ -487,12 +489,12 @@ export function makeSurvivor(P) {
       let lat = Math.abs(w(hp));
       const hSide = uh < 0 ? -1 : 1, vS = me.boosted ? vS0 * 1.65 : vS0;
       const dt = 0.05, start = -1.0;
-      let t = 0, tVault = -1, wind = -1;
+      let t = 0, tVault = -1, wind = -1, vNow = vS;
       for (let step = 0; step < 60; step++, t += dt) {
         // me
         if (tVault < 0) { us += vS * dt; if (us >= start) { us = start; tVault = t; } }
-        else if (t - tVault < tv) us = start + 2.0 * (t - tVault) / tv;
-        else us += vS * dt;
+        else if (t - tVault < tv) { us = start + 2.0 * (t - tVault) / tv; vNow = tv <= (SV.vaultFastS ?? 0.5) + 1e-9 ? vS : 0; }
+        else { vNow = Math.min(vS, vNow + sAcc * dt); us += vNow * dt; }   // a medium / slow vault lands at 0 and re-accelerates
         // hunter
         const du = us - uh, dist = Math.hypot(du, lat);
         const spd = wind >= 0 ? vH * lunge : vH;
@@ -508,7 +510,7 @@ export function makeSurvivor(P) {
       const P0 = loops.sidePt[c], a = anchors[c >> 1];
       const vx = a.c.x - from.x, vz = a.c.z - from.z, L = Math.hypot(vx, vz) || 1;
       const ax = (loops.sidePt[c ^ 1].x - P0.x) / 3.2, az = (loops.sidePt[c ^ 1].z - P0.z) / 3.2;
-      return L >= RUNUP_TO_CENTRE && (vx * ax + vz * az) / L >= Math.cos(25 * Math.PI / 180);
+      return L >= RUNUP_TO_CENTRE && (vx * ax + vz * az) / L >= Math.cos(((SV.fastVaultAngleDeg ?? 25) * Math.PI) / 180);
     };
     // fast-vault lineup for a running window crossing c (knobs vaultLineup / vaultApproachM / vaultDetourW / vaultFunnelDeg;
     // loops.lineup / inFunnel):
@@ -695,13 +697,13 @@ export function makeSurvivor(P) {
       if (stationCache && stationCache.k === a.k && stationCache.c === c && obs.t - stationCache.t < 0.25) return stationCache;
       const P0 = loops.sidePt[c], Q0 = loops.sidePt[c ^ 1], ux = (P0.x - Q0.x) / 3.2, uz = (P0.z - Q0.z) / 3.2;
       const cm = fc.commit(obs, api, me, a, P0, Q0) || { through: 0.5, around: 0.5, stand: 0 };
-      const hV = HC.vaultS ?? 1.7, vS = routes.vS, reach = routes.reach;
+      const hV = (HC.vaultS ?? 1.7) + ACC.hVaultLoss, vS = routes.vS, reach = routes.reach;   // + the hunter's re-acceleration after its vault
       const D = loops.detour(a.k), hw = Math.max(0, api.nav.dist(hp, a.c) - 1.6);
       let best = null;
       for (const r of [1.6, 2.6, 3.9]) {
         const S = { x: a.c.x + ux * r, z: a.c.z + uz * r };
         if (loops.solid[Math.floor(S.z) * M.w + Math.floor(S.x)] || (d2(me, S) > 0.5 && !api.walkClear(me, S))) continue;
-        const tv = r >= RUNUP_TO_CENTRE - 0.05 ? (SV.vaultFastS ?? 0.5) : (SV.vaultMediumS ?? 0.9);
+        const tv = r >= RUNUP_TO_CENTRE - 0.05 ? (SV.vaultFastS ?? 0.5) : (SV.vaultMediumS ?? 0.9) + ACC.sLoss;   // medium: + re-acceleration
         const mThrough = hw + (r - 1) + vS * Math.max(0, hV - P.fcReactS) - reach;
         const mAround = hw + Math.min(hV * vH, D) - vH * (tv + Math.max(0, r - 1.6) / vS);
         const mStand = api.nav.dist(hp, S) - reach;

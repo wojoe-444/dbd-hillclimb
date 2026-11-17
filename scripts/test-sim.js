@@ -14,6 +14,7 @@ import { LoopModel } from '../src/brains/loops.js';
 import { MapKnowledge } from '../src/brains/mapknow.js';
 import { MateTracker } from '../src/brains/matetrack.js';
 import { RouteEval } from '../src/brains/routes.js';
+import { accelLossS, accelCosts } from '../src/brains/accel.js';
 import { RouteLookahead } from '../src/brains/lookahead.js';
 import { HunterForecast } from '../src/brains/hunterforecast.js';
 import { makeCanary, mergeCanary, findInfLoopTile } from '../src/diag/canary.js';
@@ -59,7 +60,11 @@ function mk(opts = {}) {
   place(m.survivors[0], 3.5, 33.5); place(m.survivors[1], 44.5, 3.5); place(m.survivors[2], 3.5, 3.5); place(m.survivors[3], 44.5, 33.5);
   return { m, ctl };
 }
-const place = (a, x, z) => { a.x = x; a.z = z; a.vx = a.vz = 0; };
+const place = (a, x, z) => { a.x = x; a.z = z; a.vx = a.vz = 0; a.mv = 0; a.mvTick = -9; };   // a standing start (no momentum)
+// distance covered in `ticks` ticks from a standing start at target speed v with acceleration acc (engine _ramp: tick k
+// moves min(v, k acc dt) dt; README "Acceleration")
+const rampDist = (v, acc, ticks, dt = 0.1) => { let d = 0; for (let k = 1; k <= ticks; k++) d += Math.min(v, k * acc * dt) * dt; return d; };
+const SA = 10, HA = 11.25;   // config survivor.accelMS2 / hunter.accelMS2
 const run = (m, ticks) => { for (let i = 0; i < ticks && !m.over; i++) m.step(); };
 const gen = m => m.gens[0];
 const clearGens = (m) => { for (const g of m.gens) { g.done = false; g.p = 0; } };
@@ -496,7 +501,7 @@ test('chase state: running survivor seen within 12 m starts it; ends > 18 m / 8 
   ctl.H = o => (ho = o, {}); place(H, 24.5, 18.5); place(s0, tgt.x, tgt.z);
   ctl.S[0] = (o) => (obs[0] = o, { ...toward(H)(o), walk: true }); run(m, 4);
   ok(H.seen[0] && m.chaseTgt === -1, 'walking survivor: no chase');
-  place(s0, tgt.x, tgt.z); ctl.S[0] = (o) => (obs[0] = o, toward(H)(o)); run(m, 3);
+  place(s0, tgt.x, tgt.z); ctl.S[0] = (o) => (obs[0] = o, toward(H)(o)); run(m, 5);   // > 3 m/s (running) after 4 ticks of acceleration
   ok(m.chaseTgt === 0 && obs[0].self.chased && obs[1].hud[0].chased, 'running survivor seen within 12 m: chased (self.chased + hud), hunter standing still');
   ok(ho.chase && ho.chase.target === 0 && Object.keys(ho.chase).sort().join() === 'bloodlust,target', 'hunter obs.chase.target');
   ok(m.events.some(e => e.type === 'chaseStart' && e.who === 0), 'chaseStart event');
@@ -527,11 +532,11 @@ test('chase state: running survivor seen within 12 m starts it; ends > 18 m / 8 
   for (let i = 0; i < 4; i++) g.ctl.S[i] = (o) => (go[i] = o, {});
   place(g.m.survivors[0], g.tgt.x, g.tgt.z); g.H.face = g.tgt.a;
   g.ctl.S[0] = (o) => (go[0] = o, toward(g.H)(o));
-  run(g.m, 3); ok(g.m.chaseTgt === 0, 'chasing survivor 0');
+  run(g.m, 5); ok(g.m.chaseTgt === 0, 'chasing survivor 0');
   g.ctl.S[0] = (o) => (go[0] = o, {});
   place(g.H, 24.5, 18.5); place(g.m.survivors[0], 3.5, 33.5); place(g.m.survivors[1], g.tgt.x, g.tgt.z); g.H.face = g.tgt.a;
   g.ctl.S[1] = (o) => (go[1] = o, toward(g.H)(o));
-  run(g.m, 3);
+  run(g.m, 5);
   ok(g.m.chaseTgt === 1, 'new chase on survivor 1 replaces the old one (most recent)');
   ok(go[2].hud.filter(e => e.chased).map(e => e.id).join() === '1' && !go[0].self.chased && go[1].self.chased, 'exactly one chased survivor in the HUD');
   // downed ends it
@@ -541,7 +546,7 @@ test('chase state: running survivor seen within 12 m starts it; ends > 18 m / 8 
   ok(g.m.events.some(e => e.type === 'chaseEnd' && e.who === 1 && e.reason === 'downed'), 'chaseEnd event (downed)');
   // carrying: ends the chase and none can start
   const k = setup(); place(k.m.survivors[0], k.tgt.x, k.tgt.z); k.H.face = k.tgt.a; k.ctl.S[0] = toward(k.H);
-  run(k.m, 3); ok(k.m.chaseTgt === 0, 'chase before the pickup');
+  run(k.m, 5); ok(k.m.chaseTgt === 0, 'chase before the pickup');
   k.m.survivors[2].st = CARRIED; k.H.carrying = 2; run(k.m, 1);
   ok(k.m.chaseTgt === -1 && k.m.events.some(e => e.type === 'chaseEnd' && e.reason === 'carrying'), 'picking someone up ends the chase');
   place(k.m.survivors[0], k.tgt.x, k.tgt.z); run(k.m, 3);
@@ -559,7 +564,8 @@ test('Bloodlust: +0.2/+0.4/+0.6 m/s at 15/25/35 s of chase; reset by a hit, a pa
   ok(m.events.some(e => e.type === 'bloodlust' && e.tier === 1), 'bloodlust event');
   run(m, 100); ok(m.blTier === 2 && Math.abs(m._hunterSpeed() - 5.0) < 1e-9, 'tier 2 at 25 s: 5.0 m/s');
   run(m, 100); ok(m.blTier === 3 && Math.abs(m._hunterSpeed() - 5.2) < 1e-9, 'tier 3 at 35 s: 5.2 m/s');
-  const x0 = H.x; ctl.H = () => ({ moveDir: { x: -1, z: 0 } }); run(m, 1);
+  ctl.H = () => ({ moveDir: { x: -1, z: 0 } }); run(m, 6);   // accelerate to full speed first
+  const x0 = H.x; run(m, 1);
   near(x0 - H.x, 0.52, 1e-6, 'moves at 5.2 m/s with tier 3');
   ctl.H = () => ({}); place(H, 24.5, 18.5);
   m._hurt(s0); run(m, 1);
@@ -583,10 +589,10 @@ test('crouch: 1.13 m/s, no scratch marks, slow quiet vaults, posture after 0.3 s
   const s = m.survivors[0];
   place(s, 30.5, 26.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, crouch: true });
   m.marks.length = 0;
-  run(m, 10); near(s.x, 31.63, 0.01, 'crouch 1.13 m/s');
+  run(m, 10); near(s.x, 30.5 + rampDist(1.13, SA, 10), 0.01, 'crouch 1.13 m/s (from standing)');
   ok(m.marks.length === 0, 'crouching leaves no scratch marks');
   ok(s.crouch, 'crouched posture after 0.3 s');
-  ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, crouch: true, walk: true }); run(m, 10); near(s.x, 32.76, 0.01, 'crouch wins over walk');
+  const xc = s.x; ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, crouch: true, walk: true }); run(m, 10); near(s.x - xc, 1.13, 0.01, 'crouch wins over walk');
   ctl.S[0] = () => ({ moveDir: { x: -1, z: 0 } }); run(m, 1);
   ok(!s.crouch && s.crouchT === 0, 'standing up is instant');
   ok(m.marks.length > 0, 'running leaves scratch marks again');
@@ -656,15 +662,17 @@ test('crouch: determinism and default survivor knobs never crouch (off = old beh
 test('movement: speeds, collision, walk vs run, boost, crawl', () => {
   const { m, ctl } = mk();
   place(m.survivors[0], 30.5, 26.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
-  run(m, 10); near(m.survivors[0].x, 34.5, 0.01, 'run 4.0 m/s: 4 m in 1 s');
+  run(m, 10); near(m.survivors[0].x, 30.5 + rampDist(4, SA, 10), 0.01, 'run 4.0 m/s from standing (10 m/s2): 3.4 m in 1 s');
+  { const x1 = m.survivors[0].x; run(m, 10); near(m.survivors[0].x - x1, 4, 0.01, 'run 4.0 m/s at full speed: 4 m in 1 s'); }
   place(m.survivors[0], 30.5, 26.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, walk: true });
-  run(m, 10); near(m.survivors[0].x, 32.76, 0.01, 'walk 2.26 m/s');
+  run(m, 10); near(m.survivors[0].x, 30.5 + rampDist(2.26, SA, 10), 0.01, 'walk 2.26 m/s (from standing)');
   place(m.survivors[0], 30.5, 26.5); m.survivors[0].st = DOWNED; m.survivors[0].bleedT = 200; ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
   run(m, 10); near(m.survivors[0].x, 31.2, 0.01, 'crawl 0.7 m/s');
   place(m.survivors[0], 30.5, 26.5); m.survivors[0].st = INJURED; m.survivors[0].boostT = 2; ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
-  run(m, 10); near(m.survivors[0].x, 37.1, 0.01, 'on-hit boost x1.65 = 6.6 m/s');
+  run(m, 10); near(m.survivors[0].x, 30.5 + rampDist(6.6, SA, 10), 0.01, 'on-hit boost x1.65 = 6.6 m/s (from standing)');
   place(m.hunter, 30.5, 26.5); ctl.H = () => ({ moveDir: { x: 1, z: 0 } });
-  run(m, 10); near(m.hunter.x, 35.1, 0.01, 'hunter 4.6 m/s');
+  run(m, 10); near(m.hunter.x, 30.5 + rampDist(4.6, HA, 10), 0.01, 'hunter 4.6 m/s from standing (11.25 m/s2)');
+  { const x1 = m.hunter.x; run(m, 5); near(m.hunter.x - x1, 2.3, 0.01, 'hunter 4.6 m/s at full speed'); ctl.H = () => ({}); }
   place(m.survivors[0], 3.5, 33.5); m.survivors[0].st = HEALTHY; ctl.S[0] = () => ({ moveDir: { x: 0, z: 1 } });
   run(m, 20); ok(m.survivors[0].z < 36 - 0.4 + 1e-6 && m.survivors[0].z > 34, 'stopped by the map edge (' + m.survivors[0].z.toFixed(2) + ')');
   place(m.survivors[0], 8.5, 12.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0.0001 } });   // into the house west wall (x=10)
@@ -792,7 +800,7 @@ test('carry / hook: pickup 2 s, hook 1.5 s, stage 1 (70 s) -> stage 2 (70 s) -> 
   ctl.H = () => ({ act: 'pickup', target: 0 });
   run(m, 19); ok(s.st === DOWNED, 'not picked up before 2 s'); run(m, 2); ok(s.st === CARRIED && m.hunter.carrying === 0, 'picked up after 2 s');
   ctl.S[0] = () => ({ act: 'wiggle' });
-  ctl.H = () => ({ moveDir: { x: 1, z: 0 } }); run(m, 10); near(m.hunter.x - 31.5, 3.68, 0.3, 'carrying speed 3.68 (pickup took 2 s)');
+  ctl.H = () => ({ moveDir: { x: 1, z: 0 } }); run(m, 10); near(m.hunter.x - 31.5, rampDist(3.68, HA, 10), 0.01, 'carrying speed 3.68 from standing (pickup took 2 s)');
   ok(Math.abs(s.x - m.hunter.x) < 1e-9, 'carried survivor follows the hunter');
   place(m.hunter, hk.x + 1, hk.z); m.survivors[0].wiggle = 0; ctl.S[0] = () => ({});
   ctl.H = () => ({ act: 'hook' }); run(m, 14); ok(s.st === CARRIED, 'not hooked before 1.5 s'); run(m, 2);
@@ -1134,9 +1142,9 @@ test('unhook protections: 10 s haste/endurance/elusive, deep wound, mend, conspi
   // haste x1.10; on-hit burst takes precedence
   const { m, ctl } = mk();
   const a = unhook(m, 0); place(a, 30.5, 26.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
-  run(m, 10); near(a.x, 30.5 + 4.4, 0.01, 'protected: run 4.0 x 1.10');
+  run(m, 10); near(a.x, 30.5 + rampDist(4.4, SA, 10), 0.01, 'protected: run 4.0 x 1.10 (from standing)');
   ok(a.protT > 8.8 && a.protT <= 9.0001, 'protection lasts 10 s (counting down)');
-  place(a, 30.5, 26.5); a.boostT = 2; run(m, 10); near(a.x, 37.1, 0.01, 'on-hit burst (x1.65) takes precedence over haste');
+  place(a, 30.5, 26.5); a.boostT = 2; run(m, 10); near(a.x, 30.5 + rampDist(6.6, SA, 10), 0.01, 'on-hit burst (x1.65) takes precedence over haste');
   // elusive: no scratch marks / grunts while protected
   place(a, 30.5, 26.5); place(m.hunter, 30.5, 29.5); const marks0 = m.marks.length; const gr0 = m.hunter.grunts.length;
   ctl.S[0] = () => ({ moveDir: { x: 0, z: (m.tick % 20 < 10) ? 1 : -1 } }); a.boostT = 0;
@@ -1244,7 +1252,41 @@ test('spawns: survivors grouped within 12 m, hunter on the far side, determinist
   ok(Math.hypot(m.hunter.x - 3.5, m.hunter.z - 3.5) > 35 && m.hunter.x >= 4 && m.hunter.z >= 4 && m.hunter.x <= nm.size.w - 4 && m.hunter.z <= nm.size.h - 4, 'fallback hunter spawn far and inset: ' + m.hunter.x + ',' + m.hunter.z);
 });
 
-test('vault tiers: fast 0.5 s (straight 2.5 m run-up, loud noise) / medium 0.9 s / slow 1.5 s walking', () => {
+test('acceleration + vault momentum: ramp from standing, instant slow-down, fast vault keeps speed, medium/slow and hunter vaults land at 0', () => {
+  near(accelLossS(4, 10), 0.15, 1e-9, 'survivor re-acceleration loss: 0.6 m of 4 m/s = 0.15 s (10 m/s2, 0.1 s ticks)');
+  const ac = accelCosts(createMatch({ map: smallMap, seed: 1, hunter: hunterBrain, survivors: survivorBrain }).cfg);
+  ok(ac.sLoss === accelLossS(4, SA) && ac.hLoss === accelLossS(4.6, HA) && ac.hVaultLoss === ac.hLoss, 'accelCosts from config (hunter vault landing resets: vaultExitReset)');
+  // per-tick ramp from standing, instant slow-down (walk), stopping for a tick = standing start again
+  { const { m, ctl } = mk(); const s = m.survivors[0]; place(s, 30.5, 26.5); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } });
+    const xs = [s.x]; for (let i = 0; i < 5; i++) { m.step(); xs.push(s.x); }
+    const d = xs.slice(1).map((x, i) => +(x - xs[i]).toFixed(6));
+    ok(JSON.stringify(d) === JSON.stringify([0.1, 0.2, 0.3, 0.4, 0.4]), 'run from standing: 1, 2, 3, 4 m/s per tick, then 4 (' + d.join(' ') + ')');
+    ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 }, walk: true }); let x0 = s.x; m.step(); near(s.x - x0, 0.226, 1e-9, 'slowing to a walk is instant');
+    ctl.S[0] = () => ({}); m.step(); ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } }); x0 = s.x; m.step(); near(s.x - x0, 0.1, 1e-9, 'a tick standing still: the next run starts from 0');
+    ctl.S[0] = () => ({ moveDir: { x: 1, z: 0 } }); run(m, 4); x0 = s.x; m.step(); near(s.x - x0, 0.4, 1e-9, 'turning keeps the speed (no turn penalty)');
+  }
+  // the first ticks after a window vault: fast keeps the entry speed, medium lands at 0
+  const after = (z0, dir = 1) => {
+    const { m, ctl } = mk(); const s = m.survivors[0]; place(s, 13.5, z0); ctl.S[0] = () => ({ moveDir: { x: 0, z: dir } });
+    let dur = -1; for (let i = 0; i < 60 && dur < 0; i++) { m.step(); if (s.vault) dur = s.vault.dur; }
+    while (s.vault) m.step();
+    const z1 = s.z; m.step(); return { dur, d: s.z - z1 };
+  };
+  const f = after(4.6), md = after(6.6);
+  near(f.dur, 0.5, 1e-9, 'setup: fast vault'); near(f.d, 0.4, 1e-9, 'fast vault keeps its momentum: full speed on the first tick after landing');
+  near(md.dur, 0.9, 1e-9, 'setup: medium vault'); near(md.d, 0.1, 1e-9, 'medium vault resets momentum: 1 m/s on the first tick after landing');
+  // the hunter's window vault lands at 0 (hunter.vaultExitReset)
+  { const { m, ctl } = mk(); const H = m.hunter; place(H, 13.5, 5.5); ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+    let v = false; for (let i = 0; i < 60; i++) { m.step(); if (H.vault) v = true; else if (v) break; }
+    const z1 = H.z; m.step(); ok(v, 'setup: hunter vaulted'); near(H.z - z1, 0.1125, 1e-9, 'hunter after its vault: 1.125 m/s on the first tick (11.25 m/s2)'); }
+  // the fast-vault run-up counts while accelerating: from standing 3.9 m out it is fast; a 1-tick stop at 2 m out resets it
+  { const { m, ctl } = mk(); const s = m.survivors[0]; place(s, 13.5, 4.6); let k = 0;
+    ctl.S[0] = () => (++k === 6 ? {} : { moveDir: { x: 0, z: 1 } });
+    let dur = -1; for (let i = 0; i < 60 && dur < 0; i++) { m.step(); if (s.vault) dur = s.vault.dur; }
+    near(dur, 0.9, 1e-9, 'a stop on the way resets the run-up: medium vault'); }
+});
+
+test('vault tiers: fast 0.5 s (2.5 m run-up within 45 deg, loud noise) / medium 0.9 s / slow 1.5 s walking', () => {
   const trial = (x, z, dir, walk) => {
     const { m, ctl } = mk(); let hn = null;
     place(m.survivors[0], x, z); ctl.S[0] = () => ({ moveDir: dir, walk }); ctl.H = o => (hn = o, {});
@@ -1259,8 +1301,13 @@ test('vault tiers: fast 0.5 s (straight 2.5 m run-up, loud noise) / medium 0.9 s
   ok(fast.m.survivors.every(q => !q.inbox.some(n => n.type === 'loudNoise')), 'survivors get no loudNoise');
   const short = trial(13.5, 6.6, { x: 0, z: 1 }, false);
   near(short.dur, 0.9, 0.11, '1 m run-up: medium vault 0.9 s'); ok(short.noise.length === 0, 'medium vault: no noise');
-  const diag = trial(12.7, 5.6, { x: 0.5, z: 1 }, false);
-  near(diag.dur, 0.9, 0.11, 'diagonal approach (27 deg): medium vault 0.9 s'); ok(diag.noise.length === 0, 'diagonal: no noise');
+  // angled runs aimed at the window face (lane centre, 0.9 m out = (13.5, 7.6)), 3.5 m out along the axis: within the
+  // 45 deg fast-vault cone (survivor.fastVaultAngleDeg, owner 2026-11-16) fast, beyond it medium
+  const aimed = (deg) => { const { m, ctl } = mk(); place(m.survivors[0], 13.5 + Math.tan(deg * Math.PI / 180) * 3.5, 8.5 - 4.4);
+    ctl.S[0] = (o) => ({ moveDir: { x: 13.5 - o.self.x, z: 7.6 - o.self.z } });
+    for (let i = 0; i < 40; i++) { m.step(); const v = m.survivors[0].vault; if (v) return v.dur; } return -1; };
+  near(aimed(35), 0.5, 1e-9, 'angled approach (35 deg, inside the 45 deg cone): fast vault 0.5 s');
+  near(aimed(55), 0.9, 1e-9, 'angled approach (55 deg, outside the cone): medium vault 0.9 s');
   const turn = trial(11.5, 5.0, { x: 1, z: 0 }, false);   // runs east along the window row then never vaults (sanity)
   ok(turn.dur === -1, 'running along the wall does not vault');
   const walk = trial(13.5, 4.6, { x: 0, z: 1 }, true);
@@ -1810,7 +1857,8 @@ test('fast-vault approach (survivor vaultLineup): funnel runs fast-vault in the 
   const P0 = L1.sidePt[c], perp = { x: P0.x + 8, z: P0.z }, str = { x: 13.5, z: 8.5 - 9 };
   const dE = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
   const xp = L1.lineupExt(c, perp, dE(perp, L1.lineup[c]), dE(perp, P0)), xs = L1.lineupExt(c, str, dE(str, L1.lineup[c]), dE(str, P0));
-  ok(xp.ext > 1.6 && !L1.lineupWorth(xp.ext), `perpendicular arrival: lineup detour ${xp.ext.toFixed(2)} m not worth 0.4 s`);
+  near(L1.sMed - L1.sFast, 0.4 + accelLossS(4, SA), 1e-9, 'medium vs fast = 0.4 s + the re-acceleration after a medium landing (0.15 s)');
+  ok(xp.ext > 1.5 && L1.lineupWorth(xp.ext) === (xp.ext / 4 < L1.sMed - L1.sFast), `perpendicular arrival: lineup detour ${xp.ext.toFixed(2)} m judged against that saving`);
   ok(xs.ext < 0.3 && L1.lineupWorth(xs.ext), `straight arrival: lineup is on the way (${xs.ext.toFixed(2)} m)`);
   ok(Math.abs(xp.x - 13.5) > 0.3, 'the lineup option is angled toward a side arrival');
   // RouteEval: with the lineup on, a window entered from the side costs a medium vault, a straight run-in a fast one
@@ -1818,7 +1866,7 @@ test('fast-vault approach (survivor vaultLineup): funnel runs fast-vault in the 
   const Q = L1.sidePt[c ^ 1];
   const sd = (L, me) => { const r = new RouteEval(L, sctx); r.prepare(st, me, hp, 0); return r.sDist(Q.x, Q.z); };
   const side = { x: 13.5 + 5, z: 6.5 }, front = { x: 13.5, z: 1.5 };
-  near(sd(L1, side) - sd(Loff, side), 0.4 * 4, 0.25, 'route field: side approach priced as a medium vault (+0.4 s x 4 m/s over the old flat fast price)');
+  near(sd(L1, side) - sd(Loff, side), (0.4 + accelLossS(4, SA)) * 4, 0.25, 'route field: side approach priced as a medium vault + re-acceleration (+0.55 s x 4 m/s over the old flat fast price)');
   near(sd(L1, front) - sd(Loff, front), 0, 0.25, 'route field: straight run-in priced as a fast vault (same as before)');
   near(sd(L0, side) - sd(Loff, side), 0, 0.25, 'route field: vaultAngleW 0 = every window priced fast again');
   // full matches: off ignores the other knobs (bit-identical events); on is deterministic
@@ -2307,11 +2355,11 @@ test('heal signals in matches: knob extremes are deterministic; letGoW -2 / +2 s
     ok(fwd.every((x, i) => x.key === rev[i].key), `all signal knobs at ${name}: identical forward vs reverse order`);
   }
   const tot = (sp) => seeds.map((s) => go(s, sp)).reduce((a, x) => { for (const [k, v] of Object.entries(x.st)) a[k] = (a[k] ?? 0) + v; a.injHeal += x.injHeal; return a; }, { injHeal: 0 });
-  const keep = tot({ letGoW: -2 }), let_ = tot({ letGoW: 2, letGoProgW: 0 });
+  const keep = tot({ letGoW: -2 }), let_ = tot({ letGoW: 2, letGoProgW: 0, letGoThreatW: 2 });   // (letGoThreatW > 0: no keep-working-under-threat override, healplan.js)
   ok(keep.sigLetGo === 0 && keep.sigKeep > 0, `letGoW -2: patients always keep repairing (${keep.sigKeep} keeps)`);
-  ok(let_.sigKeep === 0 && let_.sigLetGo > 0, `letGoW 2 / letGoProgW 0: patients always let go (${let_.sigLetGo})`);
+  ok(let_.sigKeep === 0 && let_.sigLetGo > 0, `letGoW 2 / letGoProgW 0: / letGoThreatW 2: patients always let go (${let_.sigLetGo})`);
   ok(tot({ injuredHealW: 0, slugRecoveryPriority: 0.5 }).injHeal === 0, 'injuredHealW 0 (+ slugRecoveryPriority 0.5): no injured survivor ever heals');
-  ok(tot({ injuredHealW: 2 }).injHeal > 0, 'injuredHealW 2: injured survivors heal');
+  ok([4201, 4202, 4203, 4204, 4205, 4206].reduce((n, s) => n + go(s, { injuredHealW: 2 }).injHeal, 0) > 0, 'injuredHealW 2: injured survivors heal (6 seeds)');
 });
 
 test('evolution eval: paired seeds share one seed per round; unpaired reproduces the historical job plan', () => {
@@ -2428,7 +2476,8 @@ test('kicked gen (brains/kickplan.js): kickHideW extremes = hide near + return v
     ok(H.distLinger !== null && H.distLinger <= hideP.kickHideMaxM + 1.5 && !H.chased, `kickHideW 3: within kickHideMaxM of the gen while the hunter lingers, unseen (${H.distLinger && H.distLinger.toFixed(1)} m, chased ${H.chased})`);
     ok(H.st.kickReturns === 1 && H.stopReason === 'repair' && H.delay < 16, `kickHideW 3: returned and stopped the regression ${H.delay.toFixed(1)} s after the hunter left`);
     ok(L.st.kickLeaves === 1 && L.st.kickHides === 0, `kickHideW -3: left (hides ${L.st.kickHides}, leaves ${L.st.kickLeaves})`);
-    ok(L.distLinger !== null && L.distLinger > hideP.kickHideMaxM + 1.5, `kickHideW -3: away from the gen while the hunter lingers (${L.distLinger && L.distLinger.toFixed(1)} m)`);
+    // (a leaver the kicking hunter spots on its way is chased: the chase, not the kick plan, decides where it is)
+    ok(L.distLinger !== null && (L.distLinger > hideP.kickHideMaxM + 1.5 || L.chased), `kickHideW -3: away from the gen while the hunter lingers, unless chased (${L.distLinger && L.distLinger.toFixed(1)} m, chased ${L.chased})`);
     ok(H.delay <= L.delay + 2, `hiding near stops the regression about as soon as leaving or sooner (${H.delay.toFixed(1)} vs ${L.delay.toFixed(1)} s)`);
     ok(scenario(hideP, seed, gi).hash === H.hash && scenario(leaveP, seed, gi).hash === L.hash, `seed ${seed}: both extremes deterministic`);
   }

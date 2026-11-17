@@ -105,7 +105,7 @@ export class Match {
     const G = this.gens.length, P = md.pallets.length;
     this.hunter = {
       role: 'hunter', id: 'hunter', x: hs.x, z: hs.z, vx: 0, vz: 0, face: Math.atan2(this.Hh / 2 - hs.z, this.W / 2 - hs.x),
-      carrying: -1, cdT: 0, cdSpeed: 1, windT: 0, stunT: 0, vault: null, prog: 0, curAct: null, curTgt: null, bodyT: 0, ghostT: 0,
+      carrying: -1, cdT: 0, cdSpeed: 1, mv: 0, mvTick: -9, windT: 0, stunT: 0, vault: null, prog: 0, curAct: null, curTgt: null, bodyT: 0, ghostT: 0,
       seen: [false, false, false, false], gSeen: new Uint8Array(G), gMem: this.gens.map(() => ({ progress: 0, regressing: false, seenT: -1 })), lastSeen: [null, null, null, null], visMarks: [],
       grunts: [], inbox: [], inboxRead: 0, lastAction: IDLE, nav: null, brain: null, api: null, ctx: null, spawn: hs,
     };
@@ -115,7 +115,7 @@ export class Match {
         role: 'survivor', id: i, x: spawns[i].x, z: spawns[i].z, vx: 0, vz: 0, face: rs.range(-Math.PI, Math.PI),
         // hookStage = hook stages consumed so far (persistent; the current stage while hooked); bleedT = remaining cumulative
         // bleed-out budget; mendP = Deep Wound mend progress 0..1; elusT = unhook Elusive timer (separate from protT)
-        st: S_HEALTHY, boostT: 0, runD: 0, runDx: 0, runDz: 0, protT: 0, elusT: 0, endure: false, dwT: -1, mendP: 0, hookCount: 0, hookStage: 0, hookTimer: 0, hookIdx: -1, resolve: 0, campT: 0, outT: 0, graceT: 0, selfT: -1, bleedT: cfg.survivor.bleedOutS, heal: 0, wiggle: 0,
+        st: S_HEALTHY, boostT: 0, mv: 0, mvTick: -9, runD: 0, runDx: 0, runDz: 0, protT: 0, elusT: 0, endure: false, dwT: -1, mendP: 0, hookCount: 0, hookStage: 0, hookTimer: 0, hookIdx: -1, resolve: 0, campT: 0, outT: 0, graceT: 0, selfT: -1, bleedT: cfg.survivor.bleedOutS, heal: 0, wiggle: 0,
         crawled: false, ranTick: -9, mendTick: -9, healSlots: mkSlots(cfg.survivor.maxHealers), mendSlots: mkSlots(cfg.unhook.mendHelpers),
         intNext: 0, intCd: cfg.intent.minCooldownS, intLast: -1e9,
         vault: null, curAct: null, curTgt: null, prog: 0, hitT: -1e9, bodyT: 0, ghostT: 0, gruntT: 0, scratchT: 0, outcome: null, cause: null, tOut: -1, repairS: 0, repairC: 0, leverS: 0,
@@ -730,6 +730,18 @@ export class Match {
 
   // ------------------------------------------------------------------ movement
   // Steering: returns true if a step was requested; direction in this._sdx/_sdz, length in this._sstep.
+  // Acceleration (README "Acceleration"): the speed a mover may use this tick = its last tick's speed + accel x dt, at most
+  // `target`; a mover that did not move last tick starts from 0. Slowing down (a lower target) is instant.
+  _ramp(a, target, acc) {
+    if (!(acc > 0) || acc === Infinity) return target;
+    const v0 = a.mvTick === this.tick - 1 ? a.mv : 0;
+    return Math.min(target, v0 + acc * this.dt);
+  }
+  // after a move: the speed carried into the next tick (a move cut short by a wall / body keeps only what it achieved)
+  _moved(a, speed, ml, step) {
+    a.mv = ml < 0.6 * step - 1e-9 ? Math.min(speed, ml / this.dt) : speed; a.mvTick = this.tick;
+  }
+
   _steer(a, A, speed) {
     let dx = 0, dz = 0, step = 0;
     const mv = A.moveDir;
@@ -873,7 +885,11 @@ export class Match {
       if (lat > this.cfg.reach.vaultLane) continue;
       const along = nx > 0 ? wi - a.x : nx < 0 ? a.x - (wi + 1) : nz > 0 ? wj - a.z : a.z - (wj + 1);
       if (along > this.R + 0.3) continue;
-      a.vault = { t: 0, dur, x0: a.x, z0: a.z, x1: fi + 0.5, z1: fj + 0.5, cell: wc };
+      // momentum (README "Acceleration"): a fast window vault / rushed pallet vault keeps the entry speed, a medium / slow
+      // vault (and the hunter's vault, hunter.vaultExitReset) lands at 0 and re-accelerates
+      const isWin = k === K_WIN_X || k === K_WIN_Z;
+      const keep = isHunter ? !this.cfg.hunter.vaultExitReset : isWin ? dur === this.cfg.survivor.vaultFastS : dur === this.cfg.survivor.palletVaultFastS;
+      a.vault = { t: 0, dur, x0: a.x, z0: a.z, x1: fi + 0.5, z1: fj + 0.5, cell: wc, keep, mv0: a.spd ?? 0 };
       if (!isHunter) {
         if (dur === this.cfg.survivor.vaultFastS && (k === K_WIN_X || k === K_WIN_Z)) this._loudNoise('vault', a.x, a.z);
         else if ((k === K_PAL_X || k === K_PAL_Z) && !(a.lastAction && (a.lastAction.walk || a.lastAction.crouch))) this._loudNoise('palletVault', a.x, a.z);   // rushed pallet vault
@@ -947,6 +963,7 @@ export class Match {
     if (u >= 1) {
       // remember when the hunter last cleared a window (a survivor re-vaulting right behind it can't fast-vault)
       if (a === this.hunter && this.winOfCell.has(v.cell)) this.winHunterClearT.set(v.cell, this.t);
+      a.mv = v.keep ? v.mv0 : 0; a.mvTick = this.tick;
       a.vault = null;
     }
   }
@@ -1088,6 +1105,7 @@ export class Match {
       const haste = s.protT > 0 ? 1 + cfg.unhook.haste : 1;
       speed *= s.boostT > 0 ? Math.max(sv.boostMult, haste) : haste;   // on-hit burst takes precedence
     }
+    speed = this._ramp(s, speed, sv.accelMS2); s.spd = speed;
     const moving = this._steer(s, A, speed);
     let moved = false;
     if (moving) {
@@ -1096,6 +1114,8 @@ export class Match {
       // fast-vault run-up: continuous running distance with a steady heading (reset on walk / stop / blocked / turn)
       if (!s.vault) {
         const mx = s.x - px, mz = s.z - pz, ml = Math.sqrt(mx * mx + mz * mz);
+        this._moved(s, speed, ml, step);
+        // (the run-up counts while accelerating: it needs running, not full speed; "blocked" = short of this tick's step)
         if (crawl || quiet || ml < 0.6 * step) s.runD = 0;
         else {
           const ux = mx / ml, uz = mz / ml;
@@ -1480,16 +1500,19 @@ export class Match {
       else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) this._turnHunter(Math.atan2(t.z - H.z, t.x - H.x)); }
       // lunge forward along the facing, but plant once a valid target is already inside range + arc (no overshoot)
       const lunge = carrying ? hc.carrySpeed : hc.speed * hc.lungeSpeedMult;   // no lunge while carrying
-      if (!this._targetInReach()) this._applyMove(H, Math.cos(H.face), Math.sin(H.face), lunge * dt, true);
+      if (!this._targetInReach()) { this._applyMove(H, Math.cos(H.face), Math.sin(H.face), lunge * dt, true); H.mv = lunge; H.mvTick = this.tick; }   // the lunge is not ramped
       else { H.vx = H.vz = 0; }
       H.curAct = 'attack';
       H.windT -= dt;
       if (H.windT <= EPS) { H.windT = 0; this._resolveAttack(); }
       return;
     }
-    const moving = this._steer(H, A, this._hunterSpeed());
+    const hs = this._ramp(H, this._hunterSpeed(), hc.accelMS2); H.spd = hs;
+    const moving = this._steer(H, A, hs);
     if (moving) {
+      const px = H.x, pz = H.z;
       this._applyMove(H, this._sdx, this._sdz, this._sstep, true);
+      if (!H.vault) this._moved(H, hs, Math.hypot(H.x - px, H.z - pz), this._sstep);
       if (!A.face) this._turnHunter(Math.atan2(this._sdz, this._sdx));
     } else { H.vx = H.vz = 0; H.bodyT = 0; }
     if (A.face) this._turnHunter(Math.atan2(A.face.z - H.z, A.face.x - H.x));

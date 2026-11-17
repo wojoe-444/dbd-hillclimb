@@ -94,7 +94,7 @@ export function runFastVaultDiag({ n, seed0, maps, hp, sp }) {
           let kind;
           if (ml < 1e-6) { const mt = p.act && p.act.moveTo; kind = !mt ? 'stopped:noMove' : Math.hypot(mt.x - p.x, mt.z - p.z) < 0.15 ? 'stopped:arrived/hold' : 'stopped:blocked'; }
           else if (p.act && p.act.walk) kind = 'walk';
-          else if (ml < 0.6 * step) kind = 'slowed';
+          else if (ml < 0.6 * Math.min(step, (s.spd ?? sv.runSpeed) * m.dt)) kind = 'slowed';
           else kind = 'turn';
           {
             let deg = 0;
