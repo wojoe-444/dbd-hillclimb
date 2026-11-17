@@ -9,7 +9,7 @@ keeping the motor skills hand-written. Run it with `--survivor goal` (evolve.js,
 Every decision tick, for each of 14 goals `g`:
 
 ```
-score_g = Σ_j w[g][j] · f_j          (45 shared features, f_0 = 1 is the bias)
+score_g = Σ_j w[g][j] · f_j          (54 shared features, 45 before feat/goal-reflexes; f_0 = 1 is the bias)
         + goalStick                   if g is the current goal (hysteresis)
         + fatigue_g · min(1, s in g / 30)   current goal only
 ```
@@ -98,8 +98,14 @@ down to 0.6 after smoothing.
 
 ### Knobs
 
-**707** = 62 motor knobs kept from `param` (loops, vaults, pallets, hide-spot scoring, gen choice, rescue / heal
-planners, belief, camera...) + 14 goals × (45 weights + 1 fatigue) = 644 + `goalStick`.
+**1064** (branch `feat/goal-reflexes`) =
+* 108 motor knobs kept from `param`;
+* 770 goal knobs: 14 goals × (54 weights + 1 fatigue);
+* `goalStick`;
+* 55 motor-mode knobs: 11 moving goals × 5;
+* 130 reflex genes: 10 slots × 13.
+
+The first version (`feat/goal-brain`) had 707.
 
 18 cascade gates of `param` are dropped, because the goal weights replace them. They are fixed at their defaults:
 `fleeSeenDist fleeTR calmS sneakMaxS altruism trustChase seekHeal hideDist hideHoldS mendRiskDist exploresMap
@@ -131,6 +137,81 @@ improvements to the motor helpers reach both brains.
 `goal: { name, prev, since, failed, scores: {goal: score}, top: [{f, v, w, c}] (largest |w·f| of the chosen goal), features }`.
 It's read-only (a test checks that polling it changes nothing). `brain.goal` is the current goal's name, and
 `brain.goalStats` holds the per-goal ticks, entries, transitions and fallbacks.
+
+## Conditional reflexes and motor modes (`feat/goal-reflexes`)
+
+The owner asked: "Does the gameplay allow for conditional reflexes? Like 'if every other survivor is hooked, I go
+immediately for a stealthy rescue', or 'killer is nearby, I will sneak up to the hook'?" Yes. These are now
+genes, not rules.
+
+### Reflex slots (10 per genome, all off by default)
+
+```
+IF f[fa] (>|<) ta [AND f[fb] (>|<) tb] THEN score[goal] += bonus   and, while that goal runs: gait / covered / wait
+```
+
+| gene (slot k) | range | meaning |
+|---|---|---|
+| `r<k>_on` | 0..1 (default 0.4) | > 0.5 enables the slot (0.4 = off but one mutation away; a fresh slot with bonus 0 and no mode is neutral) |
+| `r<k>_fa`, `r<k>_fb` | 0..NF | feature index (floored) |
+| `r<k>_ta`, `r<k>_tb` | 0..1 | threshold (all features are about 0..1) |
+| `r<k>_da`, `r<k>_db` | −1..1 | ≥ 0 means `>`, < 0 means `<` |
+| `r<k>_and` | 0..1 | > 0.5 ANDs in the second condition |
+| `r<k>_goal` | 0..14 | goal index (floored) |
+| `r<k>_bonus` | −8..8 | added to that goal's score while firing |
+| `r<k>_gait` | 0..4 | 0 no override, 1 run, 2 walk, 3 crouch |
+| `r<k>_cover`, `r<k>_wait` | 0..1 | > 0.5: covered route / wait-for-timing for that goal |
+
+* **Integer genes** (feature and goal indices, gait) are continuous genes that the brain floors and clamps. So
+  `params.js` mutation, uniform crossover and sep-CMA-ES work unchanged, and `src/hillclimb/` isn't touched. A
+  mutation of an index jumps to an arbitrary other feature or goal, which is the intended exploration.
+* **Firing.** A met condition stays latched for 1 s, so values hovering at the threshold don't flicker. A bonus
+  only applies to a feasible goal.
+* **Visibility.**
+  * `decodeReflexes(params)` gives text like `IF allOthersOut > 0.50 AND hNear < 0.30 THEN rescue[crouch,covered] +4.0`.
+  * `reflexGenes(k, {if, and, goal, bonus, gait, cover, wait})` goes the other way.
+  * `debug().goal.reflexes` (`{k, text, fired}`) and `debug().goal.mode` show what fires and which mode is active.
+  * `goalStats.reflexFired` / `reflexWon` count firings, and `node scripts/diag-goal.js --champ …` prints them per
+    match.
+
+### Motor modes (per moving goal: repair explore kicked hide sneak rescue heal pickup getHealed gate protect)
+
+| knob | effect |
+|---|---|
+| `m_<g>_stealth` [−1, 1, −0.25] + `m_<g>_stealthDanger` [−2, 2, 0] × danger | gait: < −0.5 run · < 0 the routine's own gait (default) · < 0.5 walk · ≥ 0.5 crouch (1.13 m/s, no scratch marks, crouch shadow) |
+| `m_<g>_cover` [−1, 1, −0.25] + `m_<g>_coverDanger` [−2, 2, 0] × danger > 0 | covered route: [coverroute.js](../../src/brains/coverroute.js) takes the next 3–7 m step that still makes path progress, scored by belief cover (crouched cover when crouching) − 1.5 × exposure to the seen hunter / the belief's top cells − 0.15 × detour; re-planned at 1 Hz |
+| `m_<g>_wait` [0, 1, 0] | timing: hold and watch while the target's danger (seen hunter within 24 m of it, else belief P(within 16 m)) is > 1 − wait, unless the hunter is busy elsewhere (chasing / carrying another, from the HUD); at most 25 s per goal entry |
+
+A firing reflex overrides its goal's gait and can switch on covered and wait (wait ≥ 0.7). `danger` =
+max(hNear, hMem, terror, threat). So "the killer is nearby, I sneak up to the hook" is per-goal mode weights
+(`m_rescue_stealthDanger` > 0) or a reflex (`IF danger > 0.5 THEN rescue[crouch,covered]`).
+
+**Extension point for a stealth planner:** `coverroute.js` exports `makeCoverRoute(ctx, belief)` →
+`{ step(obs, api, me, target, {crouch}) → {x,z}|null }`. `stealthplan.js` (feat/stealth-planner) can supply the same
+interface; survivor-goal.js only calls `step`.
+
+### Features added for conditions (9; 54 in total)
+
+`matesHookedFrac` (hooked / teammates still in), `allOthersOut` (no other teammate standing), `lastAlive`,
+`hunterChasingOther`, `mateCarried`, `hunterNearHook` (seen, or seen < 8 s ago, within 16 m of the nearest hooked
+teammate), `hookTimeLeft` (time until the most urgent hooked teammate dies / 140 s; 1 = nobody hooked), `endgameLeft`,
+`danger`. My own hook stage was already a feature (`hookStages`).
+
+### Recommended evolution flags for this brain
+
+The space is too big for the default GA start: at generation 1 it mutates about 80% of knobs at sigma 0.35. Use the
+selection fix and start near the defaults:
+
+```
+node src/hillclimb/evolve.js --survivor goal --panel --race --init-sigma 0.05 --pmut 0.05 --sigma 0.08 \
+     --pop 24 --rounds 16 --gens 60 --out runs/goal-1
+# or sep-CMA-ES over the normalised vector (step size per normalised knob):
+node src/hillclimb/evolve.js --survivor goal --opt cmaes --panel --pop 24 --rounds 16 --gens 60 --out runs/goal-cma
+```
+
+A low `--pmut` makes each child a few-knob change, so one new reflex or a few weights at a time, and racing spends
+the matches where the ranking is unsure. Accept a learned reflex only if a second seed finds a similar one and
+`ab-brains.js --n 256` confirms it.
 
 ## Results
 
@@ -179,11 +260,49 @@ selection just has no power yet. Before a real goal run:
   for a 0.044-ICC fitness;
 * then compare with `ab-brains.js --n 256`.
 
+### Reflex results (2026-11-16, shared machine)
+
+* **Defaults unchanged.** All reflex slots are off and the modes inherit, so the goal-brain match hashes are
+  identical before and after (`check-param-identity.js --survivor goal`, 8 matches). `matchup.js --survivor goal --n 64`
+  is identical before and after: kills 3.27, escapes 0.73, gens 3.89, hooks 7.83.
+* **Scripted scenario** (`node scripts/demo-reflex.js`, also a test). The three teammates are hooked and the hunter is
+  far away.
+  * Defaults: survivor 0 runs to the hooks and makes 3 rescues in 30 s.
+  * With `IF allOthersOut > 0.50 THEN rescue[crouch,covered] +6.0`: it crouch-walks (crouch on 100% of decisions,
+    engine-crouched 99%) along covered steps (282 of 300 decisions), and makes no rescue in 30 s at 1.13 m/s.
+  * Further tests: gait walk, timing (waits while the hunter idles near the hooks), and per-goal mode weights
+    (`m_repair_stealth` 0.3 → walking repair) all work. A disabled slot leaves a full match byte-identical.
+* **Smoke evolution, first try** (`--panel --race`, gens 8, pop 12, rounds 8, `runs/smoke-reflex`): no reflex ever
+  switched on. The enable gene defaulted to 0 with the threshold at 0.5, about 4 mutation sigmas away, and the
+  population maximum stayed below 0.48. Fix: the default is now 0.4, still off but one mutation away. A fresh slot
+  (bonus 0, no mode) is neutral.
+* **Smoke evolution, after the fix** (`runs/smoke-reflex2`, same flags): reflexes are used. Generation 1 individuals
+  carry 0–6 enabled slots (mean about 3). By generation 8 the counts have thinned to 0–3, and the ranking doesn't favour
+  more slots. The champion has one: `IF deepWound > 0.50 THEN repair -2.9`, i.e. "don't repair with Deep Wound". It
+  fires about 110 decisions per match. Its motor modes also moved: about 2,000 decisions per match with a forced run
+  gait, 250 walking, 37 covered steps. 64-seed paired A/B vs the default hunter:
+
+| survivors | fitness | kills | esc | gens | vs goal defaults |
+|---|---:|---:|---:|---:|---:|
+| goal defaults | 0.3525 | 3.19 | 0.81 | 3.81 | — |
+| smoke-reflex2 champion | 0.2904 | 3.83 | 0.17 | 2.33 | **−0.062 ± 0.021** |
+| param defaults | 0.3560 | 3.22 | 0.78 | 3.75 | +0.004 ± 0.025 |
+
+  As with the first goal smoke run, the champion is worse than the hand-set defaults. Generation 1's init (sigma 0.35
+  on about 80% of 1064 knobs) throws away the defaults, and 8 generations can't recover. The one readable reflex is
+  plausible but not established (one run, n = 8 slots). The mechanism works: reflexes appear, fire, and can be read in
+  plain text. Selection with the recommended flags (`--init-sigma 0.05 --pmut 0.05`, longer runs, two seeds) has to
+  show whether any reflex is real.
+* **Dithering** (smoke champion): 1.16 flip-backs per survivor-minute (defaults 0.68), mostly flee ↔ sneak. Its
+  evolved weights put the two scores close together, so `goalStick` is too small for them. That's another reason to
+  start near the defaults.
+
 ## Scripts
 
 * `scripts/ab-brains.js`: paired A/B across brains and parameter sets (`--a param:default --b goal:<champions.json>`).
 * `scripts/diag-goal.js`: per-goal time share, entries, transitions, switch rate, flip-backs by pair.
 * `scripts/diag-dither.js --survivor goal`: facing-flip dithering.
+* `scripts/demo-reflex.js`: scripted reflex scenario (teammates hooked → crouch / covered rescue), also used by test-sim.
 * `scripts/check-param-identity.js`: fingerprint of `param`'s play, to diff before and after a survivor.js refactor.
 * `node scripts/test-sim.js` covers goal-brain determinism, inert debug polling, space sanity and a deterministic
   mixed goal / param team.

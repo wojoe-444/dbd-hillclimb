@@ -158,7 +158,7 @@ export const GAITS = ['own', 'run', 'walk', 'crouch'];
 for (const g of MOVE_GOALS) {
   survivorGoalSpace[`m_${g}_stealth`] = [-1, 1, -0.25];
   survivorGoalSpace[`m_${g}_stealthDanger`] = [-2, 2, 0];
-  survivorGoalSpace[`m_${g}_cover`] = [-1, 1, -0.5];
+  survivorGoalSpace[`m_${g}_cover`] = [-1, 1, -0.25];
   survivorGoalSpace[`m_${g}_coverDanger`] = [-2, 2, 0];
   survivorGoalSpace[`m_${g}_wait`] = [0, 1, 0];
 }
@@ -166,16 +166,17 @@ for (const g of MOVE_GOALS) {
 // ---- reflexes: K evolvable condition -> response slots (all off by default) ----
 //   IF f[fa] (>|<) ta [AND f[fb] (>|<) tb] THEN score[goal] += bonus, and while that goal runs: gait / covered / wait
 // Genes per slot k (integer genes are continuous and floored, so params.js mutation / crossover / CMA-ES need nothing new):
-//   r<k>_on >0.5 enables · r<k>_fa, r<k>_fb feature index [0, NF) · r<k>_ta, r<k>_tb threshold [0,1] · r<k>_da, r<k>_db
+//   r<k>_on >0.5 enables (default 0.4) · r<k>_fa, r<k>_fb feature index [0, NF) · r<k>_ta, r<k>_tb threshold [0,1] · r<k>_da, r<k>_db
 //   direction (>= 0: '>', < 0: '<') · r<k>_and >0.5 adds the second condition · r<k>_goal goal index [0, NG) ·
 //   r<k>_bonus [-8, 8] · r<k>_gait [0, 4) GAITS (0 = no override) · r<k>_cover >0.5 covered route · r<k>_wait >0.5 wait
-// A firing condition stays latched for 1 s (no flicker at the threshold).
+// A firing condition stays latched for 1 s (no flicker at the threshold). r<k>_on defaults to 0.4: off, but one
+// mutation away from on; a freshly enabled slot (bonus 0, no mode) is neutral until its other genes evolve.
 export const REFLEX_SLOTS = 10;
 const RX_LATCH_S = 1;
 const idx = (v, n) => Math.max(0, Math.min(n - 1, Math.floor(v ?? 0)));
 for (let k = 0; k < REFLEX_SLOTS; k++) {
   Object.assign(survivorGoalSpace, {
-    [`r${k}_on`]: [0, 1, 0], [`r${k}_fa`]: [0, NF, 0], [`r${k}_ta`]: [0, 1, 0.5], [`r${k}_da`]: [-1, 1, 1],
+    [`r${k}_on`]: [0, 1, 0.4], [`r${k}_fa`]: [0, NF, 0], [`r${k}_ta`]: [0, 1, 0.5], [`r${k}_da`]: [-1, 1, 1],
     [`r${k}_and`]: [0, 1, 0], [`r${k}_fb`]: [0, NF, 0], [`r${k}_tb`]: [0, 1, 0.5], [`r${k}_db`]: [-1, 1, 1],
     [`r${k}_goal`]: [0, GOALS.length, 0], [`r${k}_bonus`]: [-8, 8, 0], [`r${k}_gait`]: [0, GAITS.length, 0],
     [`r${k}_cover`]: [0, 1, 0], [`r${k}_wait`]: [0, 1, 0],
@@ -219,7 +220,7 @@ export function makeSurvivorGoal(params) {
   const stick = params.goalStick ?? 0.75;
   const isMove = GOALS.map((g) => MOVE_GOALS.includes(g));
   const mk = (n, d) => GOALS.map((g) => (MOVE_GOALS.includes(g) ? params[`m_${g}_${n}`] ?? d : 0));
-  const mSt = mk('stealth', -0.25), mStD = mk('stealthDanger', 0), mCv = mk('cover', -0.5), mCvD = mk('coverDanger', 0), mWait = mk('wait', 0);
+  const mSt = mk('stealth', -0.25), mStD = mk('stealthDanger', 0), mCv = mk('cover', -0.25), mCvD = mk('coverDanger', 0), mWait = mk('wait', 0);
   const RX = parseReflexes(params);
   return (ctx) => {
     const base = makeSurvivor(P)(ctx);
