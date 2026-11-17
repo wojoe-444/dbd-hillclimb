@@ -1,5 +1,6 @@
 // Read-only hiding review. In-memory getters/labels never reach an action or observation.
-// node scripts/diag-hiding-review.js --n 32 --out <file> [--variant on|walk|run|no-scratches|on-no-scratches] [--champ <file>]
+// node scripts/diag-hiding-review.js --n 32 --out <file> [--variant on|walk|run|no-scratches|on-no-scratches|stealth] [--champ <file>]
+//   [--set knob=value,knob=value]   (applied last; e.g. --variant stealth --set hideRouteRiskMax=0.05)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -36,6 +37,8 @@ if (['on', 'walk', 'run', 'on-no-scratches'].includes(a.variant)) {
 }
 if (a.variant === 'walk') { sp.walkWhenTR = 1; sp.hideWalk = 1; sp.coverRun = 0; }
 if (a.variant === 'run') { sp.walkWhenTR = 0; sp.hideWalk = 0; sp.coverRun = 1; }
+if (a.variant === 'stealth') sp.stealthPlan = 1;   // route-level stealth planner (stealthplan.js) on top of the defaults
+if (a.set) for (const kv of a.set.split(',')) { const [k, v] = kv.split('='); if (!(k in sp)) throw new Error('unknown survivor knob ' + k); sp[k] = +v; }
 const rows = [];
 for (let i = 0; i < n; i++) {
   const seed = seed0 + i, brains = [], latest = [], active = [], departures = [], episodes = [], leads = [], lastRepair = [], sightTimes = [[], [], [], []];
@@ -118,7 +121,9 @@ for (let i = 0; i < n; i++) {
   r.fit = 0.5 * scoreBloodpoints(res).survivorFit + 0.5 * survivalTimeScore(res);
   r.survival = survivalTimeScore(res); r.gens = res.gensDone; r.kills = res.kills; r.duration = res.durationS;
   r.hides = brains.reduce((s, b) => s + b.stats.hides, 0); r.peeks = brains.reduce((s, b) => s + b.stats.peeks, 0);
-  r.leads = leads; rows.push(r);
+  r.leads = leads;
+  r.stealth = {}; for (const b of brains) if (b.stealth) for (const [k, v] of Object.entries(b.stealth.stats)) r.stealth[k] = (r.stealth[k] ?? 0) + v;
+  rows.push(r);
   process.stderr.write(`${a.variant ?? 'default'} ${i + 1}/${n}\n`);
 }
 function aggregate() {
@@ -136,8 +141,9 @@ function aggregate() {
   return { n, fit: mean('fit'), survival: mean('survival'), gens: mean('gens'), kills: mean('kills'), duration: mean('duration'), hides: mean('hides'), peeks: mean('peeks'),
     standingS: sum('standingS'), repairS: sum('repairS'), time, episodes: Object.fromEntries(['hide', 'sneak'].map(k => [k, group(ep.filter(e => e.kind === k))])),
     departures: group(dep), threatenedDepartures: group(dep.filter(d => d.tr > 0)), stealthDepartures: group(dep.filter(d => ['hide', 'sneak'].includes(d.kind))),
-    newSightings: sum('newSightings'), scratchAssociatedSightings: sum('scratchAssociatedSightings'), leads: rows.flatMap(r => r.leads) };
+    newSightings: sum('newSightings'), scratchAssociatedSightings: sum('scratchAssociatedSightings'),
+    stealth: rows.reduce((o, r) => { for (const [k, v] of Object.entries(r.stealth)) o[k] = (o[k] ?? 0) + v / n; return o; }, {}), leads: rows.flatMap(r => r.leads) };
 }
-const out = { variant: a.variant ?? 'default', champ: a.champ ?? null, seed0, map: a.map ?? 'maps/gas-heaven', summary: aggregate(), rows };
+const out = { variant: a.variant ?? 'default', set: a.set ?? null, champ: a.champ ?? null, seed0, map: a.map ?? 'maps/gas-heaven', summary: aggregate(), rows };
 if (a.out) writeFileSync(a.out, JSON.stringify(out, null, 2));
 console.log(JSON.stringify(out.summary, null, 2));

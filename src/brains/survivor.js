@@ -74,6 +74,8 @@ export const survivorSpace = {
   exploreRadM:   [10, 80, 35],     // preferred distance of exploration targets (score = unexplored share - distance / this)
   // ---- route lookahead: open flee destinations scored by the next resource reachable from there (lookahead.js) ----
   ...lookaheadSpace,
+  // ---- route-level stealth planner (stealthplan.js): stay / walk / run to cover vs hunter approach hypotheses ----
+  ...stealthSpace,
 };
 
 import { makeSlotPicker } from '../sim/slotpick.js';
@@ -84,6 +86,7 @@ import { RouteEval } from './routes.js';
 import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } from './lookahead.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
 import { healSpace, makeHealPlanner } from './healplan.js';
+import { stealthSpace, makeStealthPlanner } from './stealthplan.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -191,6 +194,13 @@ export function makeSurvivor(P) {
     const beliefFull = beliefOn || P.rescueCampFear > 0;       // the rescue's camp estimate needs the full belief update
     const rescue = makeRescuePlanner(ctx, P, belief);          // hooked teammates, teammate whereabouts, rescue utility
     const heal = makeHealPlanner(ctx, P, rescue.tracker);      // heal / pick-up choice + healer <-> patient handshake
+    // route-level stealth (off unless stealthPlan > 0.5): replaces sneak / unseen hide / visible hide when on. Cover
+    // spots near a known loop anchor keep a chase fallback.
+    const stealth = makeStealthPlanner(ctx, P, belief, { fallbackAt: (pt) => {
+      let b = 0;
+      for (const a of anchors) if (know.anchorKnown[a.k]) { const d = d2(a.c, pt); if (d < 20) b = Math.max(b, 1 - d / 20); }
+      return b;
+    } });
     // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
     const CAM = ctx.config.survivor.camera || { enabled: false };
     const camAt = (x, z, yaw) => {
@@ -755,6 +765,7 @@ export function makeSurvivor(P) {
       belief,
       rescue,
       heal,
+      stealth,
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -822,6 +833,7 @@ export function makeSurvivor(P) {
           if (h && d2(h, me) < P.downedStillDist) return { moveDir: { x: me.x - h.x, z: me.z - h.z } };
           return {};
         }
+        if (stealth.on) stealth.update(obs);   // own scratch-trail memory
         const canSay = !(me.intentCooldownS > 0);
         const say = (a, msg) => (canSay ? { ...a, intent: msg } : a);
 
@@ -836,22 +848,41 @@ export function makeSurvivor(P) {
         // a teammate is healing me: stand still (healing needs an idle patient) unless the hunter is close
         if (hud && hud[me.id] && hud[me.id].beingHealed && !(h && dh < 10)) return {};
         // hiding / holding out of view and the hunter appears but can't see me (and isn't close): don't bolt (running is what starts a chase)
-        if ((hide || obs.t < hiddenUntil) && h && !me.chased && dh >= P.hideNerveM && !hunterCouldSee(api, h, me)) {
-          if (hide) { hide.lastTrig = obs.t; stats.hideTicks++; lastHideTickT = obs.t; }
+        if ((hide || obs.t < hiddenUntil || stealth.holding) && h && !me.chased && dh >= P.hideNerveM && !hunterCouldSee(api, h, me)) {
+          if (hide) hide.lastTrig = obs.t;
+          if (hide || stealth.holding) { stats.hideTicks++; lastHideTickT = obs.t; }
           if (!api.los(h, me)) { stats.peekTicks++; if (obs.t - lastPeekT > 3) stats.peeks++; lastPeekT = obs.t; }
           return { look: { x: h.x + (h.vx || 0) * 0.5, z: h.z + (h.vz || 0) * 0.5 } };   // frozen, watching it
         }
         if (me.chased) { mode = 'chase'; lastThreatT = obs.t; }      // chase music: the hunter is on me even if I can't see it
         else if (h && dh < P.fleeSeenDist) { mode = 'chase'; lastThreatT = obs.t; }
         else if (!h && obs.terror !== null && obs.terror.approx < P.fleeTR && !(otherChased && P.trustChase > 0.5) && !(mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS)) {
-          if (mode !== 'chase' && mode !== 'sneak') { mode = 'sneak'; sneakStart = obs.t; }
+          if (mode !== 'chase' && mode !== 'sneak' && !stealth.on) { mode = 'sneak'; sneakStart = obs.t; }
           lastThreatT = obs.t;
         }
         else if (mode === 'sneak' && obs.t - sneakStart > P.sneakMaxS) { mode = 'work'; circ = null; }
         else if (obs.t - lastThreatT > P.calmS) { mode = 'work'; circ = null; }
 
+        // ---- route-level stealth planner (stealthplan.js; stealthPlan > 0.5): stay / walk / run to cover / hold ----
+        if (stealth.on) {
+          if (mode === 'chase' || me.chased || obs.gatesPowered) stealth.reset();
+          else {
+            const g = genTarget >= 0 && obs.gens[genTarget].known ? obs.gens[genTarget] : null;
+            const working = me.act === 'repair' || (!!g && d2(me, g) < 4);
+            const threat = (!!h && dh < P.hideDist) || obs.terror !== null || (!!obs.lastHunter && obs.t - obs.lastHunter.t < 8) || (beliefOn && myThreat(me) >= 0.3);
+            const travel = g && !working ? { to: g, walk: P.walkWhenTR > 0.5 && obs.terror !== null } : null;
+            const d0 = stealth.stats.departs;
+            const sa = stealth.decide(obs, api, { working, gen: g ? genTarget : -1, threat, travel });
+            if (sa) {
+              if (stealth.stats.departs > d0) stats.hides++;
+              stats.hideTicks++; lastHideTickT = obs.t;
+              return sa;
+            }
+          }
+        }
+
         // ---- stealth: the hunter is around but not on me -> get out of its view (and back to work once it's gone) ----
-        if (mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
+        if (!stealth.on && mode !== 'chase' && h && dh < P.hideDist && !me.chased) {
           if (hunterCouldSee(api, h, me)) {
             const spot = findHide(obs, api, me, h);
             if (spot) { hiddenUntil = obs.t + P.hideHoldS; return { moveTo: spot, walk: P.hideWalk > 0.5, look: h }; }
@@ -868,11 +899,11 @@ export function makeSurvivor(P) {
             const hp = hunterPos(obs);
             if (hp) return { moveDir: { x: me.x - hp.x, z: me.z - hp.z } };
           }
-          mode = 'sneak'; sneakStart = obs.t;
+          mode = stealth.on ? 'work' : 'sneak'; sneakStart = obs.t;
         }
 
         // ---- hide from an unseen hunter that my belief / the terror radius says is close or closing in ----
-        if (mode === 'chase' || h || me.chased || obs.gatesPowered) {
+        if (mode === 'chase' || h || me.chased || obs.gatesPowered || stealth.on) {
           hide = null;
         } else {
           const trig = hideTrigger(obs, me, !!hide);
@@ -960,6 +991,9 @@ export function makeSurvivor(P) {
         const exploreLeft = unknownGens > 0 && know.fraction() < 0.98;
         if (exploreTo && (d2(me, exploreTo) < 3 || obs.t - exploreT > 25 || know.explored(exploreTo.x, exploreTo.z))) exploreTo = null;
         if (genTarget === -2 && !exploreTo) genTarget = -1;
+        // stealth planner: after a hide, go back to the generator I left (the commitment lasts until I repair again)
+        const retGen = stealth.on ? stealth.returnGen(obs) : -1;
+        if (retGen >= 0 && me.act === 'repair') stealth.clearReturn();
         if (genTarget === -1 || obs.tick % 50 === 0) {
           let bs = Infinity, bi = -1;
           for (let i = 0; i < gens.length; i++) {
@@ -982,6 +1016,7 @@ export function makeSurvivor(P) {
             if (P.genCoverW !== 0) s -= P.genCoverW * 3 * genCoverOf(g, i);
             if (P.genThreatW > 0 && beliefOn) s += P.genThreatW * 3 * belief.pHunterWithin(g, 24);
             if (i === genTarget) s -= 0.5; // hysteresis
+            if (i === retGen) s -= 2;      // the gen I left to hide
             if (s < bs) { bs = s; bi = i; }
           }
           // explore option: always when no gen is known; otherwise a propensity that grows with the gens still unfound

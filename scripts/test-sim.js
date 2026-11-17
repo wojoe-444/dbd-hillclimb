@@ -2023,6 +2023,58 @@ test('heal handshake in matches: few impossible heals, deterministic, healOfferS
   ok(off.every((x) => x.healing === 0 && x.accepts === 0), 'healOfferS 0: no "healing" intents, no patient pauses');
 });
 
+test('stealth planner: gate off = inert (identical matches whatever the other stealth knobs), gate on deterministic', () => {
+  const gh = load('maps/gas-heaven.json');
+  const B = getBrains();
+  const go = (seed, sp) => {
+    const sbs = [];
+    const sf = B.survivor.make({ ...defaults(B.survivor.space), ...sp });
+    const r = runMatch({ map: gh, seed, hunter: B.hunter.make(defaults(B.hunter.space)), survivors: (c) => { const b = sf(c); sbs.push(b); return b; } });
+    const st = {}; for (const b of sbs) for (const [k, v] of Object.entries(b.stealth.stats)) st[k] = (st[k] ?? 0) + v;
+    return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.gensDone, r.events.length, r.events.slice(-20)]), st };
+  };
+  const odd = { hideLosMarginS: 3, hideRouteRiskMax: 0.8, hideScratchW: 0, hideApproachW: 3, hideUncertaintyW: 0, hideReturnRisk: 0.8, hideReturnDelayS: 0 };
+  for (const seed of [4201, 4202]) {
+    const a = go(seed, { stealthPlan: 0 }), b = go(seed, { stealthPlan: 0, ...odd });
+    ok(a.key === b.key, 'seed ' + seed + ': stealthPlan 0 ignores the other stealth knobs (identical match)');
+    ok(Object.values(a.st).every((v) => v === 0), 'seed ' + seed + ': stealthPlan 0 never plans');
+  }
+  const seeds = [4203, 4204];
+  const fwd = seeds.map((s) => go(s, { stealthPlan: 1 })), rev = [...seeds].reverse().map((s) => go(s, { stealthPlan: 1 })).reverse();
+  for (let i = 0; i < seeds.length; i++) ok(fwd[i].key === rev[i].key && JSON.stringify(fwd[i].st) === JSON.stringify(rev[i].st), 'stealthPlan 1: seed ' + seeds[i] + ' identical forward vs reverse order');
+  ok(fwd.some((x) => x.st.plans > 0), 'stealthPlan 1: the planner evaluates in real matches (' + fwd.map((x) => x.st.plans).join(', ') + ' plans)');
+});
+
+test('stealth planner: route evaluation (scenarios on test-small)', () => {
+  const B = getBrains();
+  const scen = (me, h, sp = {}) => {
+    let brain = null, api = null;
+    const sf = B.survivor.make({ ...defaults(B.survivor.space), stealthPlan: 1, ...sp });
+    createMatch({ map: smallMap, seed: 5, hunter: () => ({ decide: () => ({}) }),
+      survivors: [(c) => { brain = sf(c); api = c.api; return brain; }, () => ({ decide: () => ({}) }), () => ({ decide: () => ({}) }), () => ({ decide: () => ({}) })] });
+    const obs = { t: 10, tick: 100, self: { id: 0, x: me.x, z: me.z, vx: 0, vz: 0, state: 'healthy', hookStages: 0, act: null }, hunter: h, lastHunter: h ? { ...h, t: 10 } : null, terror: null,
+      teammates: [], gens: smallMap.generators.map(() => ({ known: false, x: null, z: null, done: false })), notifications: [], downedAuras: [], hud: null, lastSeen: [] };
+    const st = brain.stealth, ev = st.evaluate(obs, api, obs.self, obs.self, -1, false, null);
+    return { st, ev, best: st.choose(ev), again: st.evaluate(obs, api, obs.self, obs.self, -1, false, null) };
+  };
+  // hunter far off and walking away: stay (no lost repair time), zero modelled risk
+  const away = scen({ x: 17.5, z: 29.5 }, { x: 40.5, z: 18.5, vx: 0, vz: -4.6, facing: -Math.PI / 2 });
+  ok(away.ev.evidence.src === 'visible' && away.best.base && away.ev.stay.risk < 0.05, 'hunter passing elsewhere: stay (risk ' + away.ev.stay.risk.toFixed(3) + ')');
+  ok(away.ev.opts.length >= 3 && away.ev.opts.every((o) => o.risk >= 0 && o.pDet >= 0 && o.pDet <= 1 + 1e-9), 'options evaluated with sane risks (' + away.ev.opts.length + ')');
+  { const j = (e) => JSON.stringify(e.opts.map((o) => [o.risk, o.tArr, o.spot])); ok(j(away.ev) === j(away.again), 'evaluation is deterministic (same obs -> same options)'); }
+  const walk = away.ev.opts.find((o) => o.gait === 'walk'), run = walk && away.ev.opts.find((o) => o.gait === 'run' && o.spot.x === walk.spot.x && o.spot.z === walk.spot.z);
+  ok(walk && run && run.tArr < walk.tArr, 'running reaches the same cover sooner than walking');
+  ok(walk.lostS > 0 && away.ev.stay.lostS === 0, 'moving costs repair time, staying does not');
+  // hunter in the open, facing me: already seen -> every option risky, nothing counts as a safe preventive hide
+  const seen = scen({ x: 17.5, z: 29.5 }, { x: 24.5, z: 29.5, vx: -4.6, vz: 0, facing: Math.PI });
+  ok(seen.best.base && seen.ev.opts.every((o) => o.pDet > 0.9), 'hunter already looking at me in the open: no safe hide (stay; the chase logic takes it from there)');
+  // a scratch trail leading to me is a risk for staying; walking never adds marks, running adds them
+  const trailed = (() => { const s = scen({ x: 21.5, z: 25.5 }, { x: 22.5, z: 12.5, vx: 0, vz: 4.6, facing: Math.PI / 2 }); return s; })();
+  const w2 = trailed.ev.opts.find((o) => o.gait === 'walk'), r2 = w2 && trailed.ev.opts.find((o) => o.gait === 'run' && o.spot.x === w2.spot.x && o.spot.z === w2.spot.z);
+  ok(w2 && r2 && r2.scratch >= w2.scratch && w2.scratch === 0, 'scratch risk: walking adds no trail, running can (' + (r2 && r2.scratch.toFixed(2)) + ')');
+  ok(['walk', 'run'].every((g) => trailed.st.GAITS[g] && trailed.st.GAITS[g].speed > 0), 'gait table has walk / run (crouch: extension point)');
+});
+
 test('survivor unblock sidestep keeps the action\'s gait (walk) and look', () => {
   const B = getBrains();
   for (const walk of [true, false]) {
