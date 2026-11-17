@@ -20,6 +20,7 @@ export const survivorSpace = {
   holdMaxS:      [0, 20, 4],     // max time to hold at a loop entry while the hunter isn't pressing us (seen + approaching)
   // ---- HUD-driven teamwork (solo queue: no comms, but the HUD shows states / gens / chases / hooks / downed auras) ----
   ...rescueSpace,                // rescue utility (closest / stage urgency / camping / busy hunter / claims / own risk) + chaseFromHookW: rescue.js
+  ...endgameSpace,               // gates powered: lever / exit choice, no duplicate lever work, optional lever hold: endgame.js
   trustChase:    [0, 1, 0.6],    // >0.5: don't abandon my gen on terror while another survivor is being chased
   downedStillDist: [0, 40, 12],  // downed: lie still (auto-recover to 95%) unless the hunter is seen within this; then crawl away
   seekHeal:      [0, 1, 0.4],    // >0.5: when injured, walk to a visible healthy teammate and stand still to be healed
@@ -82,6 +83,7 @@ import { MapKnowledge } from './mapknow.js';
 import { RouteEval } from './routes.js';
 import { RouteLookahead, lookaheadSpace, LOOKAHEAD_DOOM_M, LOOKAHEAD_NEAR_M } from './lookahead.js';
 import { rescueSpace, makeRescuePlanner } from './rescue.js';
+import { endgameSpace, makeEndgame } from './endgame.js';
 import { palletBreakInfo, withPalletGone, landingOnHunterSide, laneBlockedBy } from './tileplay.js';
 
 const hyp = (a, b) => Math.sqrt(a * a + b * b);
@@ -188,6 +190,7 @@ export function makeSurvivor(P) {
     const beliefOn = P.hideThreat <= 1 || P.genThreatW > 0;   // otherwise only the terror trend is tracked
     const beliefFull = beliefOn || P.rescueCampFear > 0;       // the rescue's camp estimate needs the full belief update
     const rescue = makeRescuePlanner(ctx, P, belief);          // hooked teammates, teammate whereabouts, rescue utility
+    const endgame = makeEndgame(ctx, P, rescue.tracker);       // gates powered: levers / exits
     // camera emulation (same rule as the engine): position for a yaw at body (x,z), pushed in by opaque cells
     const CAM = ctx.config.survivor.camera || { enabled: false };
     const camAt = (x, z, yaw) => {
@@ -748,6 +751,7 @@ export function makeSurvivor(P) {
       loops,
       belief,
       rescue,
+      endgame,
       decide(obs, api) {
         let a = this.decideInner(obs, api);
         const st = obs.self.state;
@@ -890,21 +894,17 @@ export function makeSurvivor(P) {
         // ---- fresh off the hook: keep the protections (no conspicuous actions) for a while ----
         const holdProtection = me.protectedS !== null && me.protectedS !== undefined && me.protectedS > 10 - P.protectHoldS;
 
-        // ---- endgame: open a gate and leave ----
+        // ---- endgame: go back for a hooked teammate if the save still pays (rescue.js, endgame-aware deadline), else
+        // open a gate (no duplicate lever work, optional hold) and leave (endgame.js) ----
         if (obs.gatesPowered) {
-          let best = null, bd = Infinity;
-          for (const g of obs.gates) {
-            const gd = M.exitGates.find((x) => x.id === g.id);
-            let d = nav.dist(me, g.open ? gd.exit : gd.lever);
-            if (!g.open && obs.teammates.some((t) => d2(t, gd.lever) < 1.6) && d2(me, gd.lever) > 1.6) d += 60; // lever taken: one opener per lever
-            if (d < bd) { bd = d; best = { g, gd }; }
+          endgame.update(obs);
+          if (P.altruism > 0.25) {
+            const eg = { exitS: (pt) => endgame.exitS(obs, nav, pt), collapseS: obs.endgame ? obs.endgame.remainingS : null };
+            const ra = rescue.decide(obs, api, { holdProtection, say, beliefFull, endgame: eg });
+            if (ra) return ra;
           }
-          if (best) {
-            const { g, gd } = best;
-            if (g.open) return { moveTo: gd.exit };
-            if (d2(gd.lever, me) <= 1.4 && !holdProtection) return { act: 'openGate', target: g.id };
-            return { moveTo: gd.lever };
-          }
+          const ea = endgame.decide(obs, api, { holdProtection });
+          if (ea) return ea;
         }
 
         if (mode === 'sneak') {
