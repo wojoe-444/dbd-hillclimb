@@ -76,15 +76,18 @@ export const survivorSpace = {
   // ---- hunter forecast (hunterforecast.js): where the seen hunter is GOING, learned per chase from its own moves ----
   fcLearnS:      [0.3, 4, 1.5],    // memory (s) of each motion model's recent prediction error (pursue / momentum / cut / stand)
   fcLeadS:       [0, 1.5, 0],      // route scoring: the hunter keeps its forecast course this long, then pure pursuit (0 = pure pursuit, old)
-  fcReverseP:    [0, 1.05, 0.6],   // running a loop: reverse when P(forecast hunter is at my next entry before me) >= this (> 1 = off)
+  fcReverseP:    [0, 1.05, 1.05],  // running a loop: reverse when P(forecast hunter is at my next entry before me) >= this (> 1 = off;
+                                   // default off: 0.6 was neutral at n=128, -0.02 / +0.01 kills)
   fcEntryMarginM:[-1, 4, 1],       // ...where "at" = within its swing reach + this
   // ---- after a vault: where to wait, and whether waiting beats running on ----
-  stationMode:   [0, 1, 1],        // >0.5: wait at the best mind-game distance on the landing side (vault-back vs run-round
+  stationMode:   [0, 1, 0],        // >0.5: wait at the best mind-game distance on the landing side (vault-back vs run-round
                                    // margins, weighted by the forecast) and leave when running on is worth more; else the
-                                   // old hold at the entry until holdMaxS
+                                   // old hold at the entry until holdMaxS. Default off: n=128 A/B +0.10..0.15 kills (the
+                                   // default hunter vaults into a holding survivor in 56% of holds: diag-holds.js)
   palletRunOn:   [0, 1, 0],        // >0.5: through a standing pallet, wait on the far side for a drop only while that beats running on
-                                   // (P(it comes through) x the pallet's distance held vs the best route's gap + holdBiasM); else the old wait
-  holdBiasM:     [-10, 10, 0],     // m added to waiting at a window vs running on (route value); holdMaxS stays a hard cap
+                                   // (P(it comes through) x the pallet's distance held vs the best route's gap + holdBiasM); else the old wait.
+                                   // Default off: +0.04..0.06 kills at n=128 (more probe-tile laps though), fewer stuns in the shack duel
+  holdBiasM:     [-10, 20, 10],    // m added to waiting (window / pallet) vs running on (the best route's min gap); holdMaxS stays a hard cap
   fcReactS:      [0, 1, 0.3],      // my reaction time to the hunter's vault / turn in that margin model
   // ---- strong loops: run farther to them, value the laps they hold ----
   strongTravelW: [0, 1.5, 0.5],    // extra path I'll run to a loop: + this x its expected distance held per chase (m per m)
