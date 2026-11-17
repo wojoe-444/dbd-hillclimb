@@ -183,12 +183,26 @@ progress, gate lever progress (survivors), heal progress on the patient, mend pr
 | `kickGen` | hunter | not carrying; within 1.1 m of a gen with progress > 0, not done, not already regressing, gates not powered, **fewer than 8 kicks on that gen so far** (`gens.maxKicks`); 1.8 s → −5 % of the bar and the gen regresses at 0.25 charges/s until repair cancels it (above) or it reaches 0 |
 
 Windows: entering a window cell along its axis triggers a vault (position locked); not possible along the other axis. Hunter 1.7 s.
-Survivor tiers: **fast 0.5 s** = running with a straight run-up ≥ 2.5 m (continuous running distance whose heading stays within 25° of the
-vault direction; reset on walking, stopping, being blocked, turning, vault end) — fast vaults are LOUD: the hunter gets
+Survivor tiers: **fast 0.5 s** = running with a straight run-up ≥ 2.5 m (continuous running distance; the run's first heading must be within
+`fastVaultAngleDeg` **45°** [user, 2026-11-16; was 25°] of the vault direction and later steps within 45° of that first heading; reset on
+walking, stopping, being blocked, a sharper turn, vault end; it counts while accelerating, full speed is not required) — fast vaults are LOUD: the hunter gets
 `{type:'loudNoise', cause:'vault', x, z, t}` (within `senses.loudNoiseRange`, default map-wide); **medium 0.9 s** = running with a shorter
 run-up / angled approach / after bumping a wall; **slow 1.5 s** = walking (quiet, no scratch marks). **Dropped pallets** (survivors only; the
 hunter is blocked): running = **fast 1.1 s, LOUD** (`loudNoise` cause `'palletVault'`), walking = **slow 2 s, quiet** [S]. Downed survivors
 can't vault. Characters are circles r = 0.4 m that collide with each other (see "Collision").
+
+### Acceleration (momentum)
+
+[S] wiki Movement Speeds: survivors accelerate at **10 m/s²** (`survivor.accelMS2`), killers at **11.25 m/s²** (`hunter.accelMS2`, "the same
+across all Killers"). Each tick a mover may use its last tick's speed + accel × dt, capped by its current target speed (run / walk / crouch /
+crawl / boost / haste / Bloodlust / cooldown / carrying): 0 → 4 m/s takes 4 ticks (0.1, 0.2, 0.3, 0.4 m), losing 0.6 m ≈ **0.15 s**
+(hunter 0 → 4.6: ≈ 0.155 s). **Slowing down is instant** [A] (no braking model), and **turning keeps the speed** [A] (no turn penalty).
+A mover that did not move on its previous tick starts from 0: starting from standing, after any interaction (repair, heal, pallet drop,
+pallet break, kick, pickup, hook…), after a hold, after a stun. A move cut short by a wall / body keeps only the speed it achieved.
+**Vaults** [S] wiki Vault: a **fast** window vault keeps its momentum (lands at its entry speed); **medium / slow** vaults reset it
+(land at 0 and re-accelerate). [A] a rushed (running) **pallet** vault keeps momentum, a slow one resets it; the **hunter** lands its
+window vault at 0 (`hunter.vaultExitReset`; no source). The hunter's **lunge** is not ramped (it moves at lunge speed from the first
+windup tick). Brains price the re-acceleration (`src/brains/accel.js`: medium vault, pallet drop / break, hunter vault).
 
 ### Observations
 
@@ -488,7 +502,8 @@ Matches are independent and share only read-only data, so run one process/worker
 
 Numbers checked against the community wiki (deadbydaylight.wiki.gg): walk 2.26, carry 3.68, lunge 1.5× (≈6.9 m/s),
 hit/miss cooldown speeds 0.575 / 1.15, on-hit boost 1.8 s, generators 90 s, pallet break 2.34 s, scratch marks fade after 10 s.
-Window vaults: fast 0.5 s (straight 2.5 m run-up, loud) / medium 0.9 s / slow 1.5 s (walking). Entity blocker: a survivor's 3rd vault of
+Window vaults: fast 0.5 s (2.5 m run-up within 45°, loud; keeps momentum) / medium 0.9 s / slow 1.5 s (walking) (both reset momentum).
+Acceleration 10 m/s² survivors / 11.25 m/s² killers (Movement Speeds). Entity blocker: a survivor's 3rd vault of
 the same window within 60 s (superseded 2026-11-16: within the same chase) blocks that window for **that survivor only** for 30 s (`obs.blockedWindows` lists the ones
 blocked for you). Swings only connect if no solid cell (wall, low wall, generator) is between hunter and target —
 windows and pallets can be hit across.

@@ -58,6 +58,7 @@ export const defaultConfig = {
       bodyAwareM: 2.5,      // always-on 360-degree awareness around the body (things touching you)
     },
     runSpeed: 4.0,
+    accelMS2: 10,           // [S] wiki Movement Speeds "Acceleration 10.0 m/s2": speed ramps up by this (0 -> run in 0.4 s); slowing down is instant
     walkSpeed: 2.26,        // walking leaves no scratch marks
     crouchSpeed: 1.13,      // action crouch:true (standing survivors): no scratch marks, slow (quiet) vaults, low silhouette
     crouchEnterS: 0.3,      // [A] crouch held this long before the low silhouette counts for sight (standing up is instant)
@@ -75,7 +76,7 @@ export const defaultConfig = {
     vaultMediumS: 0.9,      // window, medium vault: running, short run-up / angled approach / bumped into the wall
     vaultSlowS: 1.5,        // window, slow vault: walking (quiet)
     fastVaultRunupM: 2.5,   // continuous running distance with heading within fastVaultAngleDeg of the vault direction
-    fastVaultAngleDeg: 25,
+    fastVaultAngleDeg: 45,  // [user] widened from 25 (2026-11-16; the wiki gives no angle, only "runs straight towards")
     palletVaultFastS: 1.1,  // [S] dropped pallet, running: fast vault, LOUD (hunter loudNoise cause 'palletVault')
     palletVaultSlowS: 2.0,  // [S] dropped pallet, walking: slow vault, quiet
     palletDropS: 0.3,
@@ -98,6 +99,8 @@ export const defaultConfig = {
   hunter: {
     turnRateDegS: 450,      // [user] max view turn rate (no instant 180-degree flicks)
     speed: 4.6,
+    accelMS2: 11.25,        // [S] wiki Movement Speeds (killer acceleration, same for all killers): speed ramps up by this; slowing is instant
+    vaultExitReset: true,   // [A] the hunter lands a window vault at 0 speed and re-accelerates (no source; like a survivor's slow vault)
     carrySpeed: 3.68,       // wiki: 92%
     windupS: 0.35,          // NOTE: timers elapse in whole ticks (rounded up): 0.35 s -> 4 ticks = 0.4 s
     attackRange: 2.2,

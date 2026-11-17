@@ -8,7 +8,8 @@
 //                              actually produces (a side approach = medium; lining up costs the extra path);
 //                              dropped pallets = pallet vault (1.1 s), standing / broken pallets = open gap, windows
 //                              blocked for me = solid;
-//   hunter field from hunter : windows = vault 1.7 s, dropped pallets = break 2.34 s (+ walk), costs in metres at
+//   hunter field from hunter : windows = vault 1.7 s, dropped pallets = break 2.34 s (+ walk; both + its re-acceleration,
+//                              accel.js; survivor medium vaults likewise), costs in metres at
 //                              hunter speed (incl. Bloodlust from my own chase time).
 // A candidate destination T is evaluated by backtracking my shortest path to T and rolling both forward in 0.25 s
 // steps: gap(t) = hunterPathDist(hunter -> where I am at t) - vH * t - reach. The survivor stops at T when it arrives
@@ -17,6 +18,8 @@
 // rest of the horizon, so a wall or corner ahead (few / short continuations) shows up as a collapsing gap.
 // Value = min gap over the horizon; for a loop, min gap until arrival (+ the circuit's distance held per lap, added
 // by the caller when it's > 0).
+
+import { accelCosts } from './accel.js';
 
 const DI = [1, -1, 0, 0, 1, 1, -1, -1], DJ = [0, 0, 1, -1, 1, -1, 1, -1];
 
@@ -47,8 +50,13 @@ export class RouteEval {
     this.RS = 34; this.RH = 40; this.R = 40;        // field radii (m): mine covers the first leg / loop entries, the hunter's my whole horizon
     this.buckets = [];
     this.blkS = new Uint8Array(N); this.blkH = new Uint8Array(N);
+    // vault / break times incl. re-acceleration after standing (accel.js; a fast window vault / rushed pallet vault keeps speed)
+    const ac = accelCosts(cfg);
     this.sFast = (cfg.survivor && cfg.survivor.vaultFastS) || 0.5;
-    this.sMed = (cfg.survivor && cfg.survivor.vaultMediumS) || 0.9;
+    this.sMed = ((cfg.survivor && cfg.survivor.vaultMediumS) || 0.9) + ac.sLoss;
+    this.sPalV = (cfg.survivor && cfg.survivor.palletVaultFastS) || 1.1;
+    this.hVaultT = ((cfg.hunter && cfg.hunter.vaultS) || 1.7) + ac.hVaultLoss;
+    this.hBreakT = ((cfg.hunter && cfg.hunter.breakPalletS) || 2.34) + ac.hLoss;
     // tier-aware pricing only with the brain's lineup on (loops.lineupOn, knob vaultLineup); off = every window a fast
     // vault (the pre-lineup pricing). The medium premium is weighted like the circuits' (loops.tierW, knob vaultAngleW)
     this.tierAware = !!loops.lineupOn;
@@ -85,10 +93,10 @@ export class RouteEval {
     const L = this.L, xs = this.extraS, xh = this.extraH;
     L.anchors.forEach((a, k) => {
       let cs, ch;
-      if (a.kind === 'w') { cs = obs.blockedWindows.includes(a.id) ? -1 : this.winCost; ch = Math.round(1.7 * vH * 10); }
+      if (a.kind === 'w') { cs = obs.blockedWindows.includes(a.id) ? -1 : this.winCost; ch = Math.round(this.hVaultT * vH * 10); }
       else {
         const st = obs.pallets[a.i];
-        if (st === 'dropped') { cs = Math.round(1.1 * this.vS * 10); ch = Math.round(2.34 * vH * 10); }
+        if (st === 'dropped') { cs = Math.round(this.sPalV * this.vS * 10); ch = Math.round(this.hBreakT * vH * 10); }
         else { cs = 0; ch = 0; }
       }
       for (const c of this.anchorCells[k]) { xs[c] = cs; xh[c] = ch; this.blkS[c] = cs < 0 ? 1 : 0; this.blkH[c] = ch < 0 ? 1 : 0; }
