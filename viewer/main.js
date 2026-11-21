@@ -691,7 +691,9 @@ async function newMatch() {
   const run = loadedRun;
   if (!run || run !== selectedRun) return;  // loadMeta starts a match with the latest inputs when the run is ready
   const request = ++matchRequest;
-  const seed = +$('seed').value || 1;
+  const seedInput = String($('seed').value).trim();
+  const parsedSeed = Number(seedInput);
+  const seed = seedInput && Number.isFinite(parsedSeed) ? parsedSeed : 1;
   const useChamp = $('useChamp').checked;
   const params = useChamp ? champ : defaultParams();
   const genLabel = useChamp ? genLabelText() : 'default params';

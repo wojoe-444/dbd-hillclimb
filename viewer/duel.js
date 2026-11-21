@@ -40,11 +40,9 @@ const runModsByName = Object.fromEntries(runs.map((r) => [r.name, r.modifiers ??
 const champCache = new Map();
 async function loadChamp(name) {
   if (!name) return null;
-  if (!champCache.has(name)) champCache.set(name, await fetch(`../runs/${name}/champions.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
-  return champCache.get(name)?.champ ?? null;
+  if (champCache.has(name)) return champCache.get(name);
+  return fetch(`../runs/${encodeURIComponent(name)}/champions.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 }
-// game modifiers of a run's champions (champions.json, else the /api/runs index); the duel plays under them
-const champMods = (name) => (name ? champCache.get(name)?.modifiers ?? runModsByName[name] ?? {} : {});
 
 // ---------------------------------------------------------------- duel state
 let cfg = null, st = null, timeline = null;
@@ -80,21 +78,33 @@ function stepState(s) {
   return true;
 }
 
-async function readCfg() {
-  const champName = $('params').value;
-  const champ = await loadChamp(champName);
+let restartRequest = 0;
+async function restart(keepTick = 0) {
+  const request = ++restartRequest;
+  const form = {
+    idx: $('idx').value, setup: $('setup').value, seed: $('seed').value,
+    hmode: $('hmode').value, assistAfter: $('assistAfter').value, params: $('params').value,
+    jitter: $('jitter').value, cap: $('cap').value, leash: $('leash').checked, pushfix: $('pushfix').checked,
+  };
+  const champName = form.params;
+  const championFile = await loadChamp(champName);
+  if (request !== restartRequest) return;
+  if (champName) champCache.set(champName, championFile);
+
+  const champ = championFile?.champ ?? null;
+  const mods = champName ? championFile?.modifiers ?? runModsByName[champName] ?? {} : {};
+  const P = duelParams(B, { defaults, clampParams }, { champ, hunterOverrides: form.leash ? {} : NEUTRALIZE });
+  const seedInput = String(form.seed).trim();
+  const parsedSeed = Number(seedInput);
+  const seed = seedInput && Number.isFinite(parsedSeed) ? parsedSeed : SEED0;
+  cfg = { mods, P, seed, setupIdx: +form.setup || 0, hunterMode: form.hmode, assistAfter: +form.assistAfter || 3,
+    jitter: +form.jitter, cap: Math.max(5, +form.cap || 120), pushFix: form.pushfix };
+
   $('err').textContent = champName && !champ ? `no champions.json in runs/${champName} — using defaults` : '';
-  const P = duelParams(B, { defaults, clampParams }, { champ, hunterOverrides: $('leash').checked ? {} : NEUTRALIZE });
-  const mods = champMods(champName);
   $('modBadge').innerHTML = modBadge(mods);
   $('toolbar').classList.toggle('modded', isModded(mods));
   $('params').classList.toggle('modded', isModded(mods));
-  return { mods, setupIdx: +$('setup').value || 0, seed: +$('seed').value || SEED0, hunterMode: $('hmode').value, assistAfter: +$('assistAfter').value || 3,
-    jitter: +$('jitter').value, cap: Math.max(5, +$('cap').value || 120), pushFix: $('pushfix').checked, P };
-}
-async function restart(keepTick = 0) {
-  cfg = await readCfg();
-  store.set('form', { idx: $('idx').value, setup: $('setup').value, seed: $('seed').value, hmode: $('hmode').value, assistAfter: $('assistAfter').value, params: $('params').value, jitter: $('jitter').value, cap: $('cap').value, leash: $('leash').checked, pushfix: $('pushfix').checked });
+  store.set('form', form);
   // pre-run the whole duel once for the timeline (events, result), then play a fresh copy
   const pre = newState();
   while (stepState(pre));
