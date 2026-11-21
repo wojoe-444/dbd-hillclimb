@@ -25,6 +25,45 @@ function rectDist2(x, z, x0, z0, x1, z1) {
   const dz = z < z0 ? z0 - z : (z > z1 ? z - z1 : 0);
   return dx * dx + dz * dz;
 }
+// Squared distance from a point (relative to the start) to a movement segment.
+function segmentPointDist2(x, z, dx, dz, len2) {
+  const along = x * dx + z * dz;
+  if (along <= 0) return x * x + z * z;
+  const t = Math.min(1, along / len2);
+  const ex = x - t * dx, ez = z - t * dz;
+  return ex * ex + ez * ez;
+}
+
+function sweptGridFree(coll, W, H, x, z, px, pz, radius) {
+  if (x - radius < 0 || x + radius >= W || z - radius < 0 || z + radius >= H) return false;
+  const i0 = Math.max(0, Math.floor(Math.min(px, x) - radius));
+  const i1 = Math.min(W - 1, Math.floor(Math.max(px, x) + radius));
+  const j0 = Math.max(0, Math.floor(Math.min(pz, z) - radius));
+  const j1 = Math.min(H - 1, Math.floor(Math.max(pz, z) + radius));
+  const dx = x - px, dz = z - pz, len2 = dx * dx + dz * dz, rr = radius * radius;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    if (coll[j * W + i] === 0 || rr === 0) continue;
+    if (rectDist2(x, z, i, j, i + 1, j + 1) < rr) return false;
+    const ox = px < i ? px - i : Math.max(0, px - (i + 1));
+    const oz = pz < j ? pz - j : Math.max(0, pz - (j + 1));
+    if (ox * ox + oz * oz < rr) {
+      // A displaced actor may exit an existing overlap if it doesn't move deeper into the cell.
+      if (ox * dx + oz * dz < 0) return false;
+      continue;
+    }
+    // With clear endpoints, a collision is either a crossing of the cell itself or a pass within radius of a corner.
+    const tx = ((dx > 0 ? i : i + 1) - px) / dx;
+    const tz = ((dz > 0 ? j : j + 1) - pz) / dz;
+    if (tx > 0 && tx < 1 && pz + tx * dz >= j && pz + tx * dz <= j + 1) return false;
+    if (tz > 0 && tz < 1 && px + tz * dx >= i && px + tz * dx <= i + 1) return false;
+    if (segmentPointDist2(i - px, j - pz, dx, dz, len2) < rr ||
+        segmentPointDist2(i + 1 - px, j - pz, dx, dz, len2) < rr ||
+        segmentPointDist2(i - px, j + 1 - pz, dx, dz, len2) < rr ||
+        segmentPointDist2(i + 1 - px, j + 1 - pz, dx, dz, len2) < rr) return false;
+  }
+  return true;
+}
+
 function rectDist(x, z, x0, z0, x1, z1) {
   const dx = x < x0 ? x0 - x : (x > x1 ? x - x1 : 0);
   const dz = z < z0 ? z0 - z : (z > z1 ? z - z1 : 0);
@@ -778,7 +817,7 @@ export class Match {
   _survBody(s) { return s.st <= S_INJURED && !s.vault && this.t - s.hitT >= this.cfg.survivor.noCollideAfterHitS - EPS; }
   _hunterBody() { const H = this.hunter; return !H.vault && !(H.ghostT > 0); }   // a carrying hunter still collides (body-blocking the carrier)
   // Fill this._bodies with the characters that block mover `a` (positions as of now: survivors act in a rotating
-  // order, then the hunter). Returns the count. Pre-existing overlap never traps anyone (see _free).
+  // order, then the hunter). Returns the count. Pre-existing overlap never traps anyone (see _moveClear).
   _collectBodies(a, isHunter) {
     const cc = this.cfg.collision, B = this._bodies || (this._bodies = []);
     let n = 0;
@@ -794,13 +833,15 @@ export class Match {
     return n;
   }
 
-  // Static grid + bodies. A body blocks a position that overlaps it (centre distance < 2R) AND is closer than before
-  // the move, so characters that already overlap (vault landing, end of a no-collide window) can always separate.
-  _free(x, z, px, pz, nb) {
-    if (!circleFree(this.coll, this.W, this.Hh, x, z, this.R)) return false;
+  // Existing body overlaps can separate without moving closer.
+  _moveClear(x, z, px, pz, nb, sweep) {
+    if (sweep ? !sweptGridFree(this.coll, this.W, this.Hh, x, z, px, pz, this.R)
+              : !circleFree(this.coll, this.W, this.Hh, x, z, this.R)) return false;
     const B = this._bodies, D = 4 * this.R * this.R - 1e-9;
+    const dx = x - px, dz = z - pz, len2 = sweep ? dx * dx + dz * dz : 0;
     for (let k = 0; k < nb; k++) {
-      const b = B[k], ex = x - b.x, ez = z - b.z, d2 = ex * ex + ez * ez;
+      const b = B[k], ex = x - b.x, ez = z - b.z;
+      const d2 = sweep ? segmentPointDist2(b.x - px, b.z - pz, dx, dz, len2) : ex * ex + ez * ez;
       if (d2 < D) { const ox = px - b.x, oz = pz - b.z; if (d2 < ox * ox + oz * oz - 1e-9) { this._blocker = b; return false; } }
     }
     return true;
@@ -811,21 +852,37 @@ export class Match {
     const nb = this._collectBodies(a, isHunter);
     this._blocker = null;
     const nx = px + dx * step, nz = pz + dz * step;
-    if (this._free(nx, nz, px, pz, nb)) { a.x = nx; a.z = nz; }
+    // Keep short-step steering: these moves cannot cross a full cell or body diameter in one tick.
+    // Sweep every candidate of a longer request, including the shortened steps and slides.
+    const sweep = step > Math.min(1, 2 * this.R);
+    if (this._moveClear(nx, nz, px, pz, nb, sweep)) { a.x = nx; a.z = nz; }
     else {
       // blocked: take the candidate (axis slides / shortened steps, all tried at full and fractional length) that
       // gains the most distance, so walls are approached flush and slid along
-      const firstBlocker = this._blocker;
+      let firstBlocker = this._blocker;
       const ddx = nx - px, ddz = nz - pz, len = Math.sqrt(ddx * ddx + ddz * ddz);
       let bx = px, bz = pz, gain = 0;
+      // For long steps, the fractions can leave a mover too far away to contact a body or vault.
+      // Find the last clear prefix, keeping the blocking body (if any) at the first obstruction.
+      if (sweep && circleFree(this.coll, this.W, this.Hh, px, pz, this.R)) {
+        let lo = 0, hi = 1;
+        for (let k = 0; k < 24 && (hi - lo) * len > 1e-6; k++) {
+          const mid = (lo + hi) / 2;
+          this._blocker = null;
+          if (this._moveClear(px + ddx * mid, pz + ddz * mid, px, pz, nb, sweep)) lo = mid;
+          else { hi = mid; firstBlocker = this._blocker; }
+        }
+        this._blocker = firstBlocker;
+        bx = px + ddx * lo; bz = pz + ddz * lo; gain = lo * len;
+      }
       for (let k = -1; k < FRAC.length; k++) {
         const f = k < 0 ? 1 : FRAC[k];
         if (k >= 0 && f * len <= gain) break;
-        if (k >= 0 && this._free(px + ddx * f, pz + ddz * f, px, pz, nb)) { bx = px + ddx * f; bz = pz + ddz * f; gain = f * len; break; }
+        if (k >= 0 && this._moveClear(px + ddx * f, pz + ddz * f, px, pz, nb, sweep)) { bx = px + ddx * f; bz = pz + ddz * f; gain = f * len; break; }
         const gx = ddx * f < 0 ? -ddx * f : ddx * f;
-        if (gx > gain && ddx !== 0 && this._free(px + ddx * f, pz, px, pz, nb)) { bx = px + ddx * f; bz = pz; gain = gx; }
+        if (gx > gain && ddx !== 0 && this._moveClear(px + ddx * f, pz, px, pz, nb, sweep)) { bx = px + ddx * f; bz = pz; gain = gx; }
         const gz = ddz * f < 0 ? -ddz * f : ddz * f;
-        if (gz > gain && ddz !== 0 && this._free(px, pz + ddz * f, px, pz, nb)) { bx = px; bz = pz + ddz * f; gain = gz; }
+        if (gz > gain && ddz !== 0 && this._moveClear(px, pz + ddz * f, px, pz, nb, sweep)) { bx = px; bz = pz + ddz * f; gain = gz; }
       }
       // body in the way: slide around it along the contact tangent (head-on => rotate the step +90 deg, so both
       // parties of a head-on meeting sidestep to opposite sides and pass). Deterministic, no jitter.
@@ -839,7 +896,7 @@ export class Match {
         tx /= tl; tz /= tl;
         for (const f of [1, 0.5]) {
           const sx = px + tx * len * f, sz = pz + tz * len * f;
-          if (len * f > gain && this._free(sx, sz, px, pz, nb)) { bx = sx; bz = sz; gain = len * f; break; }
+          if (len * f > gain && this._moveClear(sx, sz, px, pz, nb, sweep)) { bx = sx; bz = sz; gain = len * f; break; }
         }
       }
       a.x = bx; a.z = bz;

@@ -804,6 +804,77 @@ test('movement: speeds, collision, walk vs run, boost, crawl', () => {
   run(m, 20); ok(m.survivors[0].x <= 10 - 0.4 + 1e-6 && m.survivors[0].x > 9.5, 'stopped by a wall, flush (' + m.survivors[0].x.toFixed(3) + ')');
 });
 
+test('movement: low tick rates keep hunter and survivor on the near side of a wall', () => {
+  const east = { moveDir: { x: 1, z: 0 } };
+  for (const tickHz of [1, 2]) {
+    for (const isHunter of [true, false]) {
+      const { m, ctl } = mk({ config: { tickHz } });
+      const a = isHunter ? m.hunter : m.survivors[0];
+      place(a, 9.5, 12.5); a.face = 0;
+      if (isHunter) ctl.H = () => east; else ctl.S[0] = () => east;
+      run(m, tickHz);
+      ok(a.x >= 9.5 && a.x <= 10 - m.R && a.z === 12.5 && !a.vault, `${a.role} at ${tickHz} Hz stays west of the wall`);
+    }
+  }
+  // The diagonal endpoint hits the south wall. Only the z slide can travel its full length.
+  const { m, ctl } = mk({ config: { tickHz: 1 } });
+  place(m.hunter, 9.5, 12.5); ctl.H = () => ({ moveDir: { x: 1, z: 1 } });
+  m.step();
+  ok(m.hunter.x === 9.5 && m.hunter.z > 15.5, 'an axis slide cannot jump through the west wall');
+});
+
+test('movement: a segment that grazes a solid corner is blocked even with clear endpoints', () => {
+  const { m, ctl } = mk({ config: { tickHz: 1, hunter: { speed: 1.2 * Math.SQRT2 } } });
+  // Around the northwest corner of the crate at (22,10), the direct path passes within 0.4 m of the corner.
+  place(m.hunter, 21.1, 10.36); ctl.H = () => ({ moveDir: { x: 1, z: -1 } });
+  m.step();
+  ok(m.hunter.x < 22.3 - 1e-6, 'the clear endpoint beyond the corner cannot be reached directly');
+  place(m.hunter, 21.1, 10.3);
+  m.step();
+  ok(isPt(m.hunter, { x: 22.3, z: 9.1 }), 'a nearby path that clears the corner keeps the whole step');
+});
+
+test('movement: a long step checks current pallet collision', () => {
+  const { m, ctl } = mk({ config: { tickHz: 1 } });
+  place(m.hunter, 25.5, 20); ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+  m.step();
+  near(m.hunter.z, 24.6, 1e-9, 'the long step moves through the standing pallet');
+  place(m.hunter, 25.5, 20);
+  place(m.survivors[0], 25.5, 23.5); ctl.S[0] = () => ({ act: 'dropPallet', target: 'p-gap' });
+  m.step();
+  ok(m.stats.palletsDropped === 1 && m.hunter.stunT === 0 && m.hunter.z <= 22 - m.R && !m.hunter.vault,
+    'the dropped pallet stops the same long step without a stun or vault');
+});
+
+test('vault and attack: long steps stop at the window and respect the normal action timers', () => {
+  for (const isHunter of [true, false]) {
+    const { m, ctl } = mk({ config: { tickHz: 1 } });
+    const a = isHunter ? m.hunter : m.survivors[0];
+    place(a, 13.5, 5.7);
+    const northWindow = () => ({ moveDir: { x: 0, z: 1 } });
+    if (isHunter) ctl.H = northWindow; else ctl.S[0] = northWindow;
+    m.step();
+    const v = a.vault;
+    ok(v && v.cell === m.md.windows[0].cell && v.t === 0 && a.z <= 8 - m.R, `${a.role} begins a timed vault from the near side`);
+    const ticks = Math.ceil(isHunter ? m.cfg.hunter.vaultS : m.cfg.survivor.vaultMediumS);
+    run(m, ticks - 1);
+    ok(a.vault === v && !!v, `${a.role} is still vaulting before the final tick`);
+    m.step();
+    ok(!a.vault && a.z === 9.5 && m.stats.vaults === 1, `${a.role} lands once, after the configured duration`);
+  }
+  for (const tickHz of [1, 2]) {
+    const { m, ctl } = mk({ config: { tickHz } });
+    const z = tickHz === 1 ? 15.45 : 12.5; // in reach after an unchecked lunge, out of reach from the near side
+    place(m.hunter, 13.5, 7.55); m.hunter.face = Math.PI / 2;
+    place(m.survivors[0], 13.5, z);
+    ctl.H = () => ({ act: 'attack', face: { x: 13.5, z } });
+    m.step();
+    ok(m.hunter.z <= 8 - m.R && !m.hunter.vault && m.stats.vaults === 0, `attack at ${tickHz} Hz stays on the near side without vaulting`);
+    ok(m.stats.missed === 1 && m.stats.hits === 0 && m.hunter.windT === 0 && m.hunter.cdT === m.cfg.hunter.missCooldownS,
+      `attack at ${tickHz} Hz resolves once and starts the miss cooldown`);
+  }
+});
+
 test('vault: window (survivor fast 0.5 s with run-up, hunter 1.7 s), only along its axis, position locked', () => {
   const { m, ctl } = mk();
   // window (13,8) axis z: north cell (13,7), south cell (13,9); blocked at z = 7.6 -> start 3 m back for a full run-up
@@ -1900,6 +1971,29 @@ test('collision: survivors are bodies (no overlap / passing through), post-hit a
     let t = 0; for (; t < 200 && !(Math.hypot(a.x - 25.5, a.z - 25.5) < 0.3 && Math.hypot(b.x - 25.5, b.z - 19.5) < 0.3); t++) m.step();
     ok(t < 200, 'head-on in a 1-cell doorway: both get through within 20 s (' + (t / 10).toFixed(1) + ' s)');
     ok(m.events.some(e => e.type === 'unstick'), 'via the unstick fallback (event)'); }
+});
+
+test('collision: long steps respect body blocks, unstick timing, and separation from overlap', () => {
+  const { m, ctl } = mk({ config: { tickHz: 2 } });
+  const [a, b] = m.survivors;
+  place(a, 25.5, 22.5); place(b, 25.5, 23.4);
+  ctl.S[0] = () => ({ moveDir: { x: 0, z: 1 } });
+  run(m, 3);
+  ok(a.z <= b.z - 2 * m.R + 1e-6 && !m.events.some(e => e.type === 'unstick'), 'the doorway body blocks for the first 1.5 s');
+  m.step();
+  ok(a.z <= b.z - 2 * m.R + 1e-6 && m.events.some(e => e.type === 'unstick' && e.who === a.id), 'the survivor unsticks after 2 s');
+  m.step();
+  ok(a.z > b.z, 'the survivor passes while ghosted');
+
+  const t = mk({ config: { tickHz: 1 } });
+  const H = t.m.hunter, s = t.m.survivors[0];
+  place(H, 25.5, 22.5); place(s, 25.5, 23);
+  t.ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+  t.m.step();
+  ok(H.z <= 22.5 + 1e-6, 'the hunter cannot move through a survivor it already overlaps');
+  t.ctl.H = () => ({ moveDir: { x: 0, z: -1 } });
+  t.m.step();
+  ok(H.z < s.z - 2 * t.m.R, 'the hunter can move away from a pre-existing overlap');
 });
 
 test('collision: hunter vs survivor bodies (body block, post-hit pass, chase still lands hits, pickup works)', () => {
