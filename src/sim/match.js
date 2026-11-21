@@ -791,7 +791,7 @@ export class Match {
     return true;
   }
 
-  _applyMove(a, dx, dz, step, isHunter) {
+  _applyMove(a, dx, dz, step, isHunter, allowVault = true) {
     const px = a.x, pz = a.z;
     const nb = this._collectBodies(a, isHunter);
     this._blocker = null;
@@ -841,7 +841,7 @@ export class Match {
     if (!isHunter && this._blocker === null && a.bodyT > 0) a.bodyT = 0;
     if (isHunter) this._hunterBlockCheck(nb);
     const mx = a.x - px, mz = a.z - pz;
-    if (mx * mx + mz * mz < 0.36 * step * step) this._tryVault(a, dx, dz, isHunter);
+    if (allowVault && mx * mx + mz * mz < 0.36 * step * step) this._tryVault(a, dx, dz, isHunter);
     a.vx = (a.x - px) / this.dt; a.vz = (a.z - pz) / this.dt;
   }
 
@@ -1493,17 +1493,17 @@ export class Match {
     const carrying = H.carrying >= 0;
     if (A.act === 'attack' && H.windT <= 0 && H.cdT <= 0) {   // (a carrying hunter may swing too, e.g. to clear a body block)
       H.windT = hc.windupS; H.prog = 0;
-      if (A.face) this._turnHunter(Math.atan2(A.face.z - H.z, A.face.x - H.x));
-      else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) this._turnHunter(Math.atan2(t.z - H.z, t.x - H.x)); }
     }
     if (H.windT > 0) {
       // keep turning toward the attack target through the windup (turn-rate limited)
       if (A.face) this._turnHunter(Math.atan2(A.face.z - H.z, A.face.x - H.x));
       else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) this._turnHunter(Math.atan2(t.z - H.z, t.x - H.x)); }
       // lunge forward along the facing, but plant once a valid target is already inside range + arc (no overshoot)
-      const lunge = carrying ? hc.carrySpeed : hc.speed * hc.lungeSpeedMult;   // no lunge while carrying
-      if (!this._targetInReach()) { this._applyMove(H, Math.cos(H.face), Math.sin(H.face), lunge * dt, true); H.mv = lunge; H.mvTick = this.tick; }   // the lunge is not ramped
-      else { H.vx = H.vz = 0; }
+      const speed = carrying ? hc.carrySpeed : hc.speed * hc.lungeSpeedMult;
+      if (!this._targetInReach()) {
+        this._applyMove(H, Math.cos(H.face), Math.sin(H.face), speed * dt, true, /* allowVault */ false);
+        H.mv = speed; H.mvTick = this.tick;   // attack movement is not ramped
+      } else { H.vx = H.vz = 0; }
       H.curAct = 'attack';
       H.windT -= dt;
       if (H.windT <= EPS) { H.windT = 0; this._resolveAttack(); }
