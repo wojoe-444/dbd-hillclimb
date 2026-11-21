@@ -248,7 +248,7 @@ export function createLayers({ scene3d, panel, storeKey = 'layers', defaults = {
     's-route'(g, s) {
       const i = +s.agent, d = survDbg(i), me = match.survivors[i]; if (!d || !me) return '';
       let out = '';
-      if (d.route?.cells?.length) { const W = d.route.W; poly(g, d.route.cells.map((c) => [(c % W) + 0.5, Math.floor(c / W) + 0.5]), col(s, '#5be3ff'), s.opacity, 0.2); out = `planned (its route field) → goal, ${d.route.cells.length} m`; }
+      if (d.route?.cells?.length) { const W = d.route.W; poly(g, d.route.cells.map((c) => [(c % W) + 0.5, Math.floor(c / W) + 0.5]), col(s, '#5be3ff'), s.opacity, 0.2); out = `planned (its route field) → goal, ${d.route.cells.length} cells`; }
       else out = d.goal ? 'goal outside its last route field' : 'no flee goal';
       if (s.nav) { const r = navRoute(me); if (r) { poly(g, [[me.x, me.z], ...r], '#ffffff', s.opacity * 0.45, 0.19); out += ` · engine nav ${r.length} cells`; } }
       return out;

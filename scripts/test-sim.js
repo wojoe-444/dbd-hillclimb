@@ -2030,6 +2030,44 @@ test('intent messages (10.2.0): predefined enum to teammates only, anti-spam coo
   c4.S[1] = () => ({ intent: 'help' }); run(m4, 2); ok(m4.events.some(e => e.type === 'intent' && e.from === 1), 'a hooked survivor can send an intent');
 });
 
+test('route field: reconstructs the legal detour around a blocked corner', () => {
+  const loops = { W: 3, H: 3, solid: Uint8Array.of(0, 1, 0, 0, 0, 0, 0, 0, 0), anchors: [], nSides: 0 };
+  const routes = new RouteEval(loops, { config: {} });
+  const obs = { blockedWindows: [], pallets: [] }, me = { x: 0.5, z: 0.5 }, hunter = { x: 2.5, z: 2.5 };
+  ok(routes.prepare(obs, me, hunter, 0), 'corner detour fields prepared');
+  ok(routes.path(2.5, 0.5)?.join() === '0,3,4,5,2', 'route follows the four legal moves around the blocked cell');
+  const rollout = routes.rollout(2.5, 0.5, 0.25);
+  near(rollout?.arrive, 1, 1e-9, 'detour arrival uses the 4 m field distance');
+  near(rollout?.gap, routes.gapAt(3, 0.25), 1e-9, 'rollout samples the first legal step at 0.25 s');
+  ok(routes.path(0.5, 0.5)?.join() === '0', 'route to the source contains just that cell');
+  ok(routes.path(1.5, 0.5) === null, 'blocked cell has no path');
+  for (const [x, z] of [[-0.5, 1.5], [3.5, 0.5], [0.5, 3.5], [NaN, 0.5]]) {
+    ok(routes.path(x, z) === null && routes.rollout(x, z, 1) === null, `invalid endpoint (${x}, ${z}) has no path or rollout`);
+    ok(!routes.reachable(x, z) && routes.sDist(x, z) === Infinity && routes.hDist(x, z) === Infinity
+      && routes.gapAtPoint(x, z, 0) === -Infinity, `invalid endpoint (${x}, ${z}) is outside both fields`);
+  }
+});
+
+test('route field: follows a nonlocal window run-up only when it wins', () => {
+  const loops = {
+    W: 7, H: 1, solid: Uint8Array.of(0, 0, 0, 0, 0, 1, 0),
+    anchors: [{ kind: 'w', id: 'window', k: 0, c: { x: 5.5, z: 0.5 } }], nSides: 2,
+    lineupOn: true, tierW: 1, runNeed: 3.9, laneCells: [4, 0], lineup: [{ opts: [{ cell: 1 }] }, null],
+  };
+  const obs = { blockedWindows: [], pallets: [] }, me = { x: 0.5, z: 0.5 }, hunter = { x: 6.5, z: 0.5 };
+  const routes = new RouteEval(loops, { config: {} });
+  routes.prepare(obs, me, hunter, 0);
+  ok(routes.path(hunter.x, hunter.z)?.join() === '0,1,5,6', 'fast route uses the winning lane-to-window edge');
+  near(routes.rollout(hunter.x, hunter.z, 2)?.arrive, 2, 1e-9, 'rollout includes the run-up and fast vault in its timing');
+  routes.prepare(obs, { x: 3.5, z: 0.5 }, hunter, 0);
+  ok(routes.path(hunter.x, hunter.z)?.join() === '3,4,5,6', 'new source takes the cheaper local approach');
+  routes.prepare({ ...obs, blockedWindows: ['window'] }, me, hunter, 0);
+  ok(routes.path(hunter.x, hunter.z) === null, 'blocking the window clears the old route and prevents another run-up');
+  const off = new RouteEval({ ...loops, lineupOn: false }, { config: {} });
+  off.prepare(obs, me, hunter, 0);
+  ok(off.path(hunter.x, hunter.z)?.join() === '0,1,2,3,4,5,6', 'lineup off uses only local moves');
+});
+
 test('route lookahead (brains/lookahead.js): knobs, knowledge gate, next resource vs hunter race, open ground, state cache', () => {
   // knobs: evolvable, 0 (= off) inside every range, defaults inside the range and on
   const B = getBrains();

@@ -37,6 +37,7 @@ export class RouteEval {
     const N = this.W * this.H;
     this.fS = new Int32Array(N).fill(-1);
     this.fH = new Int32Array(N).fill(-1);
+    this.prevS = new Int32Array(N);    // predecessor for each reached survivor cell, -1 at the source
     this.extraS = new Int32Array(N);   // per-cell entry cost (x10 m), -1 = solid
     this.extraH = new Int32Array(N);
     this.touchedS = []; this.touchedH = [];
@@ -103,16 +104,21 @@ export class RouteEval {
     });
   }
 
+  cellAt(x, z) {
+    const i = Math.floor(x), j = Math.floor(z);
+    return i >= 0 && i < this.W && j >= 0 && j < this.H ? j * this.W + i : -1;
+  }
+
   // bounded bucket-queue Dijkstra (x10 m units, octile 10 / 14 + anchor entry costs); blk = per-cell blocked mask
-  field(f, touched, extra, blk, x, z, Rm, runEdges = false) {
+  field(f, touched, extra, blk, x, z, Rm, runEdges = false, prev = null) {
     for (let k = 0; k < touched.length; k++) f[touched[k]] = -1;
     touched.length = 0;
     const W = this.W, H = this.H, isA = this.isAnchor, R = Rm * 10;
-    const i0 = Math.floor(x), j0 = Math.floor(z);
-    if (i0 < 0 || j0 < 0 || i0 >= W || j0 >= H) return;
-    const c0 = j0 * W + i0;
+    const c0 = this.cellAt(x, z);
+    if (c0 < 0) return c0;
     const buckets = this.buckets; for (let b = 0; b < buckets.length; b++) if (buckets[b]) buckets[b].length = 0;
     (buckets[0] || (buckets[0] = [])).push(c0); f[c0] = 0; touched.push(c0);
+    if (prev) prev[c0] = -1;
     for (let b = 0; b <= R; b++) {
       const bk = buckets[b]; if (!bk || !bk.length) continue;
       for (let q = 0; q < bk.length; q++) {
@@ -124,6 +130,7 @@ export class RouteEval {
             if (nd > R || (fn >= 0 && fn <= nd)) continue;
             if (fn < 0) touched.push(n);
             f[n] = nd;
+            if (prev) prev[n] = c;
             (buckets[nd] || (buckets[nd] = [])).push(n);
           }
         }
@@ -142,10 +149,12 @@ export class RouteEval {
           if (fn >= 0 && fn <= nd) continue;
           if (fn < 0) touched.push(n);
           f[n] = nd;
+          if (prev) prev[n] = c;
           (buckets[nd] || (buckets[nd] = [])).push(n);
         }
       }
     }
+    return c0;
   }
 
   // prepare both fields; returns false if unusable. hunterDelayS: the hunter is busy (visible pallet break) and
@@ -158,41 +167,27 @@ export class RouteEval {
     }
     this.vH = this.hunterSpeed(chaseS);
     this.costs(obs, this.vH);
-    this.field(this.fS, this.touchedS, this.extraS, this.blkS, me.x, me.z, this.RS, this.tierAware);
+    this.meCell = this.field(this.fS, this.touchedS, this.extraS, this.blkS, me.x, me.z, this.RS, this.tierAware, this.prevS);
     this.field(this.fH, this.touchedH, this.extraH, this.blkH, hp.x, hp.z, this.RH);
-    this.meCell = Math.floor(me.z) * this.W + Math.floor(me.x);
-    return this.fS[this.meCell] === 0;
+    return this.meCell >= 0;
   }
 
-  reachable(x, z) { const i = Math.floor(x), j = Math.floor(z); if (i < 0 || j < 0 || i >= this.W || j >= this.H) return false; return this.fS[j * this.W + i] >= 0; }
+  reachable(x, z) { return this.fS[this.cellAt(x, z)] >= 0; }
   // hunter path distance to (x,z) incl. its busy time (as metres at its speed); Infinity outside the field
-  hDist(x, z) { const i = Math.floor(x), j = Math.floor(z); if (i < 0 || j < 0 || i >= this.W || j >= this.H) return Infinity; const v = this.fH[j * this.W + i]; return v >= 0 ? v / 10 + this.vH * (this.hDelay || 0) : Infinity; }
-  sDist(x, z) { const i = Math.floor(x), j = Math.floor(z); const v = this.fS[j * this.W + i]; return v >= 0 ? v / 10 : Infinity; }
+  hDist(x, z) { const v = this.fH[this.cellAt(x, z)]; return v >= 0 ? v / 10 + this.vH * (this.hDelay || 0) : Infinity; }
+  sDist(x, z) { const v = this.fS[this.cellAt(x, z)]; return v >= 0 ? v / 10 : Infinity; }
 
-  // my path to (x,z) as cells from me to there, by descending my field
+  // my path to (x,z) along the field's winning edges, including nonlocal window run-ups
   path(x, z) {
-    const W = this.W, f = this.fS;
-    let c = Math.floor(z) * W + Math.floor(x);
-    if (f[c] < 0) return null;
-    const out = [c];
-    for (let guard = 0; guard < 400 && f[c] > 0; guard++) {
-      const i = c % W, j = (c / W) | 0;
-      let best = -1, bv = f[c];
-      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-        if (!di && !dj) continue;
-        const n = (j + dj) * W + (i + di);
-        if (i + di < 0 || j + dj < 0 || i + di >= W || j + dj >= this.H) continue;
-        const v = f[n];
-        if (v >= 0 && v < bv) { bv = v; best = n; }
-      }
-      if (best < 0) break;
-      c = best; out.push(c);
-    }
+    const end = this.cellAt(x, z);
+    if (end < 0 || this.fS[end] < 0) return null;
+    const out = [];
+    for (let c = end; c >= 0; c = this.prevS[c]) out.push(c);
     return out.reverse();
   }
 
   // gap (m) if I'm at (x,z) at time t (same rule as gapAt; off the grid = -Infinity)
-  gapAtPoint(x, z, t) { const i = Math.floor(x), j = Math.floor(z); if (i < 0 || j < 0 || i >= this.W || j >= this.H) return -Infinity; return this.gapAt(j * this.W + i, t); }
+  gapAtPoint(x, z, t) { const c = this.cellAt(x, z); return c >= 0 ? this.gapAt(c, t) : -Infinity; }
 
   gapAt(cell, t) { const hd = this.fH[cell]; return (hd >= 0 ? hd / 10 : this.R + 10) - this.vH * Math.max(0, t - (this.hDelay || 0)) - this.reach; }
 
