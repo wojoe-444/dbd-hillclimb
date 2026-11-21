@@ -837,7 +837,9 @@ test('carry / hook: pickup 2 s, hook 1.5 s, stage 1 (70 s) -> stage 2 (70 s) -> 
   const s = m.survivors[0], hk = m.hooks[0];
   s.st = DOWNED; place(s, 30.5, 26.5); place(m.hunter, 31.5, 26.5);
   ctl.H = () => ({ act: 'pickup', target: 0 });
-  run(m, 19); ok(s.st === DOWNED, 'not picked up before 2 s'); run(m, 2); ok(s.st === CARRIED && m.hunter.carrying === 0, 'picked up after 2 s');
+  run(m, 19); ok(s.st === DOWNED && m.hunter.curAct === 'pickup', 'pickup still in progress before 2 s');
+  run(m, 1); ok(s.st === CARRIED && m.hunter.carrying === 0, 'picked up after 2 s');
+  ok(m.hunter.curAct === null && m.hunter.curTgt === null && m.hunter.prog === 0, 'pickup clears the hunter interaction on the completion tick');
   ctl.S[0] = () => ({ act: 'wiggle' });
   ctl.H = () => ({ moveDir: { x: 1, z: 0 } }); run(m, 10); near(m.hunter.x - 31.5, rampDist(3.68, HA, 10), 0.01, 'carrying speed 3.68 from standing (pickup took 2 s)');
   ok(Math.abs(s.x - m.hunter.x) < 1e-9, 'carried survivor follows the hunter');
@@ -887,23 +889,79 @@ test('carry / hook: pickup 2 s, hook 1.5 s, stage 1 (70 s) -> stage 2 (70 s) -> 
 test('carry: wiggle progress persists across drops / re-pickups; voluntary drop adds 25 %; pallet save releases INJURED', () => {
   const { m, ctl } = mk();
   const s = m.survivors[0]; s.st = CARRIED; m.hunter.carrying = 0; place(m.hunter, 30.5, 26.5);
-  ctl.S[0] = () => ({ act: 'wiggle' }); run(m, 50);
-  near(s.wiggle, 5, 0.11, '5 s of wiggling');
-  ctl.S[0] = () => ({}); ctl.H = () => ({ act: 'drop' }); run(m, 1);
+  ctl.S[0] = () => ({ act: 'wiggle' }); run(m, 49);
+  ctl.H = () => ({ act: 'drop' }); run(m, 1);
   ok(s.st === DOWNED && m.hunter.carrying === -1 && Math.abs(s.x - m.hunter.x) < 1e-9, 'voluntary drop: downed at the hunter');
-  near(s.wiggle, 9, 0.11, 'drop adds 25 % of 16 s = 4 s of wiggle progress');
+  ok(s.curAct === null, 'voluntary drop clears wiggle activity on the completion tick');
+  near(s.wiggle, 9, 1e-8, 'drop adds 4 s to the 5 s of wiggle progress');
   ok(m.events.some(e => e.type === 'drop' && e.who === 0) && m.stats.drops === 1, 'drop event + stat');
-  ctl.H = () => ({ act: 'pickup', target: 0 }); run(m, 21);
+  ctl.S[0] = () => ({}); ctl.H = () => ({ act: 'pickup', target: 0 }); run(m, 21);
   ok(s.st === CARRIED && Math.abs(s.wiggle - 9) < 0.11, 're-pickup: wiggle progress kept');
   ctl.H = () => ({}); ctl.S[0] = () => ({ act: 'wiggle' }); run(m, 69); ok(s.st === CARRIED, 'not free at 15.9 s total');
   run(m, 2); ok(s.st === INJURED, 'free after 16 s of total progress, INJURED');
   // pallet save: hunter carrying, stunned by a pallet -> released INJURED
-  const t = mk(); const c = t.m.survivors[1]; c.st = CARRIED; t.m.hunter.carrying = 1;
+  const t = mk(); const c = t.m.survivors[3]; c.st = CARRIED; t.m.hunter.carrying = c.id;
   const p = t.m.md.pallets.find(q => q.id === 'p-gap');
   place(t.m.survivors[0], 25.5, 21.0); place(t.m.hunter, 25.5, 22.5);
+  t.ctl.S[c.id] = () => ({ act: 'wiggle' });
   t.ctl.S[0] = () => ({ act: 'dropPallet', target: 'p-gap' }); run(t.m, 3);
   ok(t.m.ps[p.index] === 1 && t.m.hunter.stunT > 0 && c.st === INJURED && t.m.hunter.carrying === -1, 'pallet save: survivor released INJURED');
-  ok(t.m.events.some(e => e.type === 'dropped' && e.who === 1 && e.state === 'injured'), 'dropped event (state injured)');
+  ok(c.curAct === null && c.wiggle === 0, 'pallet save clears wiggle activity and progress on the same tick');
+  ok(t.m.events.some(e => e.type === 'dropped' && e.who === c.id && e.state === 'injured'), 'dropped event (state injured)');
+});
+
+test('carry: a drop that fills the wiggle meter immediately releases and stuns', () => {
+  for (const ticks of [119, 120]) {
+    const { m, ctl } = mk();
+    const s = m.survivors[0], H = m.hunter;
+    s.st = CARRIED; H.carrying = s.id;
+    ctl.S[0] = () => ({ act: 'wiggle' }); run(m, ticks);
+    ctl.S[0] = () => ({}); ctl.H = () => ({ act: 'drop' }); run(m, 1);
+    const drop = m.events.find(e => e.type === 'drop' && e.who === s.id);
+    ok(H.carrying === -1 && s.x === H.x && s.z === H.z && m.stats.drops === 1, 'voluntary drop releases at the hunter and counts once');
+    if (ticks === 119) {
+      near(s.wiggle, 15.9, 1e-8, 'a drop just below full keeps 15.9 s of progress');
+      ok(s.st === DOWNED && H.stunT === 0 && m.stats.wiggles === 0, 'partial drop leaves the survivor downed');
+    } else {
+      ok(s.st === INJURED && s.wiggle === 0 && H.stunT > 0, 'full drop frees the survivor immediately without wiggle input');
+      ok(drop?.wiggle === 1 && m.events.some(e => e.type === 'wiggle' && e.who === s.id && e.t === drop.t), 'drop and wiggle events share the completion tick');
+      ok(m.stats.wiggles === 1 && m.stats.stuns === 1, 'drop-induced wiggle and stun count once each');
+    }
+  }
+});
+
+test('carry: pallet break requires empty hands and starts from zero after dropping', () => {
+  const { m, ctl } = mk();
+  const s = m.survivors[0], H = m.hunter, p = m.palletById.get('p-gap');
+  m._dropPallet(p, m.survivors[1]);
+  place(H, 25.5, 23.5); s.st = CARRIED; H.carrying = s.id;
+  ctl.H = () => ({ act: 'breakPallet', target: p.id }); run(m, 1);
+  ok(H.curAct === null && H.prog === 0, 'a carry prevents even starting a pallet break');
+  run(m, 24);
+  ok(m.ps[p.index] === 1 && m.stats.palletsBroken === 0 && H.carrying === s.id, 'repeated break requests leave the pallet and carry intact');
+  ctl.H = () => ({ act: 'drop' }); run(m, 1);
+  ctl.H = () => ({ act: 'breakPallet', target: p.id }); run(m, 23);
+  ok(m.ps[p.index] === 1, 'pallet break still requires its full duration after dropping');
+  run(m, 1); ok(m.ps[p.index] === 2 && m.stats.palletsBroken === 1, 'pallet breaks when the empty-handed interaction completes');
+});
+
+test('carry: hook completion clears wiggle activity, and a same-tick full wiggle wins', () => {
+  for (const remaining of [1.6, 1.5]) {
+    const { m, ctl } = mk();
+    const s = m.survivors[0], H = m.hunter, hk = m.hooks[0];
+    place(H, hk.x + 1, hk.z); s.st = CARRIED; H.carrying = s.id;
+    s.wiggle = m.cfg.survivor.wiggleS - remaining;
+    ctl.S[0] = () => ({ act: 'wiggle' }); ctl.H = () => ({ act: 'hook', target: hk.id });
+    run(m, 14);
+    ok(s.st === CARRIED && s.curAct === 'wiggle' && H.curAct === 'hook', 'carry and wiggle are active just before completion');
+    run(m, 1);
+    ok(H.carrying === -1 && s.wiggle === 0 && s.curAct === null, 'completed carry clears wiggle activity on the same tick');
+    if (remaining > m.cfg.hunter.hookS) {
+      ok(s.st === HOOKED && hk.occ === s.id && m.stats.hooks === 1 && m.stats.wiggles === 0, 'hook completes before the wiggle threshold');
+    } else {
+      ok(s.st === INJURED && hk.occ === -1 && m.stats.hooks === 0 && m.stats.wiggles === 1, 'survivor actions resolve before a same-tick hook completion');
+    }
+  }
 });
 
 test('downed recovery: stationary 0.5 charges/s up to 95 % (30.4 s), crawling pauses, last 5 % needs help', () => {
