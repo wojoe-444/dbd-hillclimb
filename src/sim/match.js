@@ -36,6 +36,11 @@ const mkSlots = n => Array.from({ length: n }, () => ({ id: -1, tick: -9 }));
 const hyp = (a, b) => Math.sqrt(a * a + b * b);   // Math.hypot is slow in V8
 const r2 = v => Math.round(v * 100) / 100;
 
+function featureBit(mask, index) {
+  const word = typeof mask === 'number' ? mask : mask[index >>> 5];
+  return (word >>> (index & 31)) & 1;
+}
+
 // Generator side slots: the orthogonal neighbour cells (N = -z, E = +x, S = +z, W = -x) that are plain walkable cells
 // (not solid / window / pallet / outside). Slot point = that cell's centre. One repairing survivor per slot.
 const SIDES = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]];
@@ -405,7 +410,7 @@ export class Match {
       const hm = this._featMask(H.x, H.z);
       for (let g = 0; g < this.gens.length; g++) {
         const ge = this.gens[g], gx = ge.x - H.x, gz = ge.z - H.z, d2 = gx * gx + gz * gz;
-        H.gSeen[g] = (hm !== null && ((hm.g >>> ge.ci) & 1) === 1 && (d2 < 1e-6 || (gx * hfx + gz * hfz) >= Math.sqrt(d2) * cosH)) ? 1 : 0;
+        H.gSeen[g] = (hm !== null && featureBit(hm.g, ge.ci) && (d2 < 1e-6 || (gx * hfx + gz * hfz) >= Math.sqrt(d2) * cosH)) ? 1 : 0;
       }
     }
     // survivors: generators / pallets (static geometry => per-cell cached visibility bitmasks, shared across matches)
@@ -418,19 +423,19 @@ export class Match {
       if (fm === null) continue;
       const gm = fm.g, pm = fm.p;
       if (!camOn) {
-        for (let g = 0; g < this.gens.length; g++) s.gSeen[g] = (gm >>> this.gens[g].ci) & 1;
-        for (let p = 0; p < s.pSeen.length; p++) s.pSeen[p] = (pm >>> p) & 1;
+        for (let g = 0; g < this.gens.length; g++) s.gSeen[g] = featureBit(gm, this.gens[g].ci);
+        for (let p = 0; p < s.pSeen.length; p++) s.pSeen[p] = featureBit(pm, p);
         continue;
       }
       // camera: visible from the camera's cell (cached masks) AND inside the FOV cone; or within body awareness
       const ca = cfg.survivor.camera, aw2 = ca.bodyAwareM * ca.bodyAwareM;
       for (let g = 0; g < this.gens.length; g++) {
         const ge = this.gens[g];
-        s.gSeen[g] = ((((gm >>> ge.ci) & 1) === 1 && this._inCone(s, ge.x, ge.z)) || (ge.x - s.x) ** 2 + (ge.z - s.z) ** 2 <= aw2) ? 1 : 0;
+        s.gSeen[g] = ((featureBit(gm, ge.ci) && this._inCone(s, ge.x, ge.z)) || (ge.x - s.x) ** 2 + (ge.z - s.z) ** 2 <= aw2) ? 1 : 0;
       }
       for (let p = 0; p < s.pSeen.length; p++) {
         const pa = md.pallets[p];
-        s.pSeen[p] = ((((pm >>> p) & 1) === 1 && this._inCone(s, pa.cx, pa.cz)) || (pa.cx - s.x) ** 2 + (pa.cz - s.z) ** 2 <= aw2) ? 1 : 0;
+        s.pSeen[p] = ((featureBit(pm, p) && this._inCone(s, pa.cx, pa.cz)) || (pa.cx - s.x) ** 2 + (pa.cz - s.z) ** 2 <= aw2) ? 1 : 0;
       }
     }
   }
@@ -493,38 +498,42 @@ export class Match {
   }
 
   // Which generator candidates / pallets are visible from the centre of the cell containing (x,z). Pure function of
-  // (map, sight config, cell) so it is cached on the prepared map and shared by all matches. null if the map has
-  // more than 32 candidates or pallets (not expected).
+  // (map, sight config, cell) so it is cached on the prepared map and shared by matches with that config.
+  // Each feature type uses a single word up to 32 features, or an array of words for larger maps.
   _featMask(x, z) {
     const md = this.md;
     let cache = this._fmCache;
     if (cache === undefined) {
       const sc0 = this.cfg.sight;
-      if (md.genCands.length > 32 || md.pallets.length > 32) cache = null;
-      else {
-        const key = sc0.semiTransparency + '|' + sc0.visThreshold + '|' + sc0.range;
-        cache = md.featCache;
-        if (!cache || cache.key !== key) cache = md.featCache = { key, cells: new Array(md.N).fill(null) };
-      }
+      const key = sc0.semiTransparency + '|' + sc0.visThreshold + '|' + sc0.range;
+      cache = md.featCache;
+      if (!cache || cache.key !== key) cache = md.featCache = { key, cells: new Array(md.N).fill(null) };
       this._fmCache = cache;
     }
-    if (cache === null) return null;
     const i = Math.floor(x), j = Math.floor(z), c = j * md.w + i;
     if (i < 0 || j < 0 || i >= md.w || j >= md.h) return null;
     let e = cache.cells[c];
     if (e === null) {
       const sc = this.cfg.sight;
       const cx = i + 0.5, cz = j + 0.5, r2 = sc.range * sc.range;
+      const genWords = md.genCands.length > 32 ? new Uint32Array(Math.ceil(md.genCands.length / 32)) : null;
+      const palletWords = md.pallets.length > 32 ? new Uint32Array(Math.ceil(md.pallets.length / 32)) : null;
       let g = 0, p = 0;
       for (let k = 0; k < md.genCands.length; k++) {
         const ge = md.genCands[k], dx = ge.x - cx, dz = ge.z - cz;
-        if (dx * dx + dz * dz <= r2 && rayVis(md, cx, cz, ge.x, ge.z, sc.semiTransparency, sc.visThreshold) >= sc.visThreshold) g |= (1 << k);
+        if (dx * dx + dz * dz <= r2 && rayVis(md, cx, cz, ge.x, ge.z, sc.semiTransparency, sc.visThreshold) >= sc.visThreshold) {
+          if (genWords) genWords[k >>> 5] |= 1 << (k & 31);
+          else g |= 1 << k;
+        }
       }
       for (let k = 0; k < md.pallets.length; k++) {
         const pa = md.pallets[k], dx = pa.cx - cx, dz = pa.cz - cz;
-        if (dx * dx + dz * dz <= r2 && rayVis(md, cx, cz, pa.cx, pa.cz, sc.semiTransparency, sc.visThreshold) >= sc.visThreshold) p |= (1 << k);
+        if (dx * dx + dz * dz <= r2 && rayVis(md, cx, cz, pa.cx, pa.cz, sc.semiTransparency, sc.visThreshold) >= sc.visThreshold) {
+          if (palletWords) palletWords[k >>> 5] |= 1 << (k & 31);
+          else p |= 1 << k;
+        }
       }
-      e = cache.cells[c] = { g: g >>> 0, p: p >>> 0 };
+      e = cache.cells[c] = { g: genWords ?? (g >>> 0), p: palletWords ?? (p >>> 0) };
     }
     return e;
   }
