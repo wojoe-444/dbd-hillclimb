@@ -9,7 +9,7 @@
 // Writes <out>/v000.json ... plus <out>/index.json, renders the first --render variants to
 // docs/maps/gas-heaven-tiles/ (SVG, and PNG via headless Chrome/Edge if found), and writes the tile stats
 // report docs/maps/gas-heaven-tiles.md. Every variant must pass scripts/validate-map.js (analyzeMap).
-import { writeFileSync, mkdirSync, existsSync, rmSync, readdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, mkdtempSync, existsSync, rmSync, readdirSync, renameSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -18,16 +18,35 @@ import { renderSvg } from './render-map.js';
 import { generateFromLayout, gasHeavenLayout, OUTLINE_FAMILIES, hashSeed, makeRng, TILE_LIST, resolveTile, composeFeatures } from '../src/mapgen/index.js';
 
 const args = process.argv.slice(2);
-const opt = (name, def) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : def; };
-const count = Number(opt('count', 32));
-const baseSeed = Number(opt('seed', 1));
-const outDir = opt('out', path.join('maps', 'gas-heaven'));
-const renderCount = Number(opt('render', 4));
-const wantPng = !args.includes('--no-png');
-const shapedMode = opt('shaped', 'odd');
+const defaults = { count: '32', seed: '1', out: path.join('maps', 'gas-heaven'), render: '4', shaped: 'odd' };
+const options = new Map();
+let wantPng = true;
+function fail(message) { console.error(message); process.exit(1); }
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === '--no-png') { wantPng = false; continue; }
+  const name = arg.slice(2);
+  if (!arg.startsWith('--') || !Object.hasOwn(defaults, name)) fail(`Unknown option: ${arg}`);
+  if (options.has(name)) fail(`Duplicate option: ${arg}`);
+  const value = args[++i];
+  if (!value?.trim() || value.startsWith('--')) fail(`${arg} requires a value`);
+  options.set(name, value);
+}
+const opt = name => options.get(name) ?? defaults[name];
+const count = Number(opt('count'));
+const baseSeed = Number(opt('seed'));
+const outDir = opt('out');
+const renderCount = Number(opt('render'));
+const shapedMode = opt('shaped');
+if (!Number.isSafeInteger(count) || count < 1) fail('--count must be a positive integer');
+if (!Number.isSafeInteger(baseSeed)) fail('--seed must be a safe integer');
+if (!Number.isSafeInteger(renderCount) || renderCount < 0) fail('--render must be a non-negative integer');
+if (!['odd', 'all', 'none'].includes(shapedMode)) fail('--shaped must be odd, all, or none');
+const output = statSync(outDir, { throwIfNoEntry: false });
+if (output && !output.isDirectory()) fail('--out must name a directory');
 const isShaped = i => shapedMode === 'all' || (shapedMode === 'odd' && i % 2 === 1);
 // families round-robin over the shaped variants so the pool always holds all of them (v001 notched, v003 circlish, ...)
-const familyOf = i => OUTLINE_FAMILIES[(shapedMode === 'all' ? i : i >> 1) % OUTLINE_FAMILIES.length];
+const familyOf = i => OUTLINE_FAMILIES[(shapedMode === 'all' ? i : Math.floor(i / 2)) % OUTLINE_FAMILIES.length];
 const renderDir = path.join('docs', 'maps', 'gas-heaven-tiles');
 const reportPath = path.join('docs', 'maps', 'gas-heaven-tiles.md');
 
@@ -62,37 +81,59 @@ for (const t of TILE_LIST) {
 if (tileProblems) { console.error(`${tileProblems} tile(s) failed the self-check.`); process.exit(1); }
 console.log(`Tile library: ${TILE_LIST.length} tiles pass the standalone check (all/no optional pallets, rotated + mirrored).`);
 
-// ---- 2. generate variants -------------------------------------------------------------------------------
-mkdirSync(outDir, { recursive: true });
-for (const f of readdirSync(outDir)) if (/^v\d{3}\.json$/.test(f)) rmSync(path.join(outDir, f));
+// ---- 2. generate and validate the entire pool before publishing ------------------------------------------
 const variants = [];
 let retries = 0;
 const failReasons = {};
 for (let i = 0; i < count; i++) {
   const tag = `v${String(i).padStart(3, '0')}`;
   let done = null;
+  let lastError;
   for (let attempt = 0; attempt < 25 && !done; attempt++) {
     const seed = hashSeed('gas-heaven', baseSeed, i, attempt);
     const r = generateFromLayout(gasHeavenLayout, seed, isShaped(i) ? { shaped: true, family: familyOf(i) } : {});
-    if (!r.ok) { retries++; failReasons[r.error.replace(/\d+/g, 'N')] = (failReasons[r.error.replace(/\d+/g, 'N')] ?? 0) + 1; continue; }
-    r.map.id = `gas-heaven-${tag}`;
-    r.map.name = `Gas Heaven (tiles ${tag})`;
-    const res = analyzeMap(r.map);
-    if (res.errors.length) { retries++; failReasons['validator: ' + res.errors[0].replace(/\d+/g, 'N')] = (failReasons['validator: ' + res.errors[0].replace(/\d+/g, 'N')] ?? 0) + 1; continue; }
-    done = { tag, seed, map: r.map, stats: r.stats, res };
+    if (!r.ok) lastError = r.error;
+    else {
+      r.map.id = `gas-heaven-${tag}`;
+      r.map.name = `Gas Heaven (tiles ${tag})`;
+      const res = analyzeMap(r.map);
+      if (res.errors.length) lastError = `validator: ${res.errors[0]}`;
+      else done = { tag, seed, map: r.map, stats: r.stats, res };
+    }
+    if (!done) {
+      retries++;
+      const reason = lastError.replace(/\d+/g, 'N');
+      failReasons[reason] = (failReasons[reason] ?? 0) + 1;
+    }
   }
-  if (!done) { console.error(`${tag}: no valid variant after 25 attempts`); process.exit(1); }
-  writeFileSync(path.join(outDir, `${tag}.json`), JSON.stringify(done.map, null, 1) + '\n');
+  if (!done) fail(`${tag}: no valid variant after 25 attempts (${lastError})`);
   variants.push(done);
   const s = done.stats;
   const sh = done.map.mapgen.shape;
   console.log(`${tag} seed ${done.seed}: VALID · ${sh ? `${sh.family} ${done.map.size.w}x${done.map.size.h} ${sh.areaM2} m² (${sh.moved.length} moved) · ` : 'base outline · '}${s.pallets} pallets · ${s.windows} windows · ${s.strongLoops} strong / ${s.weakLoops} weak loops · dead tiles ${(s.deadTileFraction * 100).toFixed(0)}% · gens ${s.generators} · hooks ${s.hooks} (max ${done.res.maxHookDistance} m) · gates ${s.gates.join('+')}`);
 }
-writeFileSync(path.join(outDir, 'index.json'), JSON.stringify({
+const index = {
   map: 'gas-heaven', generator: gasHeavenLayout.generator, baseSeed, count,
   note: 'Tile-based Gas Heaven variants from scripts/gen-maps.js. Regenerate: node scripts/gen-maps.js --count ' + count + ' --seed ' + baseSeed,
   variants: variants.map(v => ({ file: `${v.tag}.json`, id: v.map.id, seed: v.seed, outline: v.map.mapgen.shape?.family ?? 'base', ...pick(v.stats, ['pallets', 'windows', 'strongLoops', 'weakLoops', 'safePallets', 'unsafePallets', 'godPallets', 'deadTileFraction', 'deadZoneFraction', 'generators', 'hooks']) })),
-}, null, 1) + '\n');
+};
+
+// Finish writing every file before replacing any existing file. Publish the index last.
+mkdirSync(outDir, { recursive: true });
+const stagingDir = mkdtempSync(path.join(outDir, '.gen-maps-'));
+try {
+  for (const v of variants) writeFileSync(path.join(stagingDir, `${v.tag}.json`), JSON.stringify(v.map, null, 1) + '\n');
+  writeFileSync(path.join(stagingDir, 'index.json'), JSON.stringify(index, null, 1) + '\n');
+  for (const { file } of index.variants) renameSync(path.join(stagingDir, file), path.join(outDir, file));
+  renameSync(path.join(stagingDir, 'index.json'), path.join(outDir, 'index.json'));
+} finally {
+  rmSync(stagingDir, { recursive: true, force: true });
+}
+const currentFiles = new Set(index.variants.map(v => v.file));
+for (const entry of readdirSync(outDir, { withFileTypes: true })) {
+  const file = entry.name;
+  if (!entry.isDirectory() && /^v(?:\d{3}|[1-9]\d{3,})\.json$/.test(file) && !currentFiles.has(file)) rmSync(path.join(outDir, file));
+}
 console.log(`Wrote ${variants.length} variants + index.json to ${outDir} (${retries} rejected attempts: ${JSON.stringify(failReasons)}).`);
 
 function pick(o, keys) { return Object.fromEntries(keys.map(k => [k, o[k]])); }
