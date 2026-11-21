@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaults, clampParams } from './params.js';
+import { defaults, clampParams, evolutionChampion } from './params.js';
 import { loadMapPool } from './maps.js';
 import { modsOf, modsKey, describeMods } from '../sim/modifiers.js';
 
@@ -110,7 +110,7 @@ export function edgeReport(space, pop, tol = 0.05, min = 0.25) {
 }
 
 // ---------- param sets ----------
-// spec forms: "default" | run dir (champions.json) | "<run dir>@gen12" (rank-1 of that generation in evo.jsonl)
+// spec forms: "default" | run dir (champions.json) | "<run dir>@gen12" (the champion of that generation in evo.jsonl)
 //   | path to champions.json / population.json / { hunter, survivor } JSON | "name=<any of these>" to rename.
 // Params are clamped into today's spaces (missing knobs -> today's default, retired knobs dropped); the number of
 // filled-in/dropped knobs is reported so stale archives are visible.
@@ -128,7 +128,7 @@ export function resolveParamSet(spec, spaces) {
       const row = rows.find((r) => r.gen === +m[2]);
       if (!row) throw new Error(`${src}: generation ${m[2]} not in evo.jsonl`);
       runDir = path;
-      raw = { hunter: row.hunters.ranking[0].params, survivor: row.survivors.ranking[0].params };
+      raw = evolutionChampion(row);
     } else {
       const file = existsSync(path) && statSync(path).isDirectory() ? join(path, 'champions.json') : path;
       const j = JSON.parse(readFileSync(file, 'utf8'));

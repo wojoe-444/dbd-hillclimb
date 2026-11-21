@@ -2,7 +2,7 @@
 // stats dock (Match | Evolution | Knobs | Map | Champion tabs) and a one-key immersive full-screen mode (F / Esc).
 import { createMatch } from '../src/sim/index.js';
 import { getBrains } from '../src/brains/index.js';
-import { defaults } from '../src/hillclimb/params.js';
+import { defaults, evolutionChampion } from '../src/hillclimb/params.js';
 import { scoreBloodpoints } from '../src/hillclimb/bloodpoints.js';
 import { hunterTableScore } from '../src/hillclimb/hunterscore.js';
 import { createScene, survCss, stateNames } from './scene.js';
@@ -367,7 +367,7 @@ async function fetchMeta({ name, kind }) {
     return txt.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((e) => ({
       gen: e.gen, side: 'population', accepted: false, evo: e,
       after: { ...e.outcome },
-      champ: { hunter: e.hunters.ranking[0].params, survivor: e.survivors.ranking[0].params },
+      champ: evolutionChampion(e),
     }));
   } else if (name) {
     const txt = await (await fetch(`../runs/${name}/meta.jsonl`)).text();
@@ -663,8 +663,9 @@ function drawMinimap() {
 
 // ---------------------------------------------------------------- Champion tab
 function renderChamp() {
-  const g = +$('gen').value, use = $('useChamp').checked;
-  $('champInfo').innerHTML = (isModded(runMods) && meta.length ? modBadge(runMods) + ' ' : '') + (g === 0 || !meta.length ? 'Default parameters (generation 0 / no run).' : `Champions of <b style="color:var(--ink)">${esc(loadedRun.name)}</b> · gen ${meta[g - 1].gen}${meta[g - 1].evo ? ` · hunter ${esc(meta[g - 1].evo.hunters.ranking[0].id)} · team ${esc(meta[g - 1].evo.survivors.ranking[0].id)}` : ''} — ${use ? 'champs enabled' : 'champs unchecked'}`);
+  const r = meta[+$('gen').value - 1], use = $('useChamp').checked;
+  const who = r?.evo?.cma ? ' · CMA-ES mean' : r?.evo ? ` · hunter ${esc(r.evo.hunters.ranking[0].id)} · team ${esc(r.evo.survivors.ranking[0].id)}` : '';
+  $('champInfo').innerHTML = (isModded(runMods) && meta.length ? modBadge(runMods) + ' ' : '') + (!r ? 'Default parameters (generation 0 / no run).' : `Champions of <b style="color:var(--ink)">${esc(loadedRun.name)}</b> · gen ${r.gen}${who} — ${use ? 'champs enabled' : 'champs unchecked'}`);
   const onlyChanged = $('champChanged').checked, q = $('champSearch').value.trim().toLowerCase();
   const d = defaultParams();
   const tbl = (side) => {

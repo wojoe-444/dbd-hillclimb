@@ -34,7 +34,7 @@
 //   --opt cmaes              sep-CMA-ES per side over the normalised knob vector instead of the GA (lambda = --pop,
 //   --cma-sigma s              mu = lambda/2). s = initial step in [0,1] units (default 0.15); --cma-mirror = antithetic
 //   --cma-mirror               pairs; --cma-min-sigma floor (default 0.01). evo.jsonl gains `cma` (mean, sigma, per-knob
-//   --cma-min-sigma f          sd); rankings/knobs describe the sampled population; champions.json = the CMA mean.
+//   --cma-min-sigma f          sd) and `champ` (the CMA mean as saved in champions.json); rankings/knobs describe the samples.
 // Every generation also logs (additive fields): `perf` (matches/s, worker utilisation, ms per game-second) and
 // `selection` (per side: reliability of the fitness means, split-half, rank persistence of survivors, racing stats).
 // Every start writes runs/<name>/config.json: git HEAD + dirty flag, map pool fingerprint, argv and the full config.
@@ -412,11 +412,12 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
 
   const showFit = opts.carry || opts.reevalTop > 0 || !!opts.panel || !!cma;
   const brief = (x) => ({ id: x.id, born: x.born, parents: x.parents, ...(showFit ? { fit: +x.fit.toFixed(4), games: x.games } : {}), bp: Math.round(x.bp), kills: x.kills !== undefined ? +x.kills.toFixed(2) : undefined, escapes: +(x.escapes ?? 0).toFixed(2), gensDone: +(x.gensDone ?? 0).toFixed(2), params: round(x.params), fitSd: +x.fitSd.toFixed(4) });
+  const savedChamp = { hunter: round(champ.hunter), survivor: round(champ.survivor) };
   const perf = pool.takeStats();
   const r3 = (v) => (v === null || v === undefined ? null : v);
   appendFileSync(logFile, JSON.stringify({
     gen, ...(modRec.standard ? {} : { modifiers: modRec.modifiers }), seconds: (Date.now() - t0) / 1000, matches: ev.matches, outcome: tot,
-    ...ev.extra, ...(bench ? { bench } : {}), ...(cmaLog ? { cma: cmaLog } : {}),
+    ...ev.extra, ...(bench ? { bench } : {}), ...(cmaLog ? { cma: cmaLog, champ: savedChamp } : {}),
     // edges: knobs with >= 25 % of the population within 5 % of a range bound (share at lo / hi)
     hunters: { ranking: rh.map(brief), knobs: knobStats('hunter', hunters), edges: edgeReport(spaces.hunter, hunters) },
     survivors: { ranking: rs.map(brief), knobs: knobStats('survivor', survivors), edges: edgeReport(spaces.survivor, survivors) },
@@ -434,7 +435,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
     prev: prevRanked, rng: { seed: opts.seed, state: R.state() }, ...(opts.panel || cma ? { hof } : {}), ...(cma ? { cma } : {}),
   }, null, 2));
   // champions.json in the climb format, so the viewer/matchup can play the current best pair
-  writeFileSync(champFile, JSON.stringify({ gen, ...(modRec.standard ? {} : modRec), champ: { hunter: round(champ.hunter), survivor: round(champ.survivor) }, ...(cma ? { bestSample: { hunter: round(rh[0].params), survivor: round(rs[0].params) } } : {}) }, null, 2));
+  writeFileSync(champFile, JSON.stringify({ gen, ...(modRec.standard ? {} : modRec), champ: savedChamp, ...(cma ? { bestSample: { hunter: round(rh[0].params), survivor: round(rs[0].params) } } : {}) }, null, 2));
   if (opts.panel) writeFileSync(join(outDir, 'hof.json'), JSON.stringify(hof, null, 2));
 
   const tk = knobStats('hunter', rh).tunnel;
