@@ -16,15 +16,73 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const fmtT = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const store = { get: (k, d) => { try { const v = localStorage.getItem('dbdv.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { localStorage.setItem('dbdv.' + k, JSON.stringify(v)); } catch { /* private mode */ } } };
 
-const mapCache = new Map();
-async function loadMap(path) {
-  if (!mapCache.has(path)) { const m = await (await fetch('../' + path)).json(); m._path = path; mapCache.set(path, m); }
-  return mapCache.get(path);
+const baseMapPath = 'maps/gas-heaven.json';
+const mapFiles = new Map();
+async function loadMapFile(path) {
+  if (!mapFiles.has(path)) {
+    const response = await fetch('../' + path.split('/').map(encodeURIComponent).join('/'));
+    if (!response.ok) throw new Error('Map file unavailable');
+    const data = await response.json();
+    if (!mapFiles.has(path)) mapFiles.set(path, data);
+  }
+  return mapFiles.get(path);
 }
-let map = await loadMap('maps/gas-heaven.json');
+async function loadMap(path) {
+  const data = await loadMapFile(path);
+  if (!data?.size) throw new Error('Expected a map');
+  data._path = path;
+  return data;
+}
+let map = await loadMap(baseMapPath);
 let brains = getBrains();
-const variantIndex = await fetch('../maps/gas-heaven/index.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
-const variantInfo = new Map((variantIndex?.variants ?? []).map((v) => [v.id, v]));
+const variantIndex = await loadMapFile('maps/gas-heaven/index.json').catch(() => null);
+const variantInfo = new Map(Array.isArray(variantIndex?.variants) ? variantIndex.variants.map((v) => [v?.id, v]) : []);
+
+// Older runs record absolute paths. Use their maps/ suffix as a checkout-relative path.
+function repoMapPath(source) {
+  if (typeof source !== 'string') return null;
+  const path = source.replaceAll('\\', '/');
+  const parts = path.split('/').filter((part) => part && part !== '.');
+  if (parts.includes('..')) return null;
+  const start = /^(?:[a-z]:)?\//i.test(path) ? parts.indexOf('maps') : 0;
+  if (start < 0 || parts[start] !== 'maps') return null;
+  const relative = parts.slice(start);
+  // Windows can alias path segments with trailing spaces or dots.
+  if (relative.some((part) => /[:\0]|[ .]$/.test(part))) return null;
+  return relative.join('/');
+}
+
+function indexedMapPath(dir, file) {
+  if (typeof file !== 'string' || !file || /^[/\\]|[:\0]/.test(file)) return null;
+  const parts = dir.split('/');
+  for (const part of file.replaceAll('\\', '/').split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      if (parts.length === 1) return null;
+      parts.pop();
+    } else parts.push(part);
+  }
+  return parts.join('/');
+}
+
+async function savedMapPool(source) {
+  const path = repoMapPath(source);
+  if (!path) return [];
+  const prefix = `${path}/`;
+  const children = mapList.filter((file) => file.startsWith(prefix) && !file.slice(prefix.length).includes('/'));
+  if (children.length) return children.sort();
+
+  // The map catalog omits index.json. Explicit indexes use manifest order, including duplicates.
+  const isIndex = path.endsWith('/index.json');
+  if (!isIndex && !mapPaths.has(path)) return [];
+  const data = await loadMapFile(path);
+  if (!isIndex && !Array.isArray(data?.variants)) return [path];
+  const entries = data?.variants ?? data;
+  if (!Array.isArray(entries)) return [];
+  const dir = path.slice(0, path.lastIndexOf('/'));
+  const pool = entries.map((entry) => indexedMapPath(dir, typeof entry === 'string' ? entry : entry?.file));
+  return pool.every((file) => mapPaths.has(file)) ? pool : [];
+}
 
 // ---------------------------------------------------------------- 3D
 const view = $('view');
@@ -161,6 +219,7 @@ function hud(force) {
   const res = m.over ? m.result() : null;
   $('hud').innerHTML = `<div class="top"><span class="clock">${fmtT(m.t)}</span>${modBadge(matchSource.mods)}<span>gens <b>${m.gensDone}/${m.gensNeeded}</b></span>${m.gatesPowered ? `<span><b>GATES</b>${m.endgameT > 0 ? ' ' + fmtT(m.endgameT) : ''}</span>` : ''}${res ? `<span><b>OVER</b> ${res.kills}K / ${res.escapes}E</span>` : ''}${paused ? '<span class="muted">paused</span>' : ''}</div>
     <div class="chips"><span class="chip"><span class="dot" style="background:#d8313b"></span>Hunter ${esc(hm.mode)}</span>${chips}</div>
+    ${matchSource.mapWarning ? `<div style="margin-top:4px;color:var(--warn)">${esc(matchSource.mapWarning)}</div>` : ''}
     ${immersive ? `<div class="muted" style="margin-top:4px;font-size:11px">${esc(mapLabel())} · seed ${match.seed} · ${esc(matchSource.genLabel)}</div>` : ''}`;
 }
 const mapLabel = () => map.id || map._path || '';
@@ -286,7 +345,7 @@ $('logMode').onchange = () => logUpdate(true);
 $('logFilter').oninput = () => logUpdate(true);
 
 // ---------------------------------------------------------------- runs (meta.jsonl climb runs / evo.jsonl population runs)
-let meta = [], runKinds = {}, runConfig = null, variantPool = [];
+let meta = [], runKinds = {}, runConfig = null;
 let runMods = {}, runModsByName = {};
 // A new object for each selection also distinguishes switching away and back to the same run.
 let selectedRun = null, loadedRun = null;
@@ -556,11 +615,10 @@ let mmStatic = null;
 function renderMap(full) {
   if (full) {
     const info = variantInfo.get(map.id) || {};
-    const pool = variantPool.length;
     const counts = match ? match.ps.reduce((a, s) => (a[s]++, a), [0, 0, 0]) : [0, 0, 0];
     const rows = [
       ['variant', esc(map.id ?? '—')], ['name', esc(map.name ?? '')], ['file', esc(map._path ?? '')],
-      ['picked', !match ? '—' : matchSource.autoMap ? `auto: seed ${match.seed} mod ${pool} → ${esc(mapLabel())}` : 'chosen manually'],
+      ['picked', match ? esc(matchSource.mapPicked) : '—'],
       ['outline family', esc(info.outline ?? (map.outline.length === 4 ? 'rectangle' : `${map.outline.length}-gon`))],
       ['variant seed', info.seed ?? '—'], ['size', `${map.size.w} × ${map.size.h} m`],
       ['pallets', `${map.pallets?.length ?? 0}${match ? ` · <span style="color:#f2d24b">${counts[0]} up</span> · <span style="color:#ff5a1f">${counts[1]} dropped</span> · <span style="color:#b08d6a">${counts[2]} broken</span>` : ''}`],
@@ -639,18 +697,40 @@ async function newMatch() {
   const genLabel = useChamp ? genLabelText() : 'default params';
   const matchBrains = brains;
   let mods = runMods;
-
-  // "auto": the variant the evolution workers would use for this seed (pool sorted like loadMapPool: v000..v031; seed % n)
-  let want = $('map').value;
-  const autoMap = want === 'auto' && variantPool.length > 0;
-  if (want === 'auto') want = autoMap ? variantPool[seed % variantPool.length] : 'maps/gas-heaven.json';
-  let nextMap;
-  try { nextMap = want && want !== map._path ? await loadMap(want) : map; }
-  catch (e) {
-    if (request === matchRequest && run === selectedRun) console.warn('could not load map:', want, e);
-    return;
+  const savedMap = runConfig?.map;
+  const savedPoolSize = runConfig?.mapPool?.n;
+  const want = $('map').value;
+  const isCurrent = () => request === matchRequest && run === selectedRun;
+  let nextMap, mapPicked, mapWarning;
+  if (want === 'auto') {
+    if (savedMap != null) {
+      try {
+        const pool = await savedMapPool(savedMap);
+        if (!isCurrent()) return;
+        const path = pool[seed % pool.length];
+        if (path && (savedPoolSize == null || pool.length === savedPoolSize)) {
+          nextMap = await loadMap(path);
+          mapPicked = pool.length === 1 ? 'saved run map' : `saved run pool · seed ${seed} mod ${pool.length}`;
+        }
+      } catch { /* use the legacy pool if the saved map or index is unavailable */ }
+      if (!nextMap) mapWarning = 'Saved run map unavailable. Playing on Gas Heaven.';
+    }
+    if (!isCurrent()) return;
+    if (!nextMap) {
+      const path = variantPool[seed % variantPool.length] ?? baseMapPath;
+      nextMap = await loadMap(path).catch(() => loadMap(baseMapPath));
+      mapPicked = nextMap._path === baseMapPath ? 'Gas Heaven base map' : `Gas Heaven pool · seed ${seed} mod ${variantPool.length}`;
+    }
+  } else {
+    if (!mapPaths.has(want)) return;
+    try { nextMap = await loadMap(want); }
+    catch (e) {
+      if (isCurrent()) console.warn('could not load map:', want, e);
+      return;
+    }
+    mapPicked = 'chosen manually';
   }
-  if (request !== matchRequest || run !== selectedRun) return;
+  if (!isCurrent()) return;
 
   const { _path, ...live } = nextMap;
   // the live sim plays under the selected run's game modifiers (also with "champs" unchecked: the run's rules)
@@ -661,7 +741,7 @@ async function newMatch() {
   if (nextMap !== map) S3.buildStatic(nextMap);
   map = nextMap;
   match = nextMatch;
-  matchSource = { mods, genLabel, autoMap };
+  matchSource = { mods, genLabel, mapPicked, mapWarning };
   track = newTrack(); sample(); track.nextSample = 1;
   S3.buildDynamic(match, map);
   layers.rebuild(match, map);
@@ -724,10 +804,14 @@ addEventListener('keydown', (ev) => {
 
 applyLayout();
 setTab(['keys', 'match', 'evo', 'knobs', 'map', 'champ', 'layers'].includes(layout.tab) ? layout.tab : 'match');
-const mapList = await fetch('/api/maps').then((r) => r.json()).catch(() => ['maps/gas-heaven.json']);
-variantPool = mapList.filter((m) => m.startsWith('maps/gas-heaven/v') && m.endsWith('.json')).sort();
-$('map').innerHTML = `<option value="auto">auto: variant by seed (what the bots train on)</option>` + mapList.map((m) => `<option>${esc(m)}</option>`).join('');
-$('map').value = variantPool.length ? 'auto' : 'maps/gas-heaven.json';
+const catalog = await fetch('/api/maps').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const mapList = Array.isArray(catalog)
+  ? catalog.filter((m) => typeof m === 'string' && repoMapPath(m) === m && m.endsWith('.json') && !m.endsWith('/index.json'))
+  : [baseMapPath];
+const mapPaths = new Set(mapList);
+const variantPool = mapList.filter((m) => m.startsWith('maps/gas-heaven/v')).sort();
+$('map').innerHTML = '<option value="auto">Auto (saved run map)</option>' + mapList.map((m) => `<option>${esc(m)}</option>`).join('');
+$('map').value = 'auto';
 $('map').onchange = newMatch;
 S3.buildStatic(map);
 S3.setTopDown(false);

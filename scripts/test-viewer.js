@@ -30,8 +30,8 @@ const goalConfig = '../runs/goal/config.json';
 const goalSettings = { hunterBrain: 'param', survivorBrain: 'goal', modifiers: { genSeconds: 65 } };
 const noop = () => {};
 
-async function startViewer() {
-  const elements = new Map(), staticMaps = [], replays = [], delayed = new Map();
+async function startViewer({ settings = goalSettings, mapList = [baseMap, variant0, variant1, smallMap], files = [] } = {}) {
+  const elements = new Map(), staticMaps = [], replays = [], delayed = new Map(), requests = [];
   const inputs = { run: 'legacy', seed: '1', gen: '0' };
   const el = (id) => {
     if (!elements.has(id)) elements.set(id, {
@@ -44,19 +44,22 @@ async function startViewer() {
   const response = (data) => ({ ok: data != null, json: async () => data, text: async () => data });
   const resources = new Map([
     ['/api/runs', [{ name: 'legacy', kind: 'climb' }, { name: 'goal', kind: 'evolve' }]],
-    ['/api/maps', [baseMap, variant0, variant1, smallMap]],
+    ['/api/maps', mapList],
     [legacyLog, jsonl({ gen: 5, champ: champ(paramBrains) })],
     [goalLog, jsonl(goalRow(10, 0))],
-    [goalConfig, goalSettings],
+    [goalConfig, settings],
+    ...files,
   ]);
   const mapData = (path) => JSON.parse(readFileSync(new URL('../' + path, viewer), 'utf8'));
   const fetch = async (path) => {
+    requests.push(path);
     if (delayed.has(path)) {
       const promise = delayed.get(path);
       delayed.delete(path);
       return promise;
     }
-    return response(path.startsWith('../maps/') ? mapData(path.slice(3)) : resources.get(path));
+    if (resources.has(path)) return response(resources.get(path));
+    return response(path.startsWith('../maps/') ? mapData(path.slice(3)) : undefined);
   };
   const delay = (path) => {
     let complete;
@@ -90,8 +93,10 @@ async function startViewer() {
   });
   await mod.evaluate();
   return {
-    el, staticMaps, replays, latest: () => replays.at(-1), mapData, delay, poll,
+    el, staticMaps, replays, latest: () => replays.at(-1), mapData, delay, poll, requests,
+    selectMap: (path) => { el('map').value = path; return el('map').onchange(); },
     selectRun: (name) => { el('run').value = name; return el('run').onchange(); },
+    selectSeed: (seed) => { el('seed').value = String(seed); return el('seed').onchange(); },
   };
 }
 
@@ -226,4 +231,134 @@ test('replays use the saved goal brain with either champion or default parameter
   await v.el('restart').onclick();
   assert.deepEqual(reflexes(v.latest().match), []);
   assert.equal(v.latest().match.cfg.gens.repairS, 65);
+});
+
+const replayMapId = (v) => v.latest().match.result().mapId;
+
+test('Auto replays a saved Windows map path and manual selections override it', async () => {
+  const v = await startViewer({ settings: { ...goalSettings, map: 'C:\\Users\\example\\dbd-hillclimb\\maps\\test-small.json' } });
+  assert.equal(replayMapId(v), 'gas-heaven-v001'); // legacy run has no saved map
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'test-small');
+  assert.equal(v.latest().map._path, smallMap);
+  assert.deepEqual(reflexes(v.latest().match), [0]);
+  assert.equal(v.latest().match.cfg.gens.repairS, 65);
+  assert.ok(v.requests.includes('../' + smallMap));
+  assert.doesNotMatch(v.requests.join('\n'), /Users|example/);
+
+  await v.selectMap(variant0);
+  assert.equal(replayMapId(v), 'gas-heaven-v000');
+  await v.selectRun('legacy');
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'gas-heaven-v000');
+  await v.selectMap('auto');
+  assert.equal(replayMapId(v), 'test-small');
+});
+
+test('Auto sorts direct JSON children of a saved pool directory like the CLI', async () => {
+  const custom = 'maps/gas-heaven/custom.json';
+  const nested = 'maps/gas-heaven/nested/map.json';
+  const customMap = JSON.parse(readFileSync(new URL('../' + smallMap, viewer), 'utf8'));
+  const v = await startViewer({
+    settings: { ...goalSettings, map: '/home/example/dbd-hillclimb/maps/gas-heaven/' },
+    mapList: [baseMap, variant1, nested, variant0, custom, smallMap],
+    files: [['../' + custom, customMap]],
+  });
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'gas-heaven-v000'); // seed 1 of [custom, v000, v001]
+  await v.selectSeed(2);
+  assert.equal(replayMapId(v), 'gas-heaven-v001');
+  await v.selectSeed(3);
+  assert.equal(replayMapId(v), 'test-small');
+  assert.equal(v.latest().map._path, custom);
+  assert.ok(!v.requests.includes('../' + nested));
+});
+
+test('Auto uses explicit index order and keeps duplicate entries and string or object references', async () => {
+  const index = 'maps/pools/index.json';
+  const entries = ['../gas-heaven/v001.json', { file: '../test-small.json' }, '../gas-heaven/v001.json', { file: '../gas-heaven/v000.json' }];
+  const v = await startViewer({ settings: { ...goalSettings, map: './' + index }, files: [['../' + index, entries]] });
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'test-small');
+  await v.selectSeed(2);
+  assert.equal(replayMapId(v), 'gas-heaven-v001');
+  await v.selectSeed(3);
+  assert.equal(replayMapId(v), 'gas-heaven-v000');
+  await v.selectSeed(4);
+  assert.equal(replayMapId(v), 'gas-heaven-v001');
+});
+
+test('Auto accepts a named manifest with a variants array', async () => {
+  const manifest = 'maps/replay-pool.json';
+  const v = await startViewer({
+    settings: { ...goalSettings, map: manifest },
+    mapList: [variant0, variant1, baseMap, smallMap, manifest],
+    files: [['../' + manifest, { variants: ['gas-heaven/v001.json', { file: 'test-small.json' }] }]],
+  });
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'test-small');
+});
+
+test('Auto reports unavailable historical maps without fetching or displaying host paths', async () => {
+  const v = await startViewer({ settings: { ...goalSettings, map: 'D:/private/historical/test-small.json' } });
+  assert.doesNotMatch(v.el('hud').innerHTML, /map unavailable/);
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'gas-heaven-v001');
+  assert.match(v.el('hud').innerHTML, /Saved run map unavailable\. Playing on Gas Heaven\./);
+  assert.doesNotMatch(v.el('hud').innerHTML, /private|historical/);
+  assert.doesNotMatch(v.requests.join('\n'), /private|historical|test-small/);
+  await v.selectMap(smallMap);
+  assert.equal(replayMapId(v), 'test-small');
+  assert.doesNotMatch(v.el('hud').innerHTML, /map unavailable/);
+});
+
+test('Auto falls back as a whole when an explicit pool refers outside the map catalog', async () => {
+  const index = 'maps/pools/index.json';
+  const v = await startViewer({
+    settings: { ...goalSettings, map: index },
+    files: [['../' + index, { variants: ['../../private/other.json', '../test-small.json'] }]],
+  });
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'gas-heaven-v001');
+  assert.match(v.el('hud').innerHTML, /map unavailable/);
+  assert.doesNotMatch(v.requests.join('\n'), /private|test-small/);
+});
+
+test('Auto warns when the available directory pool differs in size from the saved pool', async () => {
+  const v = await startViewer({ settings: { ...goalSettings, map: 'maps/gas-heaven', mapPool: { n: 3 } } });
+  await v.selectRun('goal');
+  assert.equal(replayMapId(v), 'gas-heaven-v001');
+  assert.match(v.el('hud').innerHTML, /map unavailable/);
+});
+
+test('Auto still honors a saved file without a Gas Heaven pool and reports a failed map fetch', async () => {
+  const v = await startViewer({ settings: { ...goalSettings, map: smallMap }, mapList: [baseMap, smallMap] });
+  const completeMap = v.delay('../' + smallMap);
+  const replay = v.selectRun('goal');
+  await setImmediate();
+  completeMap(null);
+  await replay;
+  assert.equal(v.latest().map._path, baseMap);
+  assert.match(v.el('hud').innerHTML, /map unavailable/);
+
+  await v.el('restart').onclick();
+  assert.equal(replayMapId(v), 'test-small');
+  assert.doesNotMatch(v.el('hud').innerHTML, /map unavailable/);
+});
+
+test('a late index response cannot load its map or replace a replay for a newer selection', async () => {
+  const index = 'maps/pools/index.json';
+  const v = await startViewer({ settings: { ...goalSettings, map: index } });
+  const completeIndex = v.delay('../' + index);
+  const older = v.selectRun('goal');
+  await setImmediate();
+  assert.ok(v.requests.includes('../' + index));
+  await v.selectRun('legacy');
+  const latest = v.latest();
+  completeIndex(['../test-small.json']);
+  await older;
+  assert.equal(v.latest(), latest);
+  assert.equal(replayMapId(v), 'gas-heaven-v001');
+  assert.ok(!v.requests.includes('../' + smallMap));
+  assert.doesNotMatch(v.el('hud').innerHTML, /map unavailable/);
 });
