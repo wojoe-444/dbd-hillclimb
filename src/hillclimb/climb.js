@@ -6,15 +6,12 @@
 // Usage: node src/hillclimb/climb.js [--map maps/gas-heaven.json] [--gens 40] [--k 6]
 //        [--n 48] [--seed 1] [--out runs/<name>] [--hunter param] [--survivor param] [--resume]
 
-import { Worker } from 'node:worker_threads';
 import { cpus } from 'node:os';
 import { mkdirSync, appendFileSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { resolve, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve, join } from 'node:path';
 import { getBrains } from '../brains/index.js';
 import { defaults, mutate, rng, round } from './params.js';
-
-const here = dirname(fileURLToPath(import.meta.url));
+import { createPool } from './pool.js';
 
 function parseArgs(argv) {
   const a = {};
@@ -43,45 +40,10 @@ const opts = {
 };
 const outDir = resolve(args.out ?? `runs/${new Date().toISOString().replace(/[:.]/g, '-')}`);
 mkdirSync(outDir, { recursive: true });
-
-// ---------- worker pool ----------
-const workers = [];
-const idle = [];
-const queue = [];
-const pending = new Map();
-let nextId = 0;
-for (let i = 0; i < opts.threads; i++) {
-  const w = new Worker(join(here, 'worker.js'), {
-    workerData: { mapPath: opts.map, hunterBrain: opts.hunterBrain, survivorBrain: opts.survivorBrain },
-  });
-  w.on('message', ({ id, results }) => {
-    pending.get(id)(results);
-    pending.delete(id);
-    idle.push(w);
-    pump();
-  });
-  w.on('error', (e) => { console.error(e); process.exit(1); });
-  workers.push(w);
-  idle.push(w);
-}
-function pump() {
-  while (idle.length && queue.length) {
-    const w = idle.pop();
-    const { id, jobs, done } = queue.shift();
-    pending.set(id, done);
-    w.postMessage({ id, jobs });
-  }
-}
-function runJobs(jobs) {
-  const chunk = Math.max(1, Math.ceil(jobs.length / (opts.threads * 2)));
-  const parts = [];
-  for (let i = 0; i < jobs.length; i += chunk) {
-    const slice = jobs.slice(i, i + chunk);
-    parts.push(new Promise((done) => { queue.push({ id: nextId++, jobs: slice, done }); }));
-  }
-  pump();
-  return Promise.all(parts).then((r) => r.flat());
-}
+const pool = createPool({
+  threads: opts.threads, mapPath: opts.map, hunterBrain: opts.hunterBrain, survivorBrain: opts.survivorBrain,
+  chunk: Math.max(1, Math.ceil(opts.n / (opts.threads * 2))),
+});
 
 // ---------- scoring ----------
 // Default (--score bp): each side maximises its own bloodpoint total (see bloodpoints.js) -- not zero-sum.
@@ -119,7 +81,7 @@ function summarize(results) {
   return s;
 }
 async function evaluate(hunterParams, survivorParams, seeds) {
-  const res = await runJobs(seeds.map((seed) => ({ seed, hunterParams, survivorParams })));
+  const res = await pool.run(seeds.map((seed) => ({ seed, hunterParams, survivorParams })));
   return summarize(res);
 }
 
@@ -184,4 +146,4 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
     `BP H ${Math.round(after.hunterBP)} S ${Math.round(after.survivorBP)}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`
   );
 }
-for (const w of workers) w.terminate();
+await pool.close();

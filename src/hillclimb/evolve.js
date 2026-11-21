@@ -99,14 +99,50 @@ if (args.race) {
 if (opt === 'cmaes') {
   opts.cma = { sigma0: +(args['cma-sigma'] ?? 0.15), mirror: !!args['cma-mirror'], minSigma: +(args['cma-min-sigma'] ?? 0.01) };
   if (opts.carry) throw new Error('--carry has no meaning with --opt cmaes (no individual survives a generation)');
+  if (!Number.isFinite(opts.cma.sigma0) || opts.cma.sigma0 <= 0) throw new RangeError('--cma-sigma must be positive and finite');
+  if (!Number.isFinite(opts.cma.minSigma) || opts.cma.minSigma < 0) throw new RangeError('--cma-min-sigma must be non-negative and finite');
+} else if (!Number.isFinite(opts.elite) || opts.elite < 0 || opts.elite > 1) {
+  throw new RangeError('--elite must be between 0 and 1');
 }
+
+function requireInt(flag, value, min) {
+  if (!Number.isSafeInteger(value) || value < min) throw new RangeError(`--${flag} must be an integer >= ${min} (got ${value})`);
+}
+requireInt('gens', opts.gens, 0);
+requireInt('pop', opts.pop, opt === 'cmaes' ? 4 : 1);
+if (opts.panel) requireInt('slots', opts.slots, 1);
+else requireInt('rounds', opts.rounds, 1);
+if (opts.race) {
+  requireInt('race-step', opts.race.step, 1);
+  requireInt('race-max', opts.race.max, opts.slots);
+  if (!Number.isFinite(opts.race.z) || opts.race.z < 0) throw new RangeError('--race-z must be non-negative and finite');
+}
+
 const outDir = resolve(args.out ?? `runs/evo-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-mkdirSync(outDir, { recursive: true });
+const logFile = join(outDir, 'evo.jsonl');
+const popFile = join(outDir, 'population.json');
+const champFile = join(outDir, 'champions.json');
+let saved = null;
+if (args.resume) {
+  if (!existsSync(popFile)) throw new Error('--resume requires a population.json checkpoint');
+  saved = JSON.parse(readFileSync(popFile, 'utf8'));
+  if (!!saved.cma !== (opt === 'cmaes')) throw new Error('--resume requires the same --opt as the checkpoint');
+  const sizes = saved.cma ? ['hunter', 'survivor'].map((side) => saved.cma[side].lambda) : [saved.hunters.length, saved.survivors.length];
+  if (sizes.some((n) => n !== opts.pop)) throw new Error('--resume requires the same --pop as the checkpoint');
+  if (existsSync(logFile)) {
+    const log = readFileSync(logFile, 'utf8').trimEnd();
+    const last = log.slice(log.lastIndexOf('\n') + 1);
+    if (!last || JSON.parse(last).gen !== saved.gen) throw new Error('--resume: evo.jsonl and population.json end at different generations');
+  }
+  if (saved.rng && args.seed === undefined) opts.seed = saved.rng.seed;
+} else if ([logFile, popFile, champFile].some((file) => existsSync(file))) {
+  throw new Error(`--out already contains evolution results (${outDir}); use --resume or another directory`);
+}
 
 const brains = getBrains(opts.hunterBrain, opts.survivorBrain);
 const spaces = { hunter: brains.hunter.space, survivor: brains.survivor.space };
-const R = rng(opts.seed);
-const pool = createPool({ threads: opts.threads, mapPath: opts.map, hunterBrain: opts.hunterBrain, survivorBrain: opts.survivorBrain, metrics: opts.metrics, mods });
+// Legacy checkpoints without RNG state start the next leg from its supplied seed.
+const R = rng(saved?.rng?.seed === opts.seed ? saved.rng.state : opts.seed);
 
 // ---------- population helpers ----------
 let nextId = 0;
@@ -296,9 +332,7 @@ async function evalPanel(gen) {
 
 // ---------- main loop ----------
 let hunters, survivors, startGen = 1;
-const popFile = join(outDir, 'population.json');
-if (args.resume && existsSync(popFile)) {
-  const saved = JSON.parse(readFileSync(popFile, 'utf8'));
+if (saved) {
   ({ hunters, survivors } = saved); startGen = saved.gen + 1; nextId = saved.nextId;
   if (saved.hof) hof = saved.hof;
   if (saved.prev) prevRanked = saved.prev;
@@ -327,13 +361,16 @@ const benchSet = opts.benchEvery > 0 ? {
   seeds: heldOutSeeds(opts.benchSeeds),
   opponents: [resolveParamSet('default', spaces), ...opts.benchOpponents.map((s) => resolveParamSet(s, spaces))],
 } : null;
-writeFileSync(cfgFile, JSON.stringify({
+const config = {
   kind: 'evolve', ...modRec, ...opts, spaces,
   git: gitInfo(), mapPool: mapPoolInfo(opts.map), argv: process.argv.slice(2), node: process.version, startedAt: new Date().toISOString(), startGen,
   bench: benchSet && { seeds: { first: benchSet.seeds[0], n: benchSet.seeds.length }, opponents: benchSet.opponents.map((o) => ({ name: o.name, source: o.source, stale: o.stale, modifiers: o.modifiers, hunter: o.hunter, survivor: o.survivor })) },
   // a resumed run keeps the provenance of its earlier legs
   ...(prevCfg ? { previous: [...(prevCfg.previous ?? []), { ...prevCfg, previous: undefined, spaces: undefined }] } : {}),
-}, null, 2));
+};
+const pool = createPool({ threads: opts.threads, mapPath: opts.map, hunterBrain: opts.hunterBrain, survivorBrain: opts.survivorBrain, metrics: opts.metrics, mods });
+mkdirSync(outDir, { recursive: true });
+writeFileSync(cfgFile, JSON.stringify(config, null, 2));
 if (!modRec.standard) console.log(`GAME MODIFIERS: ${describeMods(mods)} (non-standard rules)`);
 for (const w of new Set(modMismatches([...(benchSet?.opponents ?? []), ...fixedOpp.hunter, ...fixedOpp.survivor], mods))) console.warn(w);
 console.log(`evolving on ${opts.map}: pop ${opts.pop}+${opts.pop}, ${opts.panel ? `panel ${opts.slots} slots${opts.race ? ` (race to ${opts.race.max})` : ''}` : `${opts.rounds} rounds/gen`}${opt === 'cmaes' ? ', sep-CMA-ES' : ''}, ${opts.threads} threads -> ${outDir}`);
@@ -377,7 +414,7 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
   const brief = (x) => ({ id: x.id, born: x.born, parents: x.parents, ...(showFit ? { fit: +x.fit.toFixed(4), games: x.games } : {}), bp: Math.round(x.bp), kills: x.kills !== undefined ? +x.kills.toFixed(2) : undefined, escapes: +(x.escapes ?? 0).toFixed(2), gensDone: +(x.gensDone ?? 0).toFixed(2), params: round(x.params), fitSd: +x.fitSd.toFixed(4) });
   const perf = pool.takeStats();
   const r3 = (v) => (v === null || v === undefined ? null : v);
-  appendFileSync(join(outDir, 'evo.jsonl'), JSON.stringify({
+  appendFileSync(logFile, JSON.stringify({
     gen, ...(modRec.standard ? {} : { modifiers: modRec.modifiers }), seconds: (Date.now() - t0) / 1000, matches: ev.matches, outcome: tot,
     ...ev.extra, ...(bench ? { bench } : {}), ...(cmaLog ? { cma: cmaLog } : {}),
     // edges: knobs with >= 25 % of the population within 5 % of a range bound (share at lo / hi)
@@ -392,10 +429,12 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
     hunters = nextPopulation('hunter', rh, gen);
     survivors = nextPopulation('survivor', rs, gen);
   }
-  const extraState = opts.panel || cma ? { hof, prev: prevRanked, ...(cma ? { cma } : {}) } : {};
-  writeFileSync(popFile, JSON.stringify({ gen, nextId, hunters, survivors, best: { hunter: champ.hunter, survivor: champ.survivor }, ...extraState }, null, 2));
+  writeFileSync(popFile, JSON.stringify({
+    gen, nextId, hunters, survivors, best: { hunter: champ.hunter, survivor: champ.survivor },
+    prev: prevRanked, rng: { seed: opts.seed, state: R.state() }, ...(opts.panel || cma ? { hof } : {}), ...(cma ? { cma } : {}),
+  }, null, 2));
   // champions.json in the climb format, so the viewer/matchup can play the current best pair
-  writeFileSync(join(outDir, 'champions.json'), JSON.stringify({ gen, ...(modRec.standard ? {} : modRec), champ: { hunter: round(champ.hunter), survivor: round(champ.survivor) }, ...(cma ? { bestSample: { hunter: round(rh[0].params), survivor: round(rs[0].params) } } : {}) }, null, 2));
+  writeFileSync(champFile, JSON.stringify({ gen, ...(modRec.standard ? {} : modRec), champ: { hunter: round(champ.hunter), survivor: round(champ.survivor) }, ...(cma ? { bestSample: { hunter: round(rh[0].params), survivor: round(rs[0].params) } } : {}) }, null, 2));
   if (opts.panel) writeFileSync(join(outDir, 'hof.json'), JSON.stringify(hof, null, 2));
 
   const tk = knobStats('hunter', rh).tunnel;
@@ -410,4 +449,4 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
       `champ S ${v.survivor ? `esc ${v.survivor.escapes.toFixed(2)} gens ${v.survivor.gensDone.toFixed(2)} fit ${v.survivor.survivorFit.toFixed(3)}` : '-'}`);
   }
 }
-pool.close();
+await pool.close();
