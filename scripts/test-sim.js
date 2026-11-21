@@ -347,6 +347,68 @@ test('survivor camera: clamped by walls, FOV-limited, body awareness, peeking ar
   ok(o2.hunter !== null, 'camera off: 360 deg (hunter behind seen)');
 });
 
+function staticSightMap(palletCount, generators) {
+  return {
+    id: 'static-sight', size: { w: 80, h: 36 }, generators,
+    pallets: Array.from({ length: palletCount }, (_, i) => ({ id: 'p' + i, x: 3 + 2 * i, z: 18, axis: 'z' })),
+    obstacles: Array.from({ length: 34 }, (_, i) => ({ x: 2 + 2 * i, z: 18, w: 1, d: 1, height: 3 })),
+  };
+}
+
+test('static perception: adding a 33rd pallet leaves clear generator and pallet sight intact', () => {
+  for (const count of [32, 33]) {
+    const map = staticSightMap(count, [{ id: 'g0', x: 13.5, z: 27.5 }]);
+    const { m, ctl } = mk({ map, config: { survivor: { camera: { enabled: false } } } });
+    let hObs, sObs;
+    ctl.H = o => (hObs = o, {}); ctl.S[0] = o => (sObs = o, {});
+    place(m.hunter, 13.5, 23.5); m.hunter.face = Math.PI / 2;
+    place(m.survivors[0], 14.5, 23.5);
+    m._dropPallet(m.md.pallets[5], m.survivors[1]);
+    run(m, 2);
+    ok(hObs.gens[0].visible, `${count} pallets: hunter sees the generator in front`);
+    ok(sObs.gens[0].visible && sObs.gens[0].known, `${count} pallets: survivor finds the generator`);
+    ok(sObs.pallets[5] === 'dropped', `${count} pallets: survivor sees the dropped state from beyond adjacent reach`);
+  }
+});
+
+test('static perception: wide generator and pallet masks keep indices 0 and 32 independent', () => {
+  const generators = Array.from({ length: 33 }, (_, i) => ({ id: 'g' + i, x: 3.5 + 2 * i, z: 26.5 }));
+  const map = staticSightMap(33, generators);
+  // Both features fit inside the viewing cone and range. The wall hides one depending on where the viewer stands.
+  [generators[3].x, generators[32].x] = [generators[32].x, generators[3].x];
+  [map.pallets[3].x, map.pallets[32].x] = [map.pallets[32].x, map.pallets[3].x];
+  map.obstacles.push({ x: 6, z: 19, w: 1, d: 16, height: 3 });
+  const config = {
+    gens: { placed: generators.length },
+    sight: { range: 20 },
+    survivor: { camera: { shoulderM: 0 } },
+  };
+  const { m, ctl } = mk({ map, config });
+  let hObs, sObs;
+  ctl.H = o => (hObs = o, {}); ctl.S[0] = o => (sObs = o, {});
+  const h = m.hunter, s = m.survivors[0];
+  h.face = s.camYaw = -Math.PI / 2;
+  m._dropPallet(m.md.pallets[0], m.survivors[1]);
+  m._dropPallet(m.md.pallets[32], m.survivors[1]);
+
+  place(h, 3.5, 33.5); place(s, 3.5, 31.5);
+  run(m, 2);
+  ok(hObs.gens[0].visible && !hObs.gens[32].visible, 'hunter west of the wall: g0 visible, g32 hidden');
+  ok(sObs.gens[0].visible && sObs.gens[0].known && !sObs.gens[32].known, 'camera west of the wall: g0 discovered, g32 unknown');
+  ok(sObs.pallets[0] === 'dropped' && sObs.pallets[32] === 'up', 'camera west of the wall: only p0 drop observed');
+
+  place(h, 9.5, 33.5); place(s, 9.5, 31.5);
+  h.face = s.camYaw = Math.PI / 2;
+  run(m, 2);
+  ok(!hObs.gens[32].visible && !sObs.gens[32].known && sObs.pallets[32] === 'up', 'facing away: g32 and p32 outside the cones');
+
+  h.face = s.camYaw = -Math.PI / 2;
+  run(m, 2);
+  ok(!hObs.gens[0].visible && hObs.gens[32].visible, 'hunter east of the wall: g32 visible, g0 hidden');
+  ok(!sObs.gens[0].visible && sObs.gens[0].known && sObs.gens[32].visible && sObs.gens[32].known, 'camera east of the wall: g32 discovered, g0 remembered');
+  ok(sObs.pallets[32] === 'dropped', 'camera east of the wall: p32 drop now observed');
+});
+
 test('solo queue: teammate positions only by sight (HUD states only); gens progress only if seen', () => {
   const { m, ctl } = mk();
   const obs = [null, null, null, null];
