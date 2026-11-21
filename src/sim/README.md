@@ -136,12 +136,15 @@ meaningful actions are `act: 'selfUnhook'` (when offered) and `intent`. An excep
   `obs.pallets[i]` is aligned with `map.pallets[i]`.
 * `api` (same object as `ctx.api`): `nav`, `visibility(a,b)` (0..1, points `{x,z}`), `los(a,b)` (visibility ≥ threshold), `walkClear(a,b)`, `cellOf(x,z)`, `dt`.
 
-### Navigation (`api.nav`, role-bound)
+### Navigation (`api.nav`, actor-bound)
 
 * `dist(from, to)` → metres along the walkable grid (octile, 8-connected, no corner cutting, vault penalties; `Infinity` if unreachable).
   O(1) for map features (generators, hooks, pallets, windows, levers, exits, spawns — fields are cached, LRU 256, shared across matches);
   other targets cost a bounded A* (~0.05–0.4 ms) and become cached after repeated queries. Prefer Euclid for moving targets.
-  Hunter: dropped pallets are blocked (if the search budget is exceeded the static distance + `nav.crossPenalty` is returned).
+  Hunter routes avoid dropped pallets. If an empty-handed hunter's dropped-pallet detour exceeds the search budget,
+  the distance falls back to the static distance plus `nav.crossPenalty`.
+  An Entity-blocked window is excluded from that survivor's routes until its timer expires. A carrying hunter's routes,
+  including distances used to choose a hook, exclude all windows. Fields for these restrictions are cached per actor.
 * `nextWaypoint(from, to)` → `{x,z}` or `null`; string-pulled (farthest path node reachable in a straight swept-circle line).
   If `to` is inside a solid cell (generator, dropped pallet) it ends at the last walkable cell in front of it.
 * `walkClear(from, to)` swept-circle (r = 0.4) test against the current collision grid.
@@ -184,7 +187,7 @@ progress, gate lever progress (survivors), heal progress on the patient, mend pr
 | `breakPallet` | hunter | Within 1.5 m of a dropped pallet with empty hands. Takes 2.34 s (2.4 s in whole ticks) and removes Bloodlust |
 | `kickGen` | hunter | not carrying; within 1.1 m of a gen with progress > 0, not done, not already regressing, gates not powered, **fewer than 8 kicks on that gen so far** (`gens.maxKicks`); 1.8 s → −5 % of the bar and the gen regresses at 0.25 charges/s until repair cancels it (above) or it reaches 0 |
 
-Windows: entering a window cell along its axis triggers a vault (position locked); not possible along the other axis. Hunter 1.7 s.
+Windows: entering a window cell along its axis triggers a vault (position locked); not possible along the other axis. Hunter 1.7 s with empty hands.
 Survivor tiers: **fast 0.5 s** = running with a straight run-up ≥ 2.5 m (continuous running distance; the run's first heading must be within
 `fastVaultAngleDeg` **45°** [user, 2026-11-16; was 25°] of the vault direction and later steps within 45° of that first heading; reset on
 walking, stopping, being blocked, a sharper turn, vault end; it counts while accelerating, full speed is not required) — fast vaults are LOUD: the hunter gets

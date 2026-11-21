@@ -2,7 +2,7 @@
 // swept-circle walkability test used by movement.
 //
 // DETERMINISM: all path costs are exact integers (millimetres: 1000 / 1414 / vault extras), so a distance is the same
-// number whether it came from a cached field or from A*. Waypoint ROUTES are chosen by a rule that depends only on the
+// number whether it came from a cached field or from A*. The waypoint search algorithm depends on the
 // target cell (never on cache history): map-feature cells (generators, hooks, pallets, windows, levers, exits,
 // spawns) always use the canonical field descent; every other target uses A* (route cached per agent).
 // A move a -> b costs STEP + extra(b) (extra = vault penalty for entering a window cell).
@@ -10,6 +10,7 @@
 // Windows / pallet cells can only be entered along their axis (mapdata nbMask). Survivors may path through dropped
 // pallets (vault). The hunter variant treats DROPPED pallets as blocked: static fields are reused while the route
 // does not cross a dropped pallet, otherwise a pallet-aware A* (or, past its budget, a per-match field) is used.
+// Entity-blocked windows and windows while carrying are excluded from the actor's searches and fields.
 
 import { K_SOLID, K_WIN_X, K_WIN_Z, K_PAL_X } from './mapdata.js';
 
@@ -49,6 +50,7 @@ export class NavShared {
     this.gen = 0;
     this.fieldsS = new Map();
     this.fieldsH = new Map();
+    this.windowCells = new Set(md.windows.map(w => w.cell));
     this.cap = cfg.nav.fieldCacheSize;
     this.lastCost = 0;
     this.capped = false;
@@ -80,7 +82,7 @@ export class NavShared {
   }
 
   /** Cost-to-go field (millimetres) to `target` (may be a solid cell, e.g. a generator). hps: pallet states or null. */
-  computeField(target, hps, winCost) {
+  computeField(target, hps, winCost, blockedWindows = null) {
     const md = this.md, N = md.N, kind = md.kind, palIdx = md.palIdx, mask = md.nbMask, off = this.off;
     const dist = new Float32Array(N).fill(Infinity);
     this.hn = 0;
@@ -96,6 +98,7 @@ export class NavShared {
       for (let d = 0; d < 8; d++) {
         if ((m & (1 << d)) === 0) continue;
         const v = u + off[d];
+        if (blockedWindows?.has(v)) continue;
         if (hps !== null && kind[v] >= K_PAL_X && hps[palIdx[v] - 1] === 1) continue;
         const nd = base + STEP[d];
         if (nd < dist[v]) { dist[v] = nd; this.push(nd, v); }
@@ -107,7 +110,7 @@ export class NavShared {
   // A* from start to goal (costs in mm; optimal). A blocked goal (generator, dropped pallet) is entered under the same
   // rules the field uses and dropped from the returned path. Returns cells (start ... last walkable), or null
   // (unreachable; `this.capped` is set when the expansion budget ran out instead).
-  astar(start, goal, hps, winCost, maxExp) {
+  astar(start, goal, hps, winCost, maxExp, blockedWindows = null) {
     const md = this.md, W = md.w, H = md.h, kind = md.kind, palIdx = md.palIdx, mask = md.nbMask;
     const g = this.g, parent = this.parent, stamp = this.stamp, closed = this.closed;
     if (++this.gen > 4e9) { stamp.fill(0); closed.fill(0); this.gen = 1; }
@@ -139,6 +142,7 @@ export class NavShared {
         const ni = i + DX[d], nj = j + DZ[d];
         if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
         const v = nj * W + ni;
+        if (blockedWindows?.has(v)) continue;
         if (v === goal && goalBlocked) { if ((gmask & (1 << OPP[d])) === 0) continue; }
         else {
           if ((m & (1 << d)) === 0) continue;
@@ -164,20 +168,22 @@ export function getShared(md, cfg) {
   return md.nav;
 }
 
-/** Navigation view bound to one actor's role (survivor / hunter) and one match's pallet state. */
+/** Navigation view bound to one actor and one match's traversal state. */
 export class NavView {
-  constructor(shared, match, role) {
+  constructor(shared, match, role, id) {
     this.sh = shared;
     this.m = match;
     this.md = shared.md;
     this.hunter = role === 'hunter';
+    this.id = id;
     const cfgN = match.cfg.nav;
     this.winCost = Math.round((this.hunter ? cfgN.windowCostHunter : cfgN.windowCostSurvivor) * 1000);
     this.cfgN = cfgN;
     this.hits = new Uint8Array(this.md.N);       // recent-query counters per target cell (decay after 2 s)
     this.hitT = new Uint16Array(this.md.N);
-    this.local = new Map();      // hunter pallet-aware fields (per match)
+    this.local = new Map();      // fields for this actor's current traversal restrictions
     this.localVer = -1;
+    this.windowBlocks = null;
     this.rt = null;              // cached A* route {tc, ver, nodes, i}
     this.waypoint = { ver: -1, fx: 0, fz: 0, tx: 0, tz: 0, x: 0, z: 0 };
     this.radius = match.cfg.radius;
@@ -200,6 +206,35 @@ export class NavView {
 
   _dyn() { return this.hunter && this.m.droppedCount > 0; }
 
+  _windowBlocks() {
+    const m = this.m;
+    let blocks = this.windowBlocks, changed = false;
+    if (this.hunter) {
+      const all = this.sh.windowCells;
+      blocks = all.size > 0 && m.hunter.carrying >= 0 ? all : null;
+      changed = blocks !== this.windowBlocks;
+    } else {
+      const windows = this.md.windows;
+      for (let i = 0; i < windows.length; i++) {
+        const cell = windows[i].cell;
+        const blocked = m._windowBlocked(i, this.id);
+        if ((blocks?.has(cell) ?? false) === blocked) continue;
+        if (blocked) (blocks ??= new Set()).add(cell);
+        else blocks.delete(cell);
+        changed = true;
+      }
+      if (blocks?.size === 0) blocks = null;
+    }
+    if (changed) {
+      // Expiry and carry transitions can change routes even when the pallet state and endpoints match.
+      this.windowBlocks = blocks;
+      this.local.clear();
+      this.rt = null;
+      this.waypoint.ver = -1;
+    }
+    return blocks;
+  }
+
   _fieldStatic(cell, build = true) {
     const cache = this.hunter ? this.sh.fieldsH : this.sh.fieldsS;
     // Matches on the same map can price window edges differently.
@@ -221,11 +256,11 @@ export class NavView {
     return this.local;
   }
   _peekLocal(cell) { return this._localMap().get(cell); }
-  _fieldLocal(cell) {
+  _fieldLocal(cell, hps, blockedWindows) {
     const map = this._localMap();
     let f = map.get(cell);
     if (f === undefined) {
-      f = this.sh.computeField(cell, this.m.ps, this.winCost);
+      f = this.sh.computeField(cell, hps, this.winCost, blockedWindows);
       if (map.size >= 48) map.delete(map.keys().next().value);
       map.set(cell, f);
     }
@@ -277,26 +312,30 @@ export class NavView {
   dist(from, to) {
     const fc = this.cell(from.x, from.z), tc = this.cell(to.x, to.z);
     if (fc < 0 || tc < 0) return Infinity;
+    const blockedWindows = this._windowBlocks();
+    if (blockedWindows?.has(fc) || blockedWindows?.has(tc)) return Infinity;
     if (fc === tc) return Math.hypot(to.x - from.x, to.z - from.z);
     // from inside a solid cell (e.g. a brain's extrapolated / estimated position): no move enters a solid cell, so every
     // field says Infinity there, while a cold A* would step out of it -> answer like the field (cache-state independent)
     if (this.md.kind[fc] === K_SOLID) return Infinity;
-    const dyn = this._dyn();
-    if (dyn) { const lf = this._peekLocal(tc); if (lf !== undefined) return lf[fc] / 1000; }
+    const dyn = this._dyn(), hps = dyn ? this.m.ps : null;
+    // A carrying hunter's walking field cannot start on a dropped pallet.
+    if (blockedWindows && hps?.[this.md.palIdx[fc] - 1] === 1) return Infinity;
+    if (dyn || blockedWindows) { const lf = this._peekLocal(tc); if (lf !== undefined) return lf[fc] / 1000; }
     // NOTE: no reverse-field shortcut (using the field of `from`): fields are not symmetric at solid/window endpoints,
     // so it made results depend on which fields happened to be cached.
-    let f = this._fieldStatic(tc, false), start = fc;
+    let f = blockedWindows ? undefined : this._fieldStatic(tc, false);
     const cfgN = this.cfgN;
     if (f === undefined) {
       if (this._hit(tc) < cfgN.fieldAfterHits) {
-        const p = this.sh.astar(fc, tc, dyn ? this.m.ps : null, this.winCost, cfgN.astarMaxExpand);
+        const p = this.sh.astar(fc, tc, hps, this.winCost, cfgN.astarMaxExpand, blockedWindows);
         if (p) return this.sh.lastCost / 1000;
         if (!this.sh.capped) return Infinity;
       }
-      f = this._fieldStatic(tc); start = fc;
+      f = blockedWindows ? this._fieldLocal(tc, hps, blockedWindows) : this._fieldStatic(tc);
     }
-    const d = f[start];
-    if (!dyn || d === Infinity || !this._crossesDropped(this._follow(f, start, 100000, null))) return d / 1000;
+    const d = f[fc];
+    if (blockedWindows || !dyn || d === Infinity || !this._crossesDropped(this._follow(f, fc, 100000, null))) return d / 1000;
     const p = this.sh.astar(fc, tc, this.m.ps, this.winCost, cfgN.astarMaxExpand);
     if (p) return this.sh.lastCost / 1000;
     return this.sh.capped ? d / 1000 + cfgN.crossPenalty : Infinity;
@@ -321,31 +360,30 @@ export class NavView {
   }
 
   // cells from `fc` toward `tc` (fc first; a blocked goal is not included; may be truncated to the lookahead), or null
-  _path(fc, tc) {
+  _path(fc, tc, blockedWindows) {
     const cfgN = this.cfgN, maxN = cfgN.lookahead + 2;
     const dyn = this._dyn(), ver = this.m.palVersion;
+    const hps = dyn ? this.m.ps : null;
     const rt = this.rt;
     if (rt !== null && rt.tc === tc && rt.ver === ver) {      // still on a cached A* route?
       const nodes = rt.nodes, lim = Math.min(nodes.length, rt.i + 8);
       for (let k = rt.i; k < lim; k++) if (nodes[k] === fc) { rt.i = k; return nodes.slice(k, k + maxN); }
     }
     if (this.md.keyCell[tc] === 1) {                          // map feature: canonical field descent
-      if (dyn) {
-        const lf = this._peekLocal(tc);
-        if (lf !== undefined) return lf[fc] < Infinity ? this._follow(lf, fc, maxN, this.m.ps) : null;
-      }
+      let lf;
+      if (blockedWindows) lf = this._fieldLocal(tc, hps, blockedWindows);
+      else if (dyn) lf = this._peekLocal(tc);
+      if (lf !== undefined) return lf[fc] < Infinity ? this._follow(lf, fc, maxN, hps) : null;
       const sf = this._fieldStatic(tc);
       if (!(sf[fc] < Infinity)) return null;
       const p = this._follow(sf, fc, maxN, null);
       if (!dyn || !this._crossesDropped(p)) return p;
     }
-    const hps = dyn ? this.m.ps : null;
-    const p = this.sh.astar(fc, tc, hps, this.winCost, cfgN.astarMaxExpand);
+    const p = this.sh.astar(fc, tc, hps, this.winCost, cfgN.astarMaxExpand, blockedWindows);
     if (p) { this.rt = { tc, ver, nodes: p, i: 0 }; return p.length > maxN ? p.slice(0, maxN) : p; }
     if (!this.sh.capped) return null;
-    if (dyn) { const lf = this._fieldLocal(tc); return lf[fc] < Infinity ? this._follow(lf, fc, maxN, hps) : null; }
-    const f = this._fieldStatic(tc);
-    return f[fc] < Infinity ? this._follow(f, fc, maxN, null) : null;
+    const f = dyn || blockedWindows ? this._fieldLocal(tc, hps, blockedWindows) : this._fieldStatic(tc);
+    return f[fc] < Infinity ? this._follow(f, fc, maxN, hps) : null;
   }
 
   /**
@@ -360,26 +398,28 @@ export class NavView {
 
   _next(fx, fz, tx, tz, out) {
     // Grid routes can be reused as an actor moves, but steering clearance depends on both exact endpoints.
+    const blockedWindows = this._windowBlocks();
     const wp = this.waypoint, ver = this.m.palVersion;
     if (wp.ver === ver && wp.fx === fx && wp.fz === fz && wp.tx === tx && wp.tz === tz) {
       out.x = wp.x; out.z = wp.z;
       return true;
     }
-    if (!this._computeNext(fx, fz, tx, tz, out)) return false;
+    if (!this._computeNext(fx, fz, tx, tz, out, blockedWindows)) return false;
     wp.ver = ver; wp.fx = fx; wp.fz = fz; wp.tx = tx; wp.tz = tz;
     wp.x = out.x; wp.z = out.z;
     return true;
   }
 
-  _computeNext(fx, fz, tx, tz, out) {
+  _computeNext(fx, fz, tx, tz, out, blockedWindows) {
     const md = this.md, W = md.w, kind = md.kind;
     const fc = this.cell(fx, fz), tc = this.cell(tx, tz);
     if (fc < 0 || tc < 0) return false;
+    if (blockedWindows?.has(fc) || blockedWindows?.has(tc)) return false;
     if (fc === tc || this.walkClear(fx, fz, tx, tz)) {
       out.x = tx; out.z = tz;
       return true;
     }
-    const nodes = this._path(fc, tc);
+    const nodes = this._path(fc, tc, blockedWindows);
     if (!nodes) return false;
     const n = nodes.length;
     if (n === 1) { out.x = (nodes[0] % W) + 0.5; out.z = ((nodes[0] / W) | 0) + 0.5; return true; }

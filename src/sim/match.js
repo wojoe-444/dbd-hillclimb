@@ -223,7 +223,7 @@ export class Match {
 
   _mkAgent(a, role, mapInfoBase, factory) {
     if (typeof factory !== 'function') throw new Error(`createMatch: brain factory for ${role} ${a.id} missing`);
-    const nav = a.nav = new NavView(this.shared, this, role);
+    const nav = a.nav = new NavView(this.shared, this, role, a.id);
     const m = this;
     const api = a.api = {
       role, id: a.id, dt: this.dt, nav,
@@ -859,7 +859,7 @@ export class Match {
   }
 
   _tryVault(a, dx, dz, isHunter) {
-    if (!isHunter && a.st > S_INJURED) return false;   // crawling survivors can't vault
+    if (isHunter ? a.carrying >= 0 : a.st > S_INJURED) return false;
     const md = this.md, W = md.w, Hh = md.h, kind = md.kind;
     const ci = Math.floor(a.x), cj = Math.floor(a.z);
     const adx = Math.abs(dx), adz = Math.abs(dz);
@@ -873,7 +873,7 @@ export class Match {
       let dur;
       if (k === K_WIN_X || k === K_WIN_Z) {
         if ((k === K_WIN_X) !== (nx !== 0)) continue;
-        if (!isHunter && this.winBlockT[this.winOfCell.get(wc) * 4 + a.id] > this.t) continue;
+        if (!isHunter && this._windowBlocked(this.winOfCell.get(wc), a.id)) continue;
         dur = isHunter ? this.cfg.hunter.vaultS : this._survivorVaultS(a, nx, nz, wc);
       } else if ((k === K_PAL_X || k === K_PAL_Z) && !isHunter && this.ps[md.palIdx[wc] - 1] === 1) {
         if ((k === K_PAL_X) !== (nx !== 0)) continue;
@@ -938,9 +938,11 @@ export class Match {
     }
   }
 
+  _windowBlocked(wi, sid) { return this.winBlockT[wi * 4 + sid] > this.t; }
+
   _blockedWindows(sid) {
     const out = [];
-    for (let i = 0; i < this.md.windows.length; i++) if (this.winBlockT[i * 4 + sid] > this.t) out.push(this.md.windows[i].id);
+    for (let i = 0; i < this.md.windows.length; i++) if (this._windowBlocked(i, sid)) out.push(this.md.windows[i].id);
     return out;
   }
 
