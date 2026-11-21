@@ -2,8 +2,12 @@
 // Geometry regressions, including the owner's protected templates and shipped pool.
 // node scripts/test-mapgen.js
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TILES, TILE_LIST, SOLID_CHARS as TILES_SOLIDS, resolveTile, makeRng, composeFeatures, gasHeavenLayout, generateFromLayout, outlineInset } from '../src/mapgen/index.js';
 import { analyzeMap } from './validate-map.js';
 import { generatorSets, selectGenerators } from '../src/sim/gen-selection.js';
@@ -64,10 +68,17 @@ assert.equal(index.variants.length, 32);
   assert(a.ok && b.ok, 'known seed regenerates'); assert.deepEqual(a, b, 'candidate packing and mapgen deterministic');
   const impossible = structuredClone(gasHeavenLayout); impossible.gens.minSpacing = 1000;
   assert.equal(generateFromLayout(impossible, seed).ok, false, 'impossible candidate spacing rejects instead of relaxing');
+  const noPallets = generateFromLayout({ ...gasHeavenLayout, pallets: { min: 0, max: 0 } }, seed);
+  assert.equal(noPallets.ok, false, 'guaranteed and protected pallets can exceed the budget');
+  assert.match(noPallets.error, /10 non-removable pallets exceed max 0/);
 }
 for (const [i, variant] of index.variants.entries()) {
   assert.equal(variant.file, `v${String(i).padStart(3, '0')}.json`);
   const map = load(`maps/gas-heaven/${variant.file}`), result = analyzeMap(map);
+  const opts = variant.outline === 'base' ? {} : { shaped: true, family: variant.outline };
+  const regenerated = generateFromLayout(gasHeavenLayout, variant.seed, opts);
+  assert(regenerated.ok, `${variant.file}: ${regenerated.error}`);
+  assert.deepEqual({ ...regenerated.map, id: map.id, name: map.name }, map, `${variant.file}: reproduces the shipped seed`);
   assert.deepEqual(result.errors, [], variant.file);
   assert(result.maxHookDistance <= 26, `${variant.file}: hook walk coverage`);
   assert(map.generators.every(g => outlineInset(g.x, g.z, map.outline) >= 6), `${variant.file}: generator edge inset`);
@@ -112,6 +123,57 @@ for (const [i, variant] of index.variants.entries()) {
   assert.equal(s.safePallets + s.unsafePallets + s.godPallets, map.pallets.length, `${variant.file}: safety totals`);
   for (const key of ['pallets', 'windows', 'strongLoops', 'weakLoops', 'safePallets', 'unsafePallets', 'godPallets', 'deadTileFraction', 'deadZoneFraction']) assert.equal(variant[key], s[key], `${variant.file}: index ${key}`);
 }
+
+// Run the CLI from a temporary workspace so both map files and the docs report are isolated.
+{
+  const cwd = mkdtempSync(join(tmpdir(), 'test-mapgen-'));
+  try {
+    const out = join(cwd, 'maps', 'gas-heaven');
+    mkdirSync(out, { recursive: true });
+    const before = { 'index.json': 'old index\n', 'v000.json': 'old v000\n', 'v031.json': 'old v031\n', 'v1000.json': 'old v1000\n', 'notes.txt': 'keep\n' };
+    for (const [file, contents] of Object.entries(before)) writeFileSync(join(out, file), contents);
+    const snapshot = () => Object.fromEntries(readdirSync(out).map(file => [file, readFileSync(join(out, file), 'utf8')]));
+    const script = fileURLToPath(new URL('./gen-maps.js', import.meta.url));
+    const run = (args, nodeArgs = []) => spawnSync(process.execPath, [...nodeArgs, script, '--no-png', ...args], { cwd, encoding: 'utf8', timeout: 30_000 });
+    for (const [args, error] of [
+      [['--count', '0'], /--count/],
+      [['--count', '1.5'], /--count/],
+      [['--seed', 'Infinity'], /--seed/],
+      [['--render', '-1'], /--render must/],
+      [['--out'], /--out/],
+      [['--out', join(out, 'notes.txt')], /--out must name a directory/],
+      [['--shaped', 'sometimes'], /--shaped/],
+      [['--shpaed', 'none'], /--shpaed/],
+    ]) {
+      const rejected = run(args);
+      assert.equal(rejected.status, 1, rejected.stderr);
+      assert.match(rejected.stderr, error);
+      assert.equal(rejected.stdout, '', 'invalid options are rejected before the tile check');
+      assert.deepEqual(snapshot(), before, 'invalid options leave the pool intact');
+    }
+
+    // Only the shaped variant scales its pallet minimum, making every v001 attempt impossible.
+    const fixture = join(cwd, 'impossible-outline-budget.mjs');
+    const mapgenUrl = new URL('../src/mapgen/index.js', import.meta.url);
+    writeFileSync(fixture, `import { gasHeavenLayout } from ${JSON.stringify(mapgenUrl.href)};\ngasHeavenLayout.refCells = 1;\n`);
+    const failed = run(['--count', '2', '--render', '0'], ['--import', pathToFileURL(fixture).href]);
+    assert.equal(failed.status, 1, failed.stderr);
+    assert.match(failed.stdout, /v000 seed \d+: VALID/);
+    assert.match(failed.stderr, /v001: no valid variant after 25 attempts/);
+    assert.deepEqual(snapshot(), before, 'exhausting retries after a valid variant leaves the pool intact');
+    assert(!existsSync(join(cwd, 'docs')), 'failed generation leaves the report untouched');
+
+    const succeeded = run(['--count', '1', '--render', '0']);
+    assert.equal(succeeded.status, 0, succeeded.stderr);
+    assert.deepEqual(readdirSync(out).sort(), ['index.json', 'notes.txt', 'v000.json']);
+    assert.equal(readFileSync(join(out, 'notes.txt'), 'utf8'), before['notes.txt']);
+    const newIndex = load(join(out, 'index.json'));
+    assert.deepEqual(newIndex.variants, [index.variants[0]]);
+    assert.deepEqual(load(join(out, 'v000.json')), load('maps/gas-heaven/v000.json'));
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}
 // Legacy fixtures keep their exact old shuffle, including the next world RNG value.
 {
   const md = prepareMap(load('maps/test-small.json')), a = simRng(4, 'world'), b = simRng(4, 'world');
@@ -140,3 +202,4 @@ for (const [i, variant] of index.variants.entries()) {
   assert.deepEqual(generatorSets(points, 4, rules).map(s => s.join()).sort(), expected.sort());
 }
 console.log(`${TILE_LIST.length} tile templates, ${transforms} resolutions and all 32 maps passed; fixed pieces, feature approaches, density, generator inset and hook coverage preserved.`);
+console.log('All 32 shipped seeds regenerated exactly; CLI pool preservation and replacement passed.');

@@ -169,12 +169,15 @@ export function generateFromLayout(baseLayout, seed, opts = {}) {
   }
 
   // ---- 4. pallet budget: drop random optional pallets above the max ----------------------------------
-  const allPallets = () => instances.flatMap(inst => inst.pallets.map(p => ({ inst, p })));
-  let total = allPallets().length;
+  const allPallets = instances.flatMap(inst => inst.pallets.map(p => ({ inst, p })));
+  let total = allPallets.length;
   if (total < layout.pallets.min) return { ok: false, error: `only ${total} pallets` };
   if (total > layout.pallets.max) {
-    const optional = rng.shuffle(allPallets().filter(e => e.p.optional && e.inst.category !== 'landmark'));
-    while (total > layout.pallets.max && optional.length) {
+    const optional = allPallets.filter(({ inst, p }) => p.optional && inst.category !== 'landmark');
+    const required = total - optional.length;
+    if (required > layout.pallets.max) return { ok: false, error: `pallet budget: ${required} non-removable pallets exceed max ${layout.pallets.max}` };
+    rng.shuffle(optional);
+    while (total > layout.pallets.max) {
       const { inst, p } = optional.pop();
       for (const [x, z] of p.cells) grid[z * w + x] = '.';
       inst.pallets.splice(inst.pallets.indexOf(p), 1);
