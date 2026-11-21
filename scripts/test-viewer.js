@@ -9,7 +9,7 @@ import { getBrains } from '../src/brains/index.js';
 import { defaults } from '../src/hillclimb/params.js';
 
 const viewer = new URL('../viewer/main.js', import.meta.url);
-const source = readFileSync(viewer, 'utf8');
+const duelViewer = new URL('../viewer/duel.js', import.meta.url);
 const baseMap = 'maps/gas-heaven.json', variant0 = 'maps/gas-heaven/v000.json', variant1 = 'maps/gas-heaven/v001.json';
 const smallMap = 'maps/test-small.json';
 const goalBrains = getBrains('param', 'goal'), paramBrains = getBrains();
@@ -30,27 +30,20 @@ const goalConfig = '../runs/goal/config.json';
 const goalSettings = { hunterBrain: 'param', survivorBrain: 'goal', modifiers: { genSeconds: 65 } };
 const noop = () => {};
 
-async function startViewer({ settings = goalSettings, mapList = [baseMap, variant0, variant1, smallMap], files = [] } = {}) {
-  const elements = new Map(), staticMaps = [], replays = [], delayed = new Map(), requests = [];
-  const inputs = { run: 'legacy', seed: '1', gen: '0' };
+async function startHarness(page, { inputs, checked, files }) {
+  const elements = new Map(), staticMaps = [], replays = [], delayed = new Map(), requests = [], storage = new Map();
   const el = (id) => {
     if (!elements.has(id)) elements.set(id, {
-      value: inputs[id] ?? '', checked: id === 'useChamp',
+      value: inputs[id] ?? '', checked: checked.includes(id), children: [],
       style: { setProperty: noop }, classList: { toggle: noop, remove: noop },
       addEventListener: noop, insertAdjacentHTML: noop,
+      getBoundingClientRect: () => ({ width: 0, height: 0 }),
     });
     return elements.get(id);
   };
   const response = (data) => ({ ok: data != null, json: async () => data, text: async () => data });
-  const resources = new Map([
-    ['/api/runs', [{ name: 'legacy', kind: 'climb' }, { name: 'goal', kind: 'evolve' }]],
-    ['/api/maps', mapList],
-    [legacyLog, jsonl({ gen: 5, champ: champ(paramBrains) })],
-    [goalLog, jsonl(goalRow(10, 0))],
-    [goalConfig, settings],
-    ...files,
-  ]);
-  const mapData = (path) => JSON.parse(readFileSync(new URL('../' + path, viewer), 'utf8'));
+  const resources = new Map(files);
+  const mapData = (path) => JSON.parse(readFileSync(new URL('../' + path, page), 'utf8'));
   const fetch = async (path) => {
     requests.push(path);
     if (delayed.has(path)) {
@@ -71,6 +64,7 @@ async function startViewer({ settings = goalSettings, mapList = [baseMap, varian
   const context = createContext({
     fetch, performance, console, innerWidth: 1200, innerHeight: 800,
     document: { getElementById: el, body: el('body'), querySelectorAll: () => [], hidden: false, addEventListener: noop },
+    localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
     addEventListener: noop, ResizeObserver: class { observe() {} }, requestAnimationFrame: noop,
     setInterval: (fn, ms) => { assert.equal(ms, 30_000); poll = fn; },
   });
@@ -80,24 +74,49 @@ async function startViewer({ settings = goalSettings, mapList = [baseMap, varian
       buildDynamic: (match, map) => replays.push({ match, map }),
       sync: noop, setTopDown: noop,
     }), survCss: [], stateNames: ['healthy', 'injured'] },
-    './layers.js': { createLayers: () => ({ onChange: noop, isOn: () => false, rebuild: noop }) },
+    './layers.js': { createLayers: () => ({ onChange: noop, isOn: () => false, rebuild: noop, update: noop }) },
   };
   context.window = context;
-  const mod = new SourceTextModule(source, { context, identifier: viewer.href });
+  const mod = new SourceTextModule(readFileSync(page, 'utf8'), { context, identifier: page.href });
   await mod.link(async (specifier) => {
-    const exports = stubs[specifier] ?? await import(new URL(specifier, viewer));
+    const exports = stubs[specifier] ?? await import(new URL(specifier, page));
     const values = specifier === './charts.js' ? { ...exports, attachHover: noop } : exports;
     return new SyntheticModule(Object.keys(values), function () {
       for (const [name, value] of Object.entries(values)) this.setExport(name, value);
     }, { context });
   });
   await mod.evaluate();
+  return { el, staticMaps, replays, latest: () => replays.at(-1), mapData, delay, poll, requests, storage };
+}
+
+async function startViewer({ settings = goalSettings, mapList = [baseMap, variant0, variant1, smallMap], files = [] } = {}) {
+  const v = await startHarness(viewer, {
+    inputs: { run: 'legacy', seed: '1', gen: '0' },
+    checked: ['useChamp'],
+    files: [
+      ['/api/runs', [{ name: 'legacy', kind: 'climb' }, { name: 'goal', kind: 'evolve' }]],
+      ['/api/maps', mapList],
+      [legacyLog, jsonl({ gen: 5, champ: champ(paramBrains) })],
+      [goalLog, jsonl(goalRow(10, 0))],
+      [goalConfig, settings],
+      ...files,
+    ],
+  });
+  const { el } = v;
   return {
-    el, staticMaps, replays, latest: () => replays.at(-1), mapData, delay, poll, requests,
+    ...v,
     selectMap: (path) => { el('map').value = path; return el('map').onchange(); },
     selectRun: (name) => { el('run').value = name; return el('run').onchange(); },
     selectSeed: (seed) => { el('seed').value = String(seed); return el('seed').onchange(); },
   };
+}
+
+function startDuel(runs, files = []) {
+  return startHarness(duelViewer, {
+    inputs: { idx: '0', setup: '0', seed: '1000', hmode: 'strong', assistAfter: '3', jitter: '0.5', cap: '5' },
+    checked: ['pushfix'],
+    files: [['/api/runs', runs], ...files],
+  });
 }
 
 const reflexes = (match) => match.survivors[0].brain.debug().goal?.reflexes.map((r) => r.k);
@@ -235,6 +254,18 @@ test('replays use the saved goal brain with either champion or default parameter
 
 const replayMapId = (v) => v.latest().match.result().mapId;
 
+test('match viewer keeps seed zero and defaults blank or invalid seeds', async () => {
+  const v = await startViewer();
+  await v.selectSeed('0');
+  assert.equal(v.latest().match.seed, 0);
+  assert.equal(replayMapId(v), 'gas-heaven-v000');
+  for (const input of ['', 'invalid', '1e999']) {
+    await v.selectSeed(input);
+    assert.equal(v.latest().match.seed, 1);
+    assert.equal(replayMapId(v), 'gas-heaven-v001');
+  }
+});
+
 test('Auto replays a saved Windows map path and manual selections override it', async () => {
   const v = await startViewer({ settings: { ...goalSettings, map: 'C:\\Users\\example\\dbd-hillclimb\\maps\\test-small.json' } });
   assert.equal(replayMapId(v), 'gas-heaven-v001'); // legacy run has no saved map
@@ -361,4 +392,77 @@ test('a late index response cannot load its map or replace a replay for a newer 
   assert.equal(replayMapId(v), 'gas-heaven-v001');
   assert.ok(!v.requests.includes('../' + smallMap));
   assert.doesNotMatch(v.el('hud').innerHTML, /map unavailable/);
+});
+
+test('a late duel champion cannot replace the current restart, timeline or UI', async () => {
+  const v = await startDuel([{ name: 'A' }, { name: 'B' }]);
+  const completeA = v.delay('../runs/A/champions.json');
+  const completeB = v.delay('../runs/B/champions.json');
+  v.el('params').value = 'A';
+  const older = v.el('params').onchange();
+
+  v.el('params').value = 'B';
+  v.el('seed').value = '0';
+  v.el('setup').value = '4';
+  v.el('hmode').value = 'assist';
+  const newer = v.el('params').onchange();
+  completeB({ champ: champ(paramBrains), modifiers: { genSeconds: 65 } });
+  await newer;
+  const latest = v.latest();
+  const timeline = v.el('result').innerHTML;
+  const form = v.storage.get('dbdv.duel.form');
+  assert.equal(latest.match.survivors[0].st, 1);
+  v.el('scrub').value = '3';
+  v.el('scrub').oninput();
+
+  completeA({ champ: champ(paramBrains), modifiers: { genSeconds: 80 } });
+  await older;
+  assert.equal(v.el('params').value, 'B');
+  assert.equal(v.latest().match.cfg.gens.repairS, 65);
+  assert.equal(v.latest(), latest);
+  assert.equal(v.replays.length, 2);
+  assert.equal(v.el('result').innerHTML, timeline);
+  assert.equal(v.storage.get('dbdv.duel.form'), form);
+  assert.match(v.el('modBadge').innerHTML, /gens 65 s/);
+  assert.equal(latest.match.seed, 0);
+  assert.match(v.el('hud').innerHTML, /inside\/injured.*seed 0.*assist/);
+  assert.equal(latest.match.tick, 3);
+
+  v.el('scrub').value = '1';
+  v.el('scrub').oninput();
+  assert.equal(v.latest().match.tick, 1);
+  assert.equal(v.latest().match.seed, 0);
+  assert.equal(v.latest().match.cfg.gens.repairS, 65);
+});
+
+test('duel restarts use a single form snapshot and encode the run name', async () => {
+  const name = 'challenge #50%';
+  const path = '../runs/challenge%20%2350%25/champions.json';
+  const v = await startDuel([{ name, modifiers: { genSeconds: 55 } }]);
+  const complete = v.delay(path);
+  v.el('params').value = name;
+  v.el('seed').value = '42';
+  const replay = v.el('params').onchange();
+  v.el('seed').value = '43'; // edit without starting a new duel
+  v.el('setup').value = '4';
+  complete({ champ: champ(paramBrains) });
+  await replay;
+
+  assert.ok(v.requests.includes(path));
+  assert.equal(v.el('err').textContent, '');
+  assert.equal(v.latest().match.seed, 42);
+  assert.equal(v.latest().match.survivors[0].st, 0);
+  assert.equal(v.latest().match.cfg.gens.repairS, 55);
+  const form = JSON.parse(v.storage.get('dbdv.duel.form'));
+  assert.equal(form.seed, '42');
+  assert.equal(form.setup, '0');
+});
+
+test('duel viewer defaults blank or invalid seeds', async () => {
+  const v = await startDuel([]);
+  for (const input of ['', 'invalid', '1e999']) {
+    v.el('seed').value = input;
+    await v.el('seed').onchange();
+    assert.equal(v.latest().match.seed, 1000);
+  }
 });
