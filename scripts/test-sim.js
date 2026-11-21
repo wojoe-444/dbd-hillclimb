@@ -68,6 +68,7 @@ function mk(opts = {}) {
   return { m, ctl };
 }
 const place = (a, x, z) => { a.x = x; a.z = z; a.vx = a.vz = 0; a.mv = 0; a.mvTick = -9; };   // a standing start (no momentum)
+const isPt = (p, q) => p && q && Math.abs(p.x - q.x) < 1e-9 && Math.abs(p.z - q.z) < 1e-9;
 // distance covered in `ticks` ticks from a standing start at target speed v with acceleration acc (engine _ramp: tick k
 // moves min(v, k acc dt) dt; README "Acceleration")
 const rampDist = (v, acc, ticks, dt = 0.1) => { let d = 0; for (let k = 1; k <= ticks; k++) d += Math.min(v, k * acc * dt) * dt; return d; };
@@ -1271,6 +1272,73 @@ test('nav cache: steering rechecks the exact origin and destination', () => {
   ok(samePoint(corner.nextWaypoint(clipped, start), { x: 9.5, z: 7.5 }), 'changing the origin within the cell recomputes the corner route');
 });
 
+test('Entity-blocked windows reroute only the affected survivor until expiry', () => {
+  const from = { x: 13.5, z: 7.5 }, target = { x: 13.5, z: 10.5 };
+  const landing = { x: 13.5, z: 9.5 }, generator = { x: 14.5, z: 12.5 };
+  for (const astarMaxExpand of [9000, 0]) {
+    const { m, ctl } = mk({ config: { nav: { astarMaxExpand } } });
+    const s = m.survivors[0], mateNav = m.survivors[1].nav;
+    const wi = m.winOfCell.get(s.nav.cell(13.5, 8.5));
+    const window = { x: 13.5, z: 8.5 };
+    const openDist = s.nav.dist(from, target), openGenDist = s.nav.dist(from, generator);
+    ok(openDist === 5 && isPt(s.nav.nextWaypoint(from, target), landing), 'warm the vault route and steering');
+    ok(isPt(s.nav.nextWaypoint(from, generator), landing), 'warm the canonical route to a generator');
+    s.nav.nextWaypoint(from, target);
+
+    m.chaseTgt = s.id;
+    for (let i = 0; i < m.cfg.windowBlock.vaults; i++) m._noteWindowVault(wi, s.id);
+    ok(isPt(s.nav.nextWaypoint(from, target), { x: 9.5, z: 7.5 }), 'same endpoints now steer around the shack');
+    ok(s.nav.dist(from, target) === 23, 'a repeat distance query returns the 23 m walking route');
+    const genDetour = s.nav.dist(from, generator);
+    ok(Number.isFinite(genDetour) && genDetour > openGenDist && isPt(s.nav.nextWaypoint(from, generator), { x: 9.5, z: 7.5 }),
+      'distance and canonical descent both avoid the blocked window');
+    ok(s.nav.dist(from, window) === Infinity && s.nav.nextWaypoint(from, window) === null, 'the blocked window cell is unreachable');
+    ok(mateNav.dist(from, target) === openDist && isPt(mateNav.nextWaypoint(from, target), landing),
+      'another survivor still takes the vault');
+    const { m: other } = mk({ config: { nav: { astarMaxExpand } } });
+    ok(other.survivors[0].nav.dist(from, generator) === openGenDist, 'the detour never enters the shared field cache');
+
+    place(s, from.x, from.z);
+    ctl.S[0] = () => ({ moveTo: target });
+    run(m, 100);
+    ok(Math.hypot(s.x - target.x, s.z - target.z) < 0.1 && m.stats.vaults === 0,
+      'moveTo walks around the blocked window and reaches the target');
+    s.nav.nextWaypoint(from, target);
+    m.t = m.winBlockT[wi * 4 + s.id];
+    ok(isPt(s.nav.nextWaypoint(from, target), landing) && s.nav.dist(from, target) === openDist,
+      'the cached detour expires exactly when the window reopens');
+  }
+});
+
+test('carrying hunter walks around windows and cannot vault with moveDir', () => {
+  const { m, ctl } = mk();
+  const H = m.hunter, s = m.survivors[0];
+  const from = { x: 13.5, z: 7.55 }, target = { x: 13.5, z: 10.5 }, landing = { x: 13.5, z: 9.5 };
+  place(H, from.x, from.z);
+  const openDist = H.nav.dist(from, target);
+  ok(openDist === 9 && isPt(H.nav.nextWaypoint(from, target), landing), 'empty-handed route uses the window');
+  H.carrying = s.id; s.st = CARRIED;
+  ok(isPt(H.nav.nextWaypoint(from, target), { x: 9.5, z: 7.5 }), 'pickup replaces the cached vault waypoint');
+  const walkingDist = H.nav.dist(from, target);
+  ok(Number.isFinite(walkingDist) && walkingDist > openDist, 'pickup replaces the short vault distance with the walking distance');
+  ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+  run(m, 10);
+  ok(H.z < 8 && m.stats.vaults === 0, 'raw steering cannot vault the carrier through the window');
+  ctl.H = () => ({ moveTo: target });
+  run(m, 100);
+  ok(Math.hypot(H.x - target.x, H.z - target.z) < 0.1 && isPt(s, H) && m.stats.vaults === 0,
+    'the carrier reaches the target by walking');
+  const atPallet = { x: 25.5, z: 22.5 }, beyondPallet = { x: 25.5, z: 24.5 };
+  const pi = m.md.pallets.findIndex(p => p.id === 'p-gap');
+  m.ps[pi] = 1; m.coll[m.md.pallets[pi].cells[0]] = 1; m.palVersion++; m.droppedCount++;
+  ok(H.nav.dist(atPallet, beyondPallet) === Infinity, 'a walking distance cannot start inside a dropped pallet');
+  ok(H.nav.dist({ x: 25.5, z: 19.5 }, beyondPallet) > 10, 'carrying also routes around dropped pallets');
+  H.nav.nextWaypoint(from, target);
+  H.carrying = -1; s.st = DOWNED;
+  ok(isPt(H.nav.nextWaypoint(from, target), landing) && H.nav.dist(from, target) === openDist,
+    'releasing the survivor restores the vault route');
+});
+
 test('hunter nav treats dropped pallets as blocked; survivors do not', () => {
   const { m } = mk();
   const pi = m.md.pallets.findIndex(q => q.id === 'p-gap');
@@ -2250,7 +2318,18 @@ function mkParamHunter(hpOver = {}, opts = {}) {
   place(m.survivors[0], 3.5, 33.5); place(m.survivors[1], 44.5, 3.5); place(m.survivors[2], 3.5, 3.5); place(m.survivors[3], 44.5, 33.5);
   return { m, ctl, log };
 }
-const isPt = (p, q) => p && q && Math.abs(p.x - q.x) < 1e-9 && Math.abs(p.z - q.z) < 1e-9;
+test('param hunter, hook choice: picks the shortest walking route while carrying', () => {
+  const map = structuredClone(smallMap);
+  const inside = { id: 'inside', x: 13.5, z: 10.5 }, outside = { id: 'outside', x: 3.5, z: 7.5 };
+  map.hooks = [inside, outside];
+  const { m, log } = mkParamHunter({ hookGenBias: 0, hookClusterBias: 0, hookAwayW: 0 }, { map, blind: true });
+  const H = m.hunter;
+  place(H, 13.5, 7.5);
+  ok(H.nav.dist(H, inside) < H.nav.dist(H, outside), 'the window makes the inside hook closer when empty-handed');
+  H.carrying = 0; m.survivors[0].st = CARRIED;
+  run(m, 1);
+  ok(isPt(log[0].r.moveTo, outside), 'the carry brain picks the outside hook because reaching it is faster on foot');
+});
 
 test('param hunter, endgame: rushes a lever it sees being opened; patrols due levers; gatePatrolW 0 = no gate logic', () => {
   // gates powered; survivors 1-3 escaped (the last one plays on with the gates powered); survivor 0 opens gate-n
