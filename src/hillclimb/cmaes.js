@@ -24,10 +24,16 @@ export function fromNorm(space, x) {
   return clampParams(space, out);
 }
 
+// A fixed brain fills the same evaluation slots with one parameter set and has no distribution to adapt.
+function fixedState(lambda, gen) {
+  return { kind: 'sep-cmaes', n: 0, lambda, mu: Math.floor(lambda / 2), gen, mean: [], sigma: 0, C: [] };
+}
+
 // opts: { lambda, sigma0, mirror, minSigma, maxSigma }
 export function cmaInit(space, startParams, { lambda, sigma0 = 0.15, mirror = false, minSigma = 0.01, maxSigma = 0.5 } = {}) {
   const n = Object.keys(space).length;
-  const lam = Math.max(4, lambda ?? 4 + Math.floor(3 * Math.log(n)));
+  const lam = Math.max(4, lambda ?? 4 + Math.floor(3 * Math.log(Math.max(1, n))));
+  if (n === 0) return fixedState(lam, 0);
   const mu = Math.floor(lam / 2);
   const raw = Array.from({ length: mu }, (_, i) => Math.log(mu + 0.5) - Math.log(i + 1));
   const sw = raw.reduce((a, b) => a + b, 0);
@@ -63,6 +69,7 @@ export function cmaAsk(space, st, R) {
 
 // Update from the candidates ranked best-first (array of normalised x). Returns the new state (pure).
 export function cmaTell(st, rankedX) {
+  if (st.n === 0) return fixedState(st.lambda, st.gen + 1);
   const { n, mu, w, mueff, cs, ds, cc, c1, cmu, chiN } = st;
   const old = st.mean, sigma = st.sigma;
   const D = st.C.map(Math.sqrt);
@@ -89,6 +96,8 @@ export function cmaTell(st, rankedX) {
 
 // Log-friendly summary: mean in knob units, per-knob sampling sd in knob units, step size, axis ratio.
 export function cmaSummary(space, st, digits = 4) {
+  // No step size or axis spread for a point distribution, including checkpoints with old null values.
+  if (st.n === 0) return { kind: st.kind, gen: st.gen, sigma: 0, axisRatio: 1, mean: {}, meanNorm: [], sd: {} };
   const keys = Object.keys(space);
   const meanP = fromNorm(space, st.mean);
   const sd = {};
