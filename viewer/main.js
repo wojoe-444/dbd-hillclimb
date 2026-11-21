@@ -22,7 +22,7 @@ async function loadMap(path) {
   return mapCache.get(path);
 }
 let map = await loadMap('maps/gas-heaven.json');
-const brains = getBrains('param', 'param');
+let brains = getBrains();
 const variantIndex = await fetch('../maps/gas-heaven/index.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
 const variantInfo = new Map((variantIndex?.variants ?? []).map((v) => [v.id, v]));
 
@@ -91,7 +91,7 @@ $('fsBtn2').onclick = () => setImmersive(!immersive);
 new ResizeObserver(() => queueRender()).observe($('dock'));
 
 // ---------------------------------------------------------------- per-match tracking (viewer-side stats)
-let match = null, track = null;
+let match = null, track = null, matchSource = null;
 function newTrack() {
   return {
     chaseT: [0, 0, 0, 0], chases: [0, 0, 0, 0], hitsTaken: [0, 0, 0, 0], heals: [0, 0, 0, 0], rescues: [0, 0, 0, 0], drops: [0, 0, 0, 0], stunsBy: [0, 0, 0, 0],
@@ -159,9 +159,9 @@ function hud(force) {
   }).join('');
   const hm = hunterMode(m);
   const res = m.over ? m.result() : null;
-  $('hud').innerHTML = `<div class="top"><span class="clock">${fmtT(m.t)}</span>${modBadge(matchMods)}<span>gens <b>${m.gensDone}/${m.gensNeeded}</b></span>${m.gatesPowered ? `<span><b>GATES</b>${m.endgameT > 0 ? ' ' + fmtT(m.endgameT) : ''}</span>` : ''}${res ? `<span><b>OVER</b> ${res.kills}K / ${res.escapes}E</span>` : ''}${paused ? '<span class="muted">paused</span>' : ''}</div>
+  $('hud').innerHTML = `<div class="top"><span class="clock">${fmtT(m.t)}</span>${modBadge(matchSource.mods)}<span>gens <b>${m.gensDone}/${m.gensNeeded}</b></span>${m.gatesPowered ? `<span><b>GATES</b>${m.endgameT > 0 ? ' ' + fmtT(m.endgameT) : ''}</span>` : ''}${res ? `<span><b>OVER</b> ${res.kills}K / ${res.escapes}E</span>` : ''}${paused ? '<span class="muted">paused</span>' : ''}</div>
     <div class="chips"><span class="chip"><span class="dot" style="background:#d8313b"></span>Hunter ${esc(hm.mode)}</span>${chips}</div>
-    ${immersive ? `<div class="muted" style="margin-top:4px;font-size:11px">${esc(mapLabel())} · seed ${match.seed} · ${esc(genLabelText())}</div>` : ''}`;
+    ${immersive ? `<div class="muted" style="margin-top:4px;font-size:11px">${esc(mapLabel())} · seed ${match.seed} · ${esc(matchSource.genLabel)}</div>` : ''}`;
 }
 const mapLabel = () => map.id || map._path || '';
 
@@ -286,12 +286,13 @@ $('logMode').onchange = () => logUpdate(true);
 $('logFilter').oninput = () => logUpdate(true);
 
 // ---------------------------------------------------------------- runs (meta.jsonl climb runs / evo.jsonl population runs)
-let meta = [], runKinds = {}, runSpaces = null, runConfig = null, variantPool = [];
-// game modifiers (src/sim/modifiers.js): runMods = the selected run's rules (config.json / evo.jsonl), runModsByName =
-// /api/runs index for the picker, matchMods = the rules the LIVE match was created with (= runMods at newMatch time)
-let runMods = {}, runModsByName = {}, matchMods = {};
-let champ = { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
-const spaceOf = (side) => (runSpaces && runSpaces[side]) || brains[side].space;
+let meta = [], runKinds = {}, runConfig = null, variantPool = [];
+let runMods = {}, runModsByName = {};
+// A new object for each selection also distinguishes switching away and back to the same run.
+let selectedRun = null, loadedRun = null;
+const defaultParams = () => ({ hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) });
+let champ = defaultParams();
+const spaceOf = (side) => runConfig?.spaces?.[side] ?? brains[side].space;
 async function loadRuns() {
   const runs = await fetch('/api/runs').then((r) => r.json()).catch(() => []);
   runKinds = Object.fromEntries(runs.map((r) => [r.name, r.kind]));
@@ -301,8 +302,8 @@ async function loadRuns() {
   if (keep && runKinds[keep]) $('run').value = keep;
   await loadMeta();
 }
-async function fetchMeta(name) {
-  if (name && runKinds[name] === 'evolve') {
+async function fetchMeta({ name, kind }) {
+  if (name && kind === 'evolve') {
     const txt = await (await fetch(`../runs/${name}/evo.jsonl`)).text();
     return txt.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((e) => ({
       gen: e.gen, side: 'population', accepted: false, evo: e,
@@ -317,11 +318,21 @@ async function fetchMeta(name) {
 }
 async function loadMeta() {
   const name = $('run').value;
+  const selection = { name, kind: runKinds[name] };
+  selectedRun = selection;
   store.set('run', name);
-  meta = await fetchMeta(name).catch(() => []);
-  runConfig = name ? await fetch(`../runs/${name}/config.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
-  runSpaces = runConfig?.spaces ?? null;
+  const [rows, config] = await Promise.all([
+    fetchMeta(selection).catch(() => []),
+    name ? fetch(`../runs/${name}/config.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
+  ]);
+  if (selection !== selectedRun) return;
+
+  meta = rows;
+  runConfig = config;
+  try { brains = getBrains(config?.hunterBrain, config?.survivorBrain); }
+  catch (e) { console.warn('run brains not supported by this checkout:', e.message); brains = getBrains(); }
   runMods = runConfig?.modifiers ?? meta.find((r) => r.evo?.modifiers)?.evo.modifiers ?? runModsByName[name] ?? {};
+  loadedRun = selection;
   showRunMods();
   const evo = meta.length && meta[0].evo;
   if (evo) {
@@ -333,13 +344,14 @@ async function loadMeta() {
   $('gen').max = meta.length;
   $('gen').value = meta.length;
   pickGen();
+  await newMatch();
 }
 // poll a live population run: new generations show up without a reload (the match keeps playing)
 setInterval(async () => {
-  const name = $('run').value;
-  if (!name || runKinds[name] !== 'evolve' || document.hidden) return;
-  const fresh = await fetchMeta(name).catch(() => null);
-  if (!fresh || fresh.length <= meta.length) return;
+  const run = loadedRun;
+  if (!run || run !== selectedRun || run.kind !== 'evolve' || document.hidden) return;
+  const fresh = await fetchMeta(run).catch(() => null);
+  if (run !== selectedRun || !fresh || fresh.length <= meta.length) return;
   const atEnd = +$('gen').value === meta.length;
   meta = fresh; $('gen').max = meta.length;
   if (atEnd) $('gen').value = meta.length;
@@ -359,7 +371,7 @@ function genLabelText() {
 }
 function pickGen() {
   const g = +$('gen').value;
-  champ = g === 0 || !meta.length ? { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) } : meta[g - 1].champ;
+  champ = g === 0 || !meta.length ? defaultParams() : meta[g - 1].champ;
   $('genLabel').textContent = genLabelText();
   dirty.evo = dirty.knobs = dirty.champ = true;
   queueRender();
@@ -391,7 +403,7 @@ function evoChartDefs() {
 }
 let evoDefs = [], evoCanvases = [];
 function renderEvo() {
-  const g = +$('gen').value, name = $('run').value;
+  const g = +$('gen').value, name = loadedRun?.name ?? '';
   const r = g > 0 ? meta[g - 1] : null;
   const md = isModded(runMods) && meta.length;
   $('evoCharts').classList.toggle('modded', !!md);
@@ -544,11 +556,11 @@ let mmStatic = null;
 function renderMap(full) {
   if (full) {
     const info = variantInfo.get(map.id) || {};
-    const pool = variantPool.length, auto = $('map').value === 'auto';
+    const pool = variantPool.length;
     const counts = match ? match.ps.reduce((a, s) => (a[s]++, a), [0, 0, 0]) : [0, 0, 0];
     const rows = [
       ['variant', esc(map.id ?? '—')], ['name', esc(map.name ?? '')], ['file', esc(map._path ?? '')],
-      ['picked', auto ? `auto: seed ${$('seed').value} mod ${pool} → v${String((+$('seed').value || 1) % pool).padStart(3, '0')}` : 'chosen manually'],
+      ['picked', !match ? '—' : matchSource.autoMap ? `auto: seed ${match.seed} mod ${pool} → ${esc(mapLabel())}` : 'chosen manually'],
       ['outline family', esc(info.outline ?? (map.outline.length === 4 ? 'rectangle' : `${map.outline.length}-gon`))],
       ['variant seed', info.seed ?? '—'], ['size', `${map.size.w} × ${map.size.h} m`],
       ['pallets', `${map.pallets?.length ?? 0}${match ? ` · <span style="color:#f2d24b">${counts[0]} up</span> · <span style="color:#ff5a1f">${counts[1]} dropped</span> · <span style="color:#b08d6a">${counts[2]} broken</span>` : ''}`],
@@ -594,9 +606,9 @@ function drawMinimap() {
 // ---------------------------------------------------------------- Champion tab
 function renderChamp() {
   const g = +$('gen').value, use = $('useChamp').checked;
-  $('champInfo').innerHTML = (isModded(runMods) && meta.length ? modBadge(runMods) + ' ' : '') + (g === 0 || !meta.length ? 'Default parameters (generation 0 / no run).' : `Champions of <b style="color:var(--ink)">${esc($('run').value)}</b> · gen ${meta[g - 1].gen}${meta[g - 1].evo ? ` · hunter ${esc(meta[g - 1].evo.hunters.ranking[0].id)} · team ${esc(meta[g - 1].evo.survivors.ranking[0].id)}` : ''} — ${use ? 'playing in the current match' : '<b>not</b> used in the match (champs unchecked)'}`);
+  $('champInfo').innerHTML = (isModded(runMods) && meta.length ? modBadge(runMods) + ' ' : '') + (g === 0 || !meta.length ? 'Default parameters (generation 0 / no run).' : `Champions of <b style="color:var(--ink)">${esc(loadedRun.name)}</b> · gen ${meta[g - 1].gen}${meta[g - 1].evo ? ` · hunter ${esc(meta[g - 1].evo.hunters.ranking[0].id)} · team ${esc(meta[g - 1].evo.survivors.ranking[0].id)}` : ''} — ${use ? 'champs enabled' : 'champs unchecked'}`);
   const onlyChanged = $('champChanged').checked, q = $('champSearch').value.trim().toLowerCase();
-  const d = { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
+  const d = defaultParams();
   const tbl = (side) => {
     const sp = spaceOf(side);
     const rows = Object.entries(champ[side] ?? {}).filter(([k, v]) => (!q || k.toLowerCase().includes(q)) && (!onlyChanged || Math.abs(v - (d[side][k] ?? v)) > 1e-6)).map(([k, v]) => {
@@ -616,19 +628,40 @@ $('champSearch').oninput = renderChamp;
 
 // ---------------------------------------------------------------- loop
 let paused = false, acc = 0, last = performance.now();
+let matchRequest = 0;
 async function newMatch() {
+  const run = loadedRun;
+  if (!run || run !== selectedRun) return;  // loadMeta starts a match with the latest inputs when the run is ready
+  const request = ++matchRequest;
+  const seed = +$('seed').value || 1;
+  const useChamp = $('useChamp').checked;
+  const params = useChamp ? champ : defaultParams();
+  const genLabel = useChamp ? genLabelText() : 'default params';
+  const matchBrains = brains;
+  let mods = runMods;
+
   // "auto": the variant the evolution workers would use for this seed (pool sorted like loadMapPool: v000..v031; seed % n)
   let want = $('map').value;
-  if (want === 'auto') want = variantPool.length ? variantPool[(+$('seed').value || 1) % variantPool.length] : 'maps/gas-heaven.json';
-  if (want && want !== map._path) { map = await loadMap(want); S3.buildStatic(map); }
-  const seed = +$('seed').value || 1;
-  const use = $('useChamp').checked ? champ : { hunter: defaults(brains.hunter.space), survivor: defaults(brains.survivor.space) };
-  const live = { ...map }; delete live._path;
+  const autoMap = want === 'auto' && variantPool.length > 0;
+  if (want === 'auto') want = autoMap ? variantPool[seed % variantPool.length] : 'maps/gas-heaven.json';
+  let nextMap;
+  try { nextMap = want && want !== map._path ? await loadMap(want) : map; }
+  catch (e) {
+    if (request === matchRequest && run === selectedRun) console.warn('could not load map:', want, e);
+    return;
+  }
+  if (request !== matchRequest || run !== selectedRun) return;
+
+  const { _path, ...live } = nextMap;
   // the live sim plays under the selected run's game modifiers (also with "champs" unchecked: the run's rules)
-  matchMods = runMods;
   let config;
-  try { config = isModded(matchMods) ? modsConfig(matchMods) : undefined; } catch (e) { console.warn('game modifiers not supported by this checkout:', e.message); matchMods = {}; config = undefined; }
-  match = createMatch({ map: live, seed, config, hunter: brains.hunter.make(use.hunter), survivors: brains.survivor.make(use.survivor) });
+  try { config = isModded(mods) ? modsConfig(mods) : undefined; }
+  catch (e) { console.warn('game modifiers not supported by this checkout:', e.message); mods = {}; }
+  const nextMatch = createMatch({ map: live, seed, config, hunter: matchBrains.hunter.make(params.hunter), survivors: matchBrains.survivor.make(params.survivor) });
+  if (nextMap !== map) S3.buildStatic(nextMap);
+  map = nextMap;
+  match = nextMatch;
+  matchSource = { mods, genLabel, autoMap };
   track = newTrack(); sample(); track.nextSample = 1;
   S3.buildDynamic(match, map);
   layers.rebuild(match, map);
@@ -656,7 +689,7 @@ $('play').onclick = togglePause;
 $('restart').onclick = newMatch;
 $('seed').onchange = newMatch;
 $('random').onclick = () => { $('seed').value = Math.floor(Math.random() * 1e6); newMatch(); };
-$('run').onchange = async () => { await loadMeta(); newMatch(); };
+$('run').onchange = loadMeta;
 $('gen').oninput = pickGen;
 $('gen').onchange = newMatch;
 $('useChamp').onchange = () => { dirty.champ = true; newMatch(); };
@@ -699,5 +732,4 @@ $('map').onchange = newMatch;
 S3.buildStatic(map);
 S3.setTopDown(false);
 await loadRuns();
-await newMatch();
 requestAnimationFrame(frame);
