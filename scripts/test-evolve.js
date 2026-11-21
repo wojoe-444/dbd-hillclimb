@@ -8,6 +8,7 @@
 //  3. --mod genSeconds=80: recorded in config.json / evo.jsonl / champions.json, deterministic, --resume guard.
 //  4. Pool failure/closure, invalid CLI inputs, seeded resume, and indexed map provenance.
 //  5. Fixed brains with no knobs in mutation, CMA, evolution, and alternating climb.
+//  6. CMA champion resolution from the export, generation archive, and legacy mean diagnostics.
 //   node scripts/test-evolve.js [--base <git ref>] [--keep]
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, mkdirSync, mkdtempSync } from 'node:fs';
@@ -16,8 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
 import { createPool } from '../src/hillclimb/pool.js';
-import { mapPoolInfo } from '../src/hillclimb/evalplan.js';
-import { mutate, rng } from '../src/hillclimb/params.js';
+import { mapPoolInfo, resolveParamSet } from '../src/hillclimb/evalplan.js';
+import { clampParams, mutate, rng, round } from '../src/hillclimb/params.js';
 import { cmaAsk, cmaInit, cmaSummary, cmaTell } from '../src/hillclimb/cmaes.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -71,6 +72,10 @@ try {
     } else {
       run(evolve, 'base-plain', ['--rounds', '2', '--gens', '0', '--resume']);
       ok(file(a, 'population.json') === JSON.stringify(population, null, 2), 'legacy resume reads a checkpoint without RNG state');
+      const { spaces } = JSON.parse(file(b, 'config.json'));
+      const archived = resolveParamSet(`${b}@gen2`, spaces), exported = resolveParamSet(b, spaces);
+      ok(isDeepStrictEqual(archived.hunter, exported.hunter) && isDeepStrictEqual(archived.survivor, exported.survivor),
+        'GA generation lookup still resolves the exported rank-one params');
     }
   }
 } finally { rmSync(baseScript, { force: true }); }
@@ -186,6 +191,33 @@ for (const { mode, side, flags } of [
     ok(rows.every(({ cma, gen, panel }) => cma.survivor.gen === gen && cma.survivor.sigma === 0 && cma.survivor.axisRatio === 1
       && cma.hunter.sigma > 0 && panel.hunter.length === 1), 'fixed CMA logs a point distribution and supplies one distinct panel opponent');
   }
+}
+
+console.log('- CMA champion archive');
+{
+  const dir = run(evolve, 'cma-archive', ['--opt', 'cmaes', '--rounds', '1', '--gens', '1', '--seed', '1', '--survivor', 'test'], 1);
+  const [row] = lines(dir);
+  const { spaces } = JSON.parse(file(dir, 'config.json'));
+  const { champ, bestSample } = JSON.parse(file(dir, 'champions.json'));
+  const { best } = JSON.parse(file(dir, 'population.json'));
+  ok(isDeepStrictEqual(row.champ, champ) && isDeepStrictEqual(champ, { hunter: round(best.hunter), survivor: {} }),
+    'the generation row and champion export share the serialized optimizer mean, including the fixed side');
+  ok(isDeepStrictEqual(bestSample, { hunter: row.hunters.ranking[0].params, survivor: row.survivors.ranking[0].params })
+    && !isDeepStrictEqual(bestSample, champ), 'rank one and bestSample agree and differ from the mean');
+
+  const archived = resolveParamSet(`${dir}@gen1`, spaces);
+  const exported = resolveParamSet(join(dir, 'champions.json'), spaces);
+  ok(isDeepStrictEqual(archived.hunter, exported.hunter) && isDeepStrictEqual(archived.survivor, exported.survivor)
+    && !isDeepStrictEqual(archived.hunter, clampParams(spaces.hunter, bestSample.hunter)),
+    'generation lookup and champion-file lookup resolve identical parameters');
+
+  const legacyDir = join(work, 'cma-archive-legacy');
+  mkdirSync(legacyDir);
+  delete row.champ;
+  writeFileSync(join(legacyDir, 'evo.jsonl'), JSON.stringify(row) + '\n');
+  const legacy = resolveParamSet(`${legacyDir}@gen1`, spaces);
+  ok(isDeepStrictEqual(legacy.hunter, row.cma.hunter.mean) && isDeepStrictEqual(legacy.survivor, {})
+    && !isDeepStrictEqual(legacy.hunter, exported.hunter), 'legacy lookup retains the recorded mean precision');
 }
 
 console.log('- alternating climb with a fixed hunter');

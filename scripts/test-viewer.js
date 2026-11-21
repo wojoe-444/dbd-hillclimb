@@ -233,6 +233,31 @@ test('replays use the saved goal brain with either champion or default parameter
   assert.equal(v.latest().match.cfg.gens.repairS, 65);
 });
 
+test('CMA champion replays and the Champion tab prefer the archive, then the legacy mean', async () => {
+  const legacy = goalRow(1, 0), current = goalRow(2, 0);
+  const mean = champ(goalBrains, { r1_on: 1 });
+  mean.hunter.lungeDist = 2.8765;
+  const cma = { hunter: { mean: mean.hunter }, survivor: { mean: mean.survivor } };
+  legacy.cma = cma;
+  current.cma = cma;
+  current.champ = champ(goalBrains, { r2_on: 1 });
+  current.champ.hunter.lungeDist = 3.25;
+  const v = await startViewer({ files: [[goalLog, jsonl(legacy, current)]] });
+  await v.selectRun('goal');
+  assert.deepEqual(reflexes(v.latest().match), [2]);
+  v.el('champSearch').oninput();
+  assert.match(v.el('champInfo').innerHTML, /gen 2 · CMA-ES mean/);
+  assert.match(v.el('champTables').innerHTML, /lungeDist<\/td><td>3\.25<\/td>/);
+
+  v.el('gen').value = '1';
+  v.el('gen').oninput();
+  await v.el('gen').onchange();
+  assert.deepEqual(reflexes(v.latest().match), [1]);
+  v.el('champSearch').oninput();
+  assert.match(v.el('champInfo').innerHTML, /gen 1 · CMA-ES mean/);
+  assert.match(v.el('champTables').innerHTML, /lungeDist<\/td><td>2\.88<\/td>/);
+});
+
 const replayMapId = (v) => v.latest().match.result().mapId;
 
 test('Auto replays a saved Windows map path and manual selections override it', async () => {

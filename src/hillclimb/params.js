@@ -15,6 +15,13 @@ export function clampParams(space, p) {
   return out;
 }
 
+// Legacy CMA-ES rows recorded the mean in the diagnostics. GA rows use the top-ranked individuals.
+export function evolutionChampion(row) {
+  if (row.champ) return row.champ;
+  if (row.cma) return { hunter: row.cma.hunter.mean, survivor: row.cma.survivor.mean };
+  return { hunter: row.hunters.ranking[0].params, survivor: row.survivors.ranking[0].params };
+}
+
 // Mulberry32: tiny seeded RNG for the climber itself.
 export function rng(seed) {
   let a = seed >>> 0;
