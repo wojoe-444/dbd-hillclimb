@@ -192,6 +192,29 @@ test('setup: 7 of 11 generator candidates chosen (seeded), distinct per-agent rn
   ok(new Set(ctxs.slice(1).map(c => c.last.notifications)).size === 4, 'notification arrays are per-agent');
 });
 
+test('brain navigation exposes only actor-bound geometry queries', () => {
+  const agents = [];
+  const factory = ctx => ({ decide(_obs, api) { agents.push({ ctx, api }); return {}; } });
+  const m = createMatch({ map: smallMap, seed: 1, hunter: factory, survivors: Array(4).fill(factory) });
+  m.step();
+  ok(agents.length === 5 && new Set(agents.map(({ ctx }) => ctx.nav)).size === 5, 'each live brain gets its own nav');
+  const publicMethods = ['cell', 'dist', 'nextWaypoint', 'walkClear'];
+  const from = { x: 30.5, z: 26.5 }, to = { x: 32.5, z: 26.5 };
+  for (const { ctx, api } of agents) {
+    const nav = ctx.nav;
+    const actor = ctx.role === 'hunter' ? m.hunter : m.survivors[ctx.id];
+    ok(nav === api.nav && nav === ctx.api.nav, 'factory and decision APIs share the same public nav');
+    ok(nav !== actor.nav, 'engine and viewer use a separate internal nav');
+    ok(Reflect.ownKeys(nav).length === publicMethods.length && publicMethods.every(k => Object.hasOwn(nav, k) && typeof nav[k] === 'function') &&
+      ['m', 'sh', 'md', 'rt', '_next'].every(k => !(k in nav)), 'brain nav contains queries only');
+    ok(nav.cell(from.x, from.z) === 26 * ctx.map.w + 30 && nav.cell(-1, from.z) === -1, 'cell takes scalar coordinates');
+    near(nav.dist(from, to), 2, 1e-9, 'dist takes points and returns metres');
+    ok(isPt(nav.nextWaypoint(from, to), to) && nav.nextWaypoint(from, { x: -1, z: 26.5 }) === null, 'waypoints use points and can be unreachable');
+    ok(nav.walkClear(from.x, from.z, to.x, to.z) && !nav.walkClear(9.5, 12.5, 11.4, 12.5), 'nav.walkClear takes scalar coordinates');
+    ok(api.walkClear(from, to) && !api.walkClear({ x: 9.5, z: 12.5 }, { x: 11.4, z: 12.5 }), 'api.walkClear takes points');
+  }
+});
+
 test('sight model: tall opaque, low/semi-transparent multiplies by 0.6 once per obstacle', () => {
   const { m } = mk();
   const v = (ax, az, bx, bz) => m.survivors[0].api.visibility({ x: ax, z: az }, { x: bx, z: bz });
@@ -837,10 +860,60 @@ test('attack: first windup tick respects the hunter turn rate', () => {
   const { m, ctl } = mk();
   const H = m.hunter;
   place(H, 30.5, 26.5); H.face = 0;
-  ctl.H = () => ({ act: 'attack', face: { x: 20, z: 26.5 } });
+  place(m.survivors[0], 34.5, 26.5);
+  ctl.H = () => ({ act: 'attack', target: 0, face: { x: 20, z: 26.5 } });
   m.step();
   ok(H.curAct === 'attack' && H.windT > 0, 'windup started on the first tick');
-  near(H.face, Math.PI / 4, 1e-9, 'the first 0.1 s tick turns 45 degrees at 450 degrees/s');
+  near(H.face, Math.PI / 4, 1e-9, 'explicit face overrides target and turns 45 degrees at 450 degrees/s');
+});
+
+test('attack: target-only aim retains facing for a never-seen survivor', () => {
+  const results = [];
+  for (const z of [27.5, 25.5]) {
+    const { m, ctl } = mk();
+    let obs;
+    place(m.hunter, 30.5, 26.5); m.hunter.face = 0;
+    place(m.survivors[0], 26.5, z);
+    ctl.H = o => { obs = o; return { act: 'attack', target: 0 }; };
+    m.step();
+    ok(obs.lastSeen[0] === null && obs.survivors.every(s => s.id !== 0), 'target has never been perceived');
+    ok(m.hunter.curAct === 'attack' && m.hunter.windT > 0, 'blind swing still starts');
+    near(m.hunter.face, 0, 1e-9, 'blind swing keeps facing east');
+    results.push(JSON.stringify(obs));
+  }
+  ok(results[0] === results[1], 'both hidden positions give identical observations');
+});
+
+test('attack: target-only aim uses the latest delivered sighting during windup', () => {
+  const { m, ctl } = mk({ config: { decisionEvery: 2, sight: { perceptionEvery: 1 } } });
+  const H = m.hunter, s = m.survivors[0];
+  const latest = { x: 34.5, z: 28.5 };
+  let obs, hiddenSighting;
+  ctl.H = o => {
+    obs = o;
+    if (o.tick === 4 && o.lastSeen[0]) {
+      hiddenSighting = { ...o.lastSeen[0] };
+      o.lastSeen[0].z = 25.5;  // the brain owns its observation copy
+    }
+    return o.tick < 2 ? {} : { act: 'attack', target: 0 };
+  };
+  place(H, 30.5, 26.5); H.face = 0;
+  place(s, 34.5, 25.5);
+  run(m, 2);
+  ok(isPt(obs.survivors.find(p => p.id === 0), { x: 34.5, z: 25.5 }), 'hunter has an earlier sighting');
+  place(s, latest.x, latest.z);
+  m.step();
+  ok(isPt(obs.survivors.find(p => p.id === 0), latest), 'hunter gets the new position before attacking');
+  const aim = Math.atan2(2, 4);
+  near(H.face, aim, 1e-9, 'windup aims at the newly perceived position');
+
+  place(s, 26.5, 25.5);
+  m.step();
+  ok(obs.tick === 2, 'the action repeats between decisions');
+  near(H.face, aim, 1e-9, 'windup keeps aiming at the delivered position between decisions');
+  m.step();
+  ok(obs.survivors.every(p => p.id !== 0) && isPt(hiddenSighting, latest), 'hidden target is only in sight memory');
+  near(H.face, aim, 1e-9, 'windup aims at the last delivered position even if the brain edits its copy');
 });
 
 test('attack: a window blocks the lunge but allows a hit in range', () => {
