@@ -1218,17 +1218,73 @@ test('survivor-side nav: reaches targets without leaving walkable space (several
   ok(m.survivors[0].nav.nextWaypoint({ x: 3.5, z: 3.5 }, { x: 3.5, z: 12.5 }).z === 12.5, 'straight line => waypoint is the target (no zig-zag)');
 });
 
+test('nav cache: shared fields price windows for the current match in both orders', () => {
+  const from = { x: 13.5, z: 6.5 }, window = { x: 13.5, z: 8.5 };
+  const generator = { x: 14.5, z: 12.5 };   // cheap vault goes through the shack, expensive vault goes around
+  const query = (map, cost) => {
+    const { m } = mk({ map, config: { nav: { fieldAfterHits: 1, windowCostSurvivor: cost, windowCostHunter: cost } } });
+    return [m.survivors[0].nav, m.hunter.nav].map(nav => ({
+      distance: nav.dist(from, window),
+      waypoint: nav.nextWaypoint(from, generator),
+    }));
+  };
+  const cold = new Map([2, 20].map(cost => [cost, query(structuredClone(smallMap), cost)]));
+  for (const [i, role] of ['survivor', 'hunter'].entries()) {
+    ok(cold.get(2)[i].distance === 4 && cold.get(20)[i].distance === 22, `${role}: cold distances include the configured window cost`);
+    ok(cold.get(2)[i].waypoint?.x === 13.5 && cold.get(20)[i].waypoint?.x === 9.5, `${role}: cold generator routes distinguish the vault from the detour`);
+  }
+  for (const order of [[2, 20], [20, 2]]) {
+    const map = structuredClone(smallMap);
+    for (const cost of order) {
+      const actual = query(map, cost), expected = cold.get(cost);
+      for (const [i, role] of ['survivor', 'hunter'].entries()) {
+        const label = `${role}, window cost ${cost}, order ${order.join(' then ')}`;
+        ok(actual[i].distance === expected[i].distance, `${label}: distance ${actual[i].distance} matches cold ${expected[i].distance}`);
+        const a = actual[i].waypoint, b = expected[i].waypoint;
+        ok(a && b && a.x === b.x && a.z === b.z, `${label}: generator waypoint matches cold`);
+      }
+    }
+  }
+});
+
+test('nav cache: steering rechecks the exact origin and destination', () => {
+  const { m } = mk();
+  const from = { x: 13.5, z: 6.5 }, target = { x: 13.5, z: 13.5 };
+  const samePoint = (a, b) => a && a.x === b.x && a.z === b.z;
+  const cold = m.survivors[0].nav.nextWaypoint(from, target);
+  ok(samePoint(cold, { x: 13.5, z: 7.5 }), 'cold waypoint approaches the shack window');
+
+  const direct = m.survivors[1].nav;
+  ok(samePoint(direct.nextWaypoint({ x: 13.5, z: 12.5 }, target), target), 'a nearby origin can steer directly to the target');
+  ok(samePoint(direct.nextWaypoint(from, target), cold), 'a direct hit from another origin does not bypass the window');
+
+  const indirect = m.survivors[2].nav;
+  ok(samePoint(indirect.nextWaypoint({ x: 8.5, z: 8.5 }, target), { x: 9.5, z: 7.5 }), 'the west origin initially steers around the shack');
+  ok(samePoint(indirect.nextWaypoint(from, target), cold), 'a visible detour from another origin does not replace the window approach');
+
+  // Both destinations occupy the same cell, but moving the target east clips the shack corner.
+  const corner = m.survivors[3].nav;
+  const start = { x: 10.5, z: 6.5 }, clear = { x: 8.5, z: 9.5 }, clipped = { x: 8.8, z: 9.5 };
+  ok(samePoint(corner.nextWaypoint(start, clear), clear), 'the clear corner route steers to the requested coordinates');
+  ok(samePoint(corner.nextWaypoint(start, clipped), clear), 'changing the target within the cell recomputes the corner route');
+  ok(samePoint(corner.nextWaypoint(clear, start), start), 'the reverse route is also clear');
+  ok(samePoint(corner.nextWaypoint(clipped, start), { x: 9.5, z: 7.5 }), 'changing the origin within the cell recomputes the corner route');
+});
+
 test('hunter nav treats dropped pallets as blocked; survivors do not', () => {
   const { m } = mk();
   const pi = m.md.pallets.findIndex(q => q.id === 'p-gap');
   const a = { x: 25.5, z: 19.5 }, b = { x: 25.5, z: 24.5 };
   const hd0 = m.hunter.nav.dist(a, b), sd0 = m.survivors[0].nav.dist(a, b);
   near(hd0, sd0, 0.01, 'same distance while the pallet is up');
+  const wp0 = m.hunter.nav.nextWaypoint(a, b);
+  ok(wp0?.x === b.x && wp0?.z === b.z, 'hunter steers directly through a standing pallet');
   m.ps[pi] = 1; m.coll[m.md.pallets[pi].cells[0]] = 1; m.palVersion++; m.droppedCount++;
   const hd1 = m.hunter.nav.dist(a, b), sd1 = m.survivors[0].nav.dist(a, b);
   ok(hd1 > hd0 + 5, `hunter detours around a dropped pallet (${hd0.toFixed(1)} -> ${hd1.toFixed(1)})`);
   near(sd1, sd0 + 0, 0.5, 'survivor path through the dropped pallet is unchanged');
   const wp = m.hunter.nav.nextWaypoint(a, b); ok(wp && Math.hypot(wp.x - a.x, wp.z - a.z) > 0.3, 'hunter waypoint exists');
+  ok(wp && (wp.x !== b.x || wp.z !== b.z), 'dropping the pallet invalidates the direct steering waypoint');
   // follow it: hunter must end up south of the wall line without crossing the pallet cell
   place(m.hunter, a.x, a.z); const H = m.hunter; let crossed = false;
   const ctl = { fn: () => ({ moveTo: b }) }; m.hunter.brain.decide = () => ctl.fn();
@@ -2560,7 +2616,7 @@ test('heal signals in matches: knob extremes are deterministic; letGoW -2 / +2 s
     for (const b of sbs) for (const [k, v] of Object.entries(b.heal.stats)) st[k] = (st[k] ?? 0) + v;
     return { key: JSON.stringify([r.durationS, r.kills, r.escapes, r.events]), st, injHeal };
   };
-  const seeds = [4201, 4202, 4203];
+  const seeds = [4201, 4202, 4204];   // 4204 exercises both responses to an approaching healer
   for (const [name, sp] of [['min', ext(0)], ['max', ext(1)]]) {
     const fwd = seeds.map((s) => go(s, sp)), rev = [...seeds].reverse().map((s) => go(s, sp)).reverse();
     ok(fwd.every((x, i) => x.key === rev[i].key), `all signal knobs at ${name}: identical forward vs reverse order`);

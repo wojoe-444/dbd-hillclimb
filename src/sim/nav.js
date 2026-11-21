@@ -179,7 +179,7 @@ export class NavView {
     this.local = new Map();      // hunter pallet-aware fields (per match)
     this.localVer = -1;
     this.rt = null;              // cached A* route {tc, ver, nodes, i}
-    this.wcTc = -1; this.wcDirect = false; this.wcX = 0; this.wcZ = 0; this.wcTick = -9; this.wcVer = -1;   // cached steering waypoint
+    this.waypoint = { ver: -1, fx: 0, fz: 0, tx: 0, tz: 0, x: 0, z: 0 };
     this.radius = match.cfg.radius;
   }
 
@@ -200,20 +200,20 @@ export class NavView {
 
   _dyn() { return this.hunter && this.m.droppedCount > 0; }
 
-  _peekStatic(cell) {
+  _fieldStatic(cell, build = true) {
     const cache = this.hunter ? this.sh.fieldsH : this.sh.fieldsS;
-    const f = cache.get(cell);
-    if (f !== undefined) { cache.delete(cell); cache.set(cell, f); }
-    return f;
-  }
-  _fieldStatic(cell) {
-    let f = this._peekStatic(cell);
-    if (f === undefined) {
+    // Matches on the same map can price window edges differently.
+    const key = `${this.winCost}:${cell}`;
+    let f = cache.get(key);
+    if (f !== undefined) {
+      cache.delete(key);
+    } else if (build) {
       f = this.sh.computeField(cell, null, this.winCost);
-      const cache = this.hunter ? this.sh.fieldsH : this.sh.fieldsS;
       if (cache.size >= this.sh.cap) cache.delete(cache.keys().next().value);
-      cache.set(cell, f);
+    } else {
+      return undefined;
     }
+    cache.set(key, f);
     return f;
   }
   _localMap() {
@@ -233,8 +233,8 @@ export class NavView {
   }
 
   // Canonical descent of a cost-to-go field from fc: at each cell take the first (in direction order) neighbour that
-  // minimises STEP + extra(v) + f[v]. Depends only on the field values, hence on (target, pallet state) -- not on
-  // cache history. A blocked goal cell (generator, dropped pallet) is not included in the result.
+  // minimises STEP + extra(v) + f[v]. Depends on the target, window cost and pallet state. A blocked goal cell
+  // (generator, dropped pallet) is not included in the result.
   _follow(f, fc, maxN, hps) {
     const md = this.md, kind = md.kind, palIdx = md.palIdx, mask = md.nbMask, off = this.sh.off, wc = this.winCost;
     const path = [fc];
@@ -285,7 +285,7 @@ export class NavView {
     if (dyn) { const lf = this._peekLocal(tc); if (lf !== undefined) return lf[fc] / 1000; }
     // NOTE: no reverse-field shortcut (using the field of `from`): fields are not symmetric at solid/window endpoints,
     // so it made results depend on which fields happened to be cached.
-    let f = this._peekStatic(tc), start = fc;
+    let f = this._fieldStatic(tc, false), start = fc;
     const cfgN = this.cfgN;
     if (f === undefined) {
       if (this._hit(tc) < cfgN.fieldAfterHits) {
@@ -359,19 +359,24 @@ export class NavView {
   }
 
   _next(fx, fz, tx, tz, out) {
+    // Grid routes can be reused as an actor moves, but steering clearance depends on both exact endpoints.
+    const wp = this.waypoint, ver = this.m.palVersion;
+    if (wp.ver === ver && wp.fx === fx && wp.fz === fz && wp.tx === tx && wp.tz === tz) {
+      out.x = wp.x; out.z = wp.z;
+      return true;
+    }
+    if (!this._computeNext(fx, fz, tx, tz, out)) return false;
+    wp.ver = ver; wp.fx = fx; wp.fz = fz; wp.tx = tx; wp.tz = tz;
+    wp.x = out.x; wp.z = out.z;
+    return true;
+  }
+
+  _computeNext(fx, fz, tx, tz, out) {
     const md = this.md, W = md.w, kind = md.kind;
     const fc = this.cell(fx, fz), tc = this.cell(tx, tz);
     if (fc < 0 || tc < 0) return false;
-    const m = this.m;
-    if (this.wcTc === tc && m.tick - this.wcTick <= 2 && this.wcVer === m.palVersion) {   // reuse a recent steering decision
-      if (this.wcDirect) { out.x = tx; out.z = tz; return true; }                         // straight line was clear <= 2 ticks ago
-      const ex = this.wcX - fx, ez = this.wcZ - fz;
-      if (ex * ex + ez * ez > 0.36 && this.walkClear(fx, fz, this.wcX, this.wcZ)) { out.x = this.wcX; out.z = this.wcZ; return true; }
-    }
-    this.wcTc = -1;
     if (fc === tc || this.walkClear(fx, fz, tx, tz)) {
       out.x = tx; out.z = tz;
-      this.wcTc = tc; this.wcDirect = true; this.wcTick = m.tick; this.wcVer = m.palVersion;
       return true;
     }
     const nodes = this._path(fc, tc);
@@ -402,7 +407,6 @@ export class NavView {
     }
     const c = nodes[pick];
     out.x = (c % W) + 0.5; out.z = ((c / W) | 0) + 0.5;
-    this.wcTc = tc; this.wcDirect = false; this.wcX = out.x; this.wcZ = out.z; this.wcTick = m.tick; this.wcVer = m.palVersion;
     return true;
   }
 }
