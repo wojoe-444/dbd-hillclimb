@@ -7,14 +7,18 @@
 //     independent of the thread count;
 //  3. --mod genSeconds=80: recorded in config.json / evo.jsonl / champions.json, deterministic, --resume guard.
 //  4. Pool failure/closure, invalid CLI inputs, seeded resume, and indexed map provenance.
+//  5. Fixed brains with no knobs in mutation, CMA, evolution, and alternating climb.
 //   node scripts/test-evolve.js [--base <git ref>] [--keep]
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
 import { createPool } from '../src/hillclimb/pool.js';
 import { mapPoolInfo } from '../src/hillclimb/evalplan.js';
+import { mutate, rng } from '../src/hillclimb/params.js';
+import { cmaAsk, cmaInit, cmaSummary, cmaTell } from '../src/hillclimb/cmaes.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -34,7 +38,7 @@ function refuses(name, extra, message, reason, script = evolve) {
   const result = spawnSync(process.execPath, runArgs(script, name, extra, 1), { cwd: root, encoding: 'utf8', timeout: 5_000 });
   ok(result.status === 1 && message.test(result.stderr), reason);
 }
-const lines = (dir) => readFileSync(join(dir, 'evo.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const lines = (dir, name = 'evo.jsonl') => readFileSync(join(dir, name), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 function strip(row) {
   const r = structuredClone(row);
   delete r.seconds; delete r.perf; delete r.selection;
@@ -138,6 +142,68 @@ writeFileSync(join(split, 'evo.jsonl'), savedLog + '{"gen":3}\n');
 refuses('split', ['--resume'], /end at different generations/, 'resume rejects a log ahead of its checkpoint');
 writeFileSync(join(split, 'evo.jsonl'), savedLog);
 ok(runFiles.every((name, i) => file(plain, name) === plainBefore[i]), 'refused commands left all run records untouched');
+
+console.log('- fixed brain parameter space');
+{
+  const R = rng(1);
+  const state = R.state();
+  ok(isDeepStrictEqual(mutate({}, { stale: 1 }, R), {}) && R.state() === state, 'empty mutation returns empty params without advancing the RNG');
+
+  const initial = cmaInit({}, {}, { lambda: 6, mirror: true });
+  const candidates = cmaAsk({}, initial, R);
+  ok(initial.mu === 3 && isDeepStrictEqual(candidates, Array.from({ length: 6 }, () => ({ x: [], params: {} }))) && R.state() === state,
+    'fixed CMA keeps the requested population size and samples without advancing the RNG');
+  ok(cmaInit({}, {}).lambda === 4, 'fixed CMA has a finite default population size');
+  const restored = JSON.parse(JSON.stringify(initial));
+  Object.assign(restored, { sigma: null, chiN: null, cc: null }); // pre-fix checkpoint values
+  const updated = cmaTell(restored, candidates.map(({ x }) => x));
+  const summary = { kind: 'sep-cmaes', gen: 1, sigma: 0, axisRatio: 1, mean: {}, meanNorm: [], sd: {} };
+  ok(isDeepStrictEqual(updated, { ...initial, gen: 1 }) && isDeepStrictEqual(cmaSummary({}, updated), summary),
+    'fixed CMA advances the generation and logs finite values after restoring an old checkpoint');
+}
+
+for (const { mode, side, flags } of [
+  { mode: 'GA', side: 'hunter', flags: ['--pop', '2', '--rounds', '1', '--paired'] },
+  { mode: 'CMA', side: 'survivor', flags: ['--opt', 'cmaes', '--cma-mirror', '--panel', 'cur:2,mean:1,default:1', '--slots', '1'] },
+]) {
+  console.log(`- ${mode} with a fixed ${side}`);
+  const extra = [`--${side}`, 'test', ...flags];
+  const whole = run(evolve, `fixed-${mode}-whole`, extra, 1);
+  const leg = [...extra, '--gens', '1'];
+  const resumed = run(evolve, `fixed-${mode}-split`, leg, 2);
+  run(evolve, `fixed-${mode}-split`, [...leg, '--resume'], 2);
+  const rows = lines(whole);
+  ok(rows.length === 2 && same(rows, lines(resumed), noTiming), 'resumed log matches the uninterrupted run across worker counts');
+  ok(file(whole, 'population.json') === file(resumed, 'population.json') && file(whole, 'champions.json') === file(resumed, 'champions.json'),
+    'resumed population and champions match');
+  const ch = JSON.parse(file(whole, 'champions.json'));
+  const size = mode === 'GA' ? 2 : 4;
+  ok(isDeepStrictEqual(ch.champ[side], {}) && rows.every((row) => {
+    const fixed = row[`${side}s`];
+    return isDeepStrictEqual(fixed.knobs, {}) && fixed.ranking.length === size && fixed.ranking.every(({ params }) => isDeepStrictEqual(params, {}));
+  }), 'fixed population keeps empty knobs and params in every generation');
+  if (mode === 'CMA') {
+    ok(rows.every(({ cma, gen, panel }) => cma.survivor.gen === gen && cma.survivor.sigma === 0 && cma.survivor.axisRatio === 1
+      && cma.hunter.sigma > 0 && panel.hunter.length === 1), 'fixed CMA logs a point distribution and supplies one distinct panel opponent');
+  }
+}
+
+console.log('- alternating climb with a fixed hunter');
+{
+  const flags = ['--hunter', 'test', '--n', '1', '--k', '1', '--margin', '-1'];
+  const climb = 'src/hillclimb/climb.js';
+  const a = run(climb, 'fixed-climb-a', flags, 1), b = run(climb, 'fixed-climb-b', flags, 2);
+  const rows = lines(a, 'meta.jsonl');
+  ok(same(rows, lines(b, 'meta.jsonl'), noTiming) && file(a, 'champions.json') === file(b, 'champions.json'),
+    'seeded climb is identical across worker counts');
+  ok(isDeepStrictEqual(rows.map(({ side }) => side), ['survivor', 'hunter']), 'climb preserves alternating turns');
+  const fixed = rows[1];
+  ok(fixed && !fixed.accepted && fixed.confirm === null && isDeepStrictEqual(fixed.best, fixed.base)
+    && isDeepStrictEqual(fixed.after, fixed.base) && isDeepStrictEqual(fixed.champ.hunter, {}), 'fixed turn records a baseline and keeps the champion');
+  run(climb, 'fixed-climb-a', [...flags, '--gens', '1', '--resume'], 2);
+  const [,, next] = lines(a, 'meta.jsonl');
+  ok(next?.gen === 3 && next.side === 'survivor' && isDeepStrictEqual(next.champ.hunter, {}), 'climb resumes with the same fixed brain and alternation');
+}
 
 console.log('- worker pool');
 const mapPath = join(root, 'maps', 'test-small.json');

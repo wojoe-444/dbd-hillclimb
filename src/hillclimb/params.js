@@ -37,6 +37,7 @@ function gauss(r) {
 // Mutate a random subset of params by gaussian noise scaled to each param's range.
 export function mutate(space, p, r, sigma = 0.15, pMutate = 0.35) {
   const keys = Object.keys(space);
+  if (!keys.length) return {};
   const out = { ...p };
   let changed = 0;
   for (const k of keys) {

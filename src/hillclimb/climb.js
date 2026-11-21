@@ -111,31 +111,36 @@ for (let gen = startGen; gen < startGen + opts.gens; gen++) {
   const seeds = freshSeeds(opts.n);
 
   const base = await evaluate(champ.hunter, champ.survivor, seeds);
-  const mutants = Array.from({ length: opts.k }, () => mutate(space, champ[side], R, opts.sigma));
-  const scored = await Promise.all(mutants.map(async (m) => {
-    const pair = { ...champ, [side]: m };
-    return { m, s: await evaluate(pair.hunter, pair.survivor, seeds) };
-  }));
-  scored.sort((a, b) => fit(b.s) - fit(a.s));
-  const best = scored[0];
+  // A fixed brain's turn records just the baseline, keeping the generation schedule for the other side.
+  let best = base;
   let accepted = false;
   let confirm = null;
-  if (fit(best.s) - fit(base) > opts.margin) {
-    const cSeeds = freshSeeds(opts.n);
-    const pair = { ...champ, [side]: best.m };
-    const [cBase, cBest] = await Promise.all([
-      evaluate(champ.hunter, champ.survivor, cSeeds),
-      evaluate(pair.hunter, pair.survivor, cSeeds),
-    ]);
-    confirm = { base: fit(cBase), best: fit(cBest) };
-    if (fit(cBest) - fit(cBase) > 0) {
-      champ = { ...champ, [side]: best.m };
-      accepted = true;
+  if (Object.keys(space).length) {
+    const mutants = Array.from({ length: opts.k }, () => mutate(space, champ[side], R, opts.sigma));
+    const scored = await Promise.all(mutants.map(async (m) => {
+      const pair = { ...champ, [side]: m };
+      return { m, s: await evaluate(pair.hunter, pair.survivor, seeds) };
+    }));
+    scored.sort((a, b) => fit(b.s) - fit(a.s));
+    const candidate = scored[0];
+    best = candidate.s;
+    if (fit(best) - fit(base) > opts.margin) {
+      const cSeeds = freshSeeds(opts.n);
+      const pair = { ...champ, [side]: candidate.m };
+      const [cBase, cBest] = await Promise.all([
+        evaluate(champ.hunter, champ.survivor, cSeeds),
+        evaluate(pair.hunter, pair.survivor, cSeeds),
+      ]);
+      confirm = { base: fit(cBase), best: fit(cBest) };
+      if (fit(cBest) - fit(cBase) > 0) {
+        champ = pair;
+        accepted = true;
+      }
     }
   }
-  const after = accepted ? best.s : base;
+  const after = accepted ? best : base;
   log({
-    gen, side, accepted, base, best: best.s, confirm, after,
+    gen, side, accepted, base, best, confirm, after,
     champ: { hunter: round(champ.hunter), survivor: round(champ.survivor) },
     seconds: (Date.now() - t0) / 1000,
   });
