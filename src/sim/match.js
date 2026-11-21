@@ -223,7 +223,13 @@ export class Match {
 
   _mkAgent(a, role, mapInfoBase, factory) {
     if (typeof factory !== 'function') throw new Error(`createMatch: brain factory for ${role} ${a.id} missing`);
-    const nav = a.nav = new NavView(this.shared, this, role, a.id);
+    const actorNav = a.nav = new NavView(this.shared, this, role, a.id);
+    const nav = Object.freeze({
+      cell: actorNav.cell.bind(actorNav),
+      dist: actorNav.dist.bind(actorNav),
+      nextWaypoint: actorNav.nextWaypoint.bind(actorNav),
+      walkClear: actorNav.walkClear.bind(actorNav),
+    });
     const m = this;
     const api = a.api = {
       role, id: a.id, dt: this.dt, nav,
@@ -721,7 +727,7 @@ export class Match {
       self: { x: H.x, z: H.z, vx: H.vx, vz: H.vz, facing: H.face, fx: Math.cos(H.face), fz: Math.sin(H.face),
         carrying: H.carrying >= 0 ? H.carrying : null, cooldownS: H.cdT, windupS: H.windT, stunS: H.stunT, vaulting: !!H.vault, act: H.curAct, progress: H.prog,
         bloodlust: this.blTier, speed: this._hunterSpeed() },
-      survivors, lastSeen: H.lastSeen.slice(), grunts, scratches, gens, noisyGens, gensDone: this.gensDone, gensNeeded: this.gensNeeded,
+      survivors, lastSeen: H.lastSeen.map(s => s && { ...s }), grunts, scratches, gens, noisyGens, gensDone: this.gensDone, gensNeeded: this.gensNeeded,
       hooked, status: out, chase: { target: this.chaseTgt >= 0 ? this.chaseTgt : null, bloodlust: this.blTier }, pallets: this._palNames(), gates: this._gatesObs(H), gatesPowered: this.gatesPowered, blockedWindows: [],
       endgame: this._endgameObs(),
       notifications: inbox, newNotifications: newN,
@@ -1497,9 +1503,9 @@ export class Match {
       H.windT = hc.windupS; H.prog = 0;
     }
     if (H.windT > 0) {
-      // keep turning toward the attack target through the windup (turn-rate limited)
-      if (A.face) this._turnHunter(Math.atan2(A.face.z - H.z, A.face.x - H.x));
-      else if (typeof A.target === 'number') { const t = this.survivors[A.target]; if (t && t.st < S_DEAD) this._turnHunter(Math.atan2(t.z - H.z, t.x - H.x)); }
+      // Keep turning through the windup using the explicit aim or the last sighting delivered to the brain.
+      const aim = A.face || (typeof A.target === 'number' ? H.lastSeen[A.target] : null);
+      if (aim) this._turnHunter(Math.atan2(aim.z - H.z, aim.x - H.x));
       // lunge forward along the facing, but plant once a valid target is already inside range + arc (no overshoot)
       const speed = carrying ? hc.carrySpeed : hc.speed * hc.lungeSpeedMult;
       if (!this._targetInReach()) {

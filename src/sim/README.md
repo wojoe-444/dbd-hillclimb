@@ -138,16 +138,19 @@ meaningful actions are `act: 'selfUnhook'` (when offered) and `intent`. An excep
 
 ### Navigation (`api.nav`, actor-bound)
 
+`ctx.nav` and `api.nav` share the same query interface for that actor.
+
 * `dist(from, to)` → metres along the walkable grid (octile, 8-connected, no corner cutting, vault penalties; `Infinity` if unreachable).
   O(1) for map features (generators, hooks, pallets, windows, levers, exits, spawns — fields are cached, LRU 256, shared across matches);
   other targets cost a bounded A* (~0.05–0.4 ms) and become cached after repeated queries. Prefer Euclid for moving targets.
   Hunter routes avoid dropped pallets. If an empty-handed hunter's dropped-pallet detour exceeds the search budget,
-  the distance falls back to the static distance plus `nav.crossPenalty`.
+  the distance falls back to the static distance plus `config.nav.crossPenalty`.
   An Entity-blocked window is excluded from that survivor's routes until its timer expires. A carrying hunter's routes,
   including distances used to choose a hook, exclude all windows. Fields for these restrictions are cached per actor.
 * `nextWaypoint(from, to)` → `{x,z}` or `null`; string-pulled (farthest path node reachable in a straight swept-circle line).
   If `to` is inside a solid cell (generator, dropped pallet) it ends at the last walkable cell in front of it.
-* `walkClear(from, to)` swept-circle (r = 0.4) test against the current collision grid.
+* `cell(x, z)` → row-major grid cell index, or `-1` outside the grid.
+* `walkClear(ax, az, bx, bz)` runs a swept-circle (r = 0.4) test against the current collision grid. `api.walkClear(from, to)` takes points.
 * All distances are exact integer-millimetre costs, so results never depend on cache state.
 
 ### Action object
@@ -168,6 +171,9 @@ Interactions continue while the action is repeated each tick and the actor stays
 *and* `act` together only if you want "walk, then do it when arrived" — the act starts as soon as the move command yields no step).
 Progress resets if the act/target changes or a tick passes without it (except persistent progress stored on the object: generator
 progress, gate lever progress (survivors), heal progress on the patient, mend progress on the patient, wiggle progress).
+
+An `attack` with `face` aims at that point. With only a numeric `target`, it aims at the position last reported for that
+survivor in `obs.lastSeen`, or keeps its current facing if there is no sighting.
 
 | act | who | range / time |
 |---|---|---|
