@@ -115,6 +115,8 @@ pallet save; `mend {who, by}`; `gateOpen {gate, by: id|'hunter'}`; `endgame {cau
 `fumble` only if the legacy knob is enabled)
 (`death.cause`: `bleedout | hookDeath | hook3 (stage 3 reached on hooking) | lastHook (last survivor hooked) | endgame | allDown | lastSurvivor`).
 
+When a voluntary drop fills the wiggle meter, the match emits `drop` followed by `wiggle` on the same tick.
+
 **Frames** (`record:true`): `{ t, h:[x,z,facing,carryingId|-1,status], s:[[x,z,facing,state,act,boost]×4], g:[gen progress 0..1], p:[pallet states] }`
 (survivor act codes 0 none 1 repair 2 heal 3 rescue 4 dropPallet 5 openGate 6 wiggle 7 vault 8 mend 9 selfUnhook; hunter kicks show as status 5 interacting);
 `record.meta.legend` documents the codes; `meta.gens`/`meta.pallets` give the id order. `p` is shared between frames while unchanged.
@@ -176,10 +178,10 @@ progress, gate lever progress (survivors), heal progress on the patient, mend pr
 | `selfUnhook` | hooked survivor | only when offered (`self.canSelfUnhook`: Resolve meter full, gates not powered); repeat for 1.5 s (hook timer paused; interrupted → resets) → normal unhook result |
 | `attack` | hunter | 0.35 s windup (4 ticks), then hit if a healthy/injured survivor is within 2.2 m and ±45° of facing and visible; hit cooldown 2.7 s (speed 0.575), miss 1.5 s (speed 1.15). Allowed while carrying (no lunge; e.g. to clear a body block) |
 | `pickup` | hunter | downed survivor within 1.5 m; 2 s (the survivor is locked in place meanwhile) |
-| `hook` | hunter | carrying, within 1.5 m of a free hook; **1.5 s**. Hook stages (70 s each) are consumed — see Rules |
-| `drop` | hunter | carrying; instant (`hunter.dropS` = 0 [A]); the survivor lands downed at the hunter's feet with **+25 % wiggle** progress |
+| `hook` | hunter | Within 1.5 m of a free hook while carrying. Takes **1.5 s**. In the simulator, a full wiggle on the completion tick resolves first. See Rules for hook stages |
+| `drop` | hunter | Instant while carrying (`hunter.dropS` = 0 [A]). Adds **25% wiggle**. At 100%, the survivor immediately breaks free injured and stuns the hunter. Otherwise, they land downed at the hunter's feet |
 | `openGate` | hunter | gates powered, the collapse **not** begun, within 1.5 m of the lever, not carrying; **0.75 s** (0.8 s in ticks); interrupted progress resets; opening starts the collapse |
-| `breakPallet` | hunter | within 1.5 m of a dropped pallet; 2.34 s (2.4 s in whole ticks); removes Bloodlust |
+| `breakPallet` | hunter | Within 1.5 m of a dropped pallet with empty hands. Takes 2.34 s (2.4 s in whole ticks) and removes Bloodlust |
 | `kickGen` | hunter | not carrying; within 1.1 m of a gen with progress > 0, not done, not already regressing, gates not powered, **fewer than 8 kicks on that gen so far** (`gens.maxKicks`); 1.8 s → −5 % of the bar and the gen regresses at 0.25 charges/s until repair cancels it (above) or it reaches 0 |
 
 Windows: entering a window cell along its axis triggers a vault (position locked); not possible along the other axis. Hunter 1.7 s.
@@ -279,8 +281,9 @@ Obs objects are freshly allocated every call and owned by the receiving brain.
 * **Downed** [S]: bleed-out is a **240 s budget cumulative across all downs** (paused while carried/hooked/standing; never refilled). While
   downed and stationary a survivor **recovers automatically at 0.5 charges/s up to 95 %** of the downed→injured heal (30.4 s); crawling pauses
   it; the last 5 % needs a teammate's heal. HUD activity `'recover'`.
-* **Carry** [S]: wiggle escape and pallet saves release the survivor **injured**; wiggle progress persists across drops / re-pickups; a
-  voluntary `drop` adds 25 % wiggle. A carrying hunter still collides with survivors (body-blocking the carrier).
+* **Carry** [S]. Wiggle escapes and pallet saves release the survivor **injured**. Wiggle progress persists across drops and re-pickups.
+  A carrying hunter still collides with survivors, who can body-block them. [Behaviour 3.6.0 drop penalty](https://forums.bhvr.com/dead-by-daylight/kb/articles/151-3-6-0-chains-of-hate),
+  [Behaviour 5.5.1 progress retention](https://forums.bhvr.com/dead-by-daylight/kb/articles/313-5-5-1-bugfix-patch).
 * **Spawns**: `map.spawns.survivors` are anchor candidates: one is picked (seeded) and the 4 survivors are placed on distinct free
   positions within `spawn.groupRadius` (**12 m** [S] path distance from the anchor and pairwise, ≥ `spawn.minSep` = 3 m apart; other candidates near the anchor
   first, then random free cells). Hunter: `map.spawns.hunter` candidates whose path distance from the anchor is ≥ `spawn.hunterMinFrac`

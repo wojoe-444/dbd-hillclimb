@@ -1361,6 +1361,7 @@ export class Match {
   _wiggleFree(s) {
     const H = this.hunter;
     H.carrying = -1; s.st = S_INJURED; s.wiggle = 0; s.heal = 0; s.prog = 0;   // a successful escape releases the survivor INJURED
+    s.curAct = null;
     H.stunT = this.cfg.hunter.wiggleStunS; H.prog = 0; H.windT = 0;
     this.stats.wiggles++; this.stats.stuns++;
     this.ev('wiggle', { who: s.id });
@@ -1398,6 +1399,7 @@ export class Match {
     if (H.carrying >= 0) {
       const c = this.survivors[H.carrying];
       H.carrying = -1; c.st = S_INJURED; c.wiggle = 0; c.heal = 0;   // pallet save: released INJURED
+      c.curAct = null;
       this.ev('dropped', { who: c.id, state: 'injured' });
     }
   }
@@ -1526,7 +1528,8 @@ export class Match {
           if (!t) { let bd = Infinity; for (const o of this.survivors) if (o.st === S_DOWNED) { const d = hyp(o.x - H.x, o.z - H.z); if (d < bd) { bd = d; t = o; } } }
           if (!t || t.st !== S_DOWNED || t.vault || hyp(t.x - H.x, t.z - H.z) > cfg.reach.pickup) break;
           if (same('pickup', t.id) >= hc.pickupS - EPS) {
-            t.st = S_CARRIED; t.prog = 0; H.carrying = t.id;   // wiggle progress persists across drops / re-pickups H.prog = 0; H.curAct = null;
+            t.st = S_CARRIED; t.prog = 0; H.carrying = t.id;   // keep wiggle progress from previous drops
+            H.curAct = H.curTgt = null;
             this.stats.pickups++;
             this.ev('pickup', { who: t.id });
           }
@@ -1537,7 +1540,10 @@ export class Match {
           let hk = A.target !== undefined && A.target !== null ? this.hooks.find(x => x.id === A.target) : null;
           if (!hk) { let bd = Infinity; for (const c of this.hooks) { if (c.occ >= 0) continue; const d = hyp(c.x - H.x, c.z - H.z); if (d < bd) { bd = d; hk = c; } } }
           if (!hk || hk.occ >= 0 || hyp(hk.x - H.x, hk.z - H.z) > cfg.reach.hook) break;
-          if (same('hook', hk.id) >= hc.hookS - EPS) { this._hookSurvivor(this.survivors[H.carrying], hk); H.prog = 0; H.curAct = null; }
+          if (same('hook', hk.id) >= hc.hookS - EPS) {
+            this._hookSurvivor(this.survivors[H.carrying], hk);
+            H.curAct = H.curTgt = null;
+          }
           break;
         }
         case 'kickGen': {
@@ -1555,6 +1561,7 @@ export class Match {
           break;
         }
         case 'breakPallet': {
+          if (carrying) break;
           let p = A.target !== undefined && A.target !== null ? this.palletById.get(A.target) : null;
           if (!p) { let bd = Infinity; for (const c of this.md.pallets) { if (this.ps[c.index] !== 1) continue; const d = rectDist(H.x, H.z, c.x0, c.z0, c.x1, c.z1); if (d < bd) { bd = d; p = c; } } }
           if (!p || this.ps[p.index] !== 1 || rectDist(H.x, H.z, p.x0, p.z0, p.x1, p.z1) > cfg.reach.breakPallet) break;
@@ -1568,9 +1575,12 @@ export class Match {
           }
           break;
         }
-        case 'drop': {                                    // voluntary drop: survivor downed at the hunter's feet, +25 % wiggle
+        case 'drop': {
           if (!carrying) break;
-          if (same('drop', H.carrying) >= hc.dropS - EPS) { this._dropCarried(); H.prog = 0; H.curAct = null; }
+          if (same('drop', H.carrying) >= hc.dropS - EPS) {
+            this._dropCarried();
+            H.curAct = H.curTgt = null;
+          }
           break;
         }
         case 'openGate': {                                // hunter opens a powered gate, only before the collapse has begun
@@ -1596,11 +1606,14 @@ export class Match {
 
   _dropCarried() {
     const H = this.hunter, c = this.survivors[H.carrying], sv = this.cfg.survivor;
-    H.carrying = -1;
-    c.st = S_DOWNED; c.x = H.x; c.z = H.z; c.vx = c.vz = 0;
-    c.wiggle = Math.min(sv.wiggleS, c.wiggle + this.cfg.hunter.dropWiggleBonus * sv.wiggleS);
+    c.x = H.x; c.z = H.z; c.vx = c.vz = 0;
+    c.wiggle += this.cfg.hunter.dropWiggleBonus * sv.wiggleS;
+    const escaped = c.wiggle >= sv.wiggleS - EPS;
     this.stats.drops++;
-    this.ev('drop', { who: c.id, wiggle: c.wiggle / sv.wiggleS });
+    this.ev('drop', { who: c.id, wiggle: escaped ? 1 : c.wiggle / sv.wiggleS });
+    if (escaped) { this._wiggleFree(c); return; }
+    H.carrying = -1;
+    c.st = S_DOWNED; c.curAct = null;
   }
 
   _targetInReach() {
@@ -1647,7 +1660,7 @@ export class Match {
     const H = this.hunter, hcfg = this.cfg.hooks;
     H.carrying = -1;
     s.hookCount++; this.stats.hooks++;
-    s.wiggle = 0; s.vault = null;
+    s.wiggle = 0; s.curAct = null; s.prog = 0; s.vault = null;
     this._notifyMates(s, { type: 'hooked', who: s.id, hookId: hk.id, x: hk.x, z: hk.z, t: this.t });   // HUD: when/where
     // hook-stage accounting: every hooking consumes one stage (on top of stages consumed by timers on earlier hooks)
     s.hookStage++;
