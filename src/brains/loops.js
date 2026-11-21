@@ -25,6 +25,8 @@
 import { accelCosts } from './accel.js';
 
 const SQ2 = Math.SQRT2;
+// Directions in row order: NW, N, NE, W, E, SW, S, SE.
+const DIAGONAL_NEIGHBORS = 0b10100101;
 
 export class LoopModel {
   constructor(ctx, opts = {}) {
@@ -157,6 +159,9 @@ export class LoopModel {
     }
     this.fields = new Array(this.nSides).fill(null);   // lazy: Float32Array(2 nSides) walk distances from side s (to sides, then to lineup points)
     this.dist = new Int32Array(W * H).fill(-1);          // Dijkstra scratch (x10 units)
+    this.neighborMasks = null;
+    this.fieldOffsets = [-W - 1, -W, -W + 1, -1, 1, W - 1, W, W + 1];
+    this.fieldBuckets = [];
     this.memo = new Map();                               // start crossing -> top circuits
     this.cap = this.fieldR + 6;
   }
@@ -238,30 +243,52 @@ export class LoopModel {
     return this.sFast + this.tierW * (t - this.sFast);
   }
 
+  walkNeighborMask(c) {
+    const { W, solid } = this;
+    const i = c % W;
+    const north = c >= W && !solid[c - W], south = c + W < solid.length && !solid[c + W];
+    const west = i > 0 && !solid[c - 1], east = i < W - 1 && !solid[c + 1];
+    let mask = (north << 1) | (west << 3) | (east << 4) | (south << 6);
+    // A diagonal is legal only when both adjacent cardinal cells are open.
+    if (north && west && !solid[c - W - 1]) mask |= 1 << 0;
+    if (north && east && !solid[c - W + 1]) mask |= 1 << 2;
+    if (south && west && !solid[c + W - 1]) mask |= 1 << 5;
+    if (south && east && !solid[c + W + 1]) mask |= 1 << 7;
+    return mask;
+  }
+
   field(s) {
     const out = new Float32Array(2 * this.nSides).fill(this.cap);
     const c0 = this.sideCell[s];
     if (c0 < 0) return out;
-    const W = this.W, H = this.H, solid = this.solid, dist = this.dist, R = this.fieldR * 10;
+    const dist = this.dist, R = this.fieldR * 10;
+    const offsets = this.fieldOffsets;
+    // The walk grid is static. Store mask + 1 so zero means the cell has yet to be expanded.
+    const masks = this.neighborMasks ??= new Uint16Array(dist.length);
     // bucket-queue Dijkstra, octile costs 10 / 14 (no corner cutting)
-    const buckets = [[c0]]; dist[c0] = 0;
-    const touched = [c0];
-    for (let b = 0; b < buckets.length && b <= R; b++) {
+    const buckets = this.fieldBuckets;
+    (buckets[0] || (buckets[0] = [])).push(c0);
+    dist[c0] = 0;
+    // Distances are set on enqueue. Buckets that cannot reach another cell need no expansion.
+    for (let b = 0; b < buckets.length && b + 10 <= R; b++) {
       const bk = buckets[b]; if (!bk) continue;
+      const straight = b + 10, diagonal = b + 14;
+      const withinRadius = diagonal <= R ? 0xff : ~DIAGONAL_NEIGHBORS;
       for (let q = 0; q < bk.length; q++) {
         const c = bk[q]; if (dist[c] !== b) continue;
-        const i = c % W, j = (c / W) | 0;
-        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-          if (!di && !dj) continue;
-          const ni = i + di, nj = j + dj;
-          if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
-          const n = nj * W + ni;
-          if (solid[n]) continue;
-          if (di && dj && (solid[j * W + ni] || solid[nj * W + i])) continue;
-          const nd = b + (di && dj ? 14 : 10);
-          if (nd > R) continue;
-          if (dist[n] >= 0 && dist[n] <= nd) continue;
-          if (dist[n] < 0) touched.push(n);
+        let mask = masks[c] - 1;
+        if (mask < 0) {
+          mask = this.walkNeighborMask(c);
+          masks[c] = mask + 1;
+        }
+        mask &= withinRadius;
+        // Take the lowest set bit first to preserve direction order.
+        while (mask) {
+          const bit = mask & -mask;
+          mask ^= bit;
+          const nd = (bit & DIAGONAL_NEIGHBORS) ? diagonal : straight;
+          const n = c + offsets[31 - Math.clz32(bit)], dn = dist[n];
+          if (dn >= 0 && dn <= nd) continue;
           dist[n] = nd;
           (buckets[nd] || (buckets[nd] = [])).push(n);
         }
@@ -277,7 +304,12 @@ export class LoopModel {
       const lu = this.lineup[t];
       if (lu && dist[lu.cell] >= 0) { const a = this.sidePt[s]; out[this.nSides + t] = Math.max(Math.hypot(a.x - lu.x, a.z - lu.z), dist[lu.cell] / 10); }
     }
-    for (const c of touched) dist[c] = -1;
+    // Every distance written above has a bucket entry, including stale entries after an improvement.
+    for (const bucket of buckets) {
+      if (!bucket) continue;
+      for (const c of bucket) dist[c] = -1;
+      bucket.length = 0;
+    }
     return out;
   }
 
