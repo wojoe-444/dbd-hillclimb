@@ -1,12 +1,13 @@
 // Evaluation plumbing shared by evolve.js, scripts/crossplay.js and scripts/knob-sensitivity.js:
 // pairing/seed plans, fixed-opponent benchmarks on held-out seeds, result summaries, range-edge reports,
 // param-set resolution ("default", run dirs, run@genN, champions/population files) and run provenance.
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defaults, clampParams } from './params.js';
+import { loadMapPool } from './maps.js';
 import { modsOf, modsKey, describeMods } from '../sim/modifiers.js';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -177,10 +178,7 @@ export function gitInfo(cwd = REPO_ROOT) {
 
 // Fingerprint of the map pool actually loaded (so a run can be tied to the exact variants it saw).
 export function mapPoolInfo(path) {
-  const files = statSync(path).isDirectory()
-    ? readdirSync(path).filter((f) => f.endsWith('.json') && f !== 'index.json').sort().map((f) => join(path, f))
-    : [path];
   const h = createHash('sha1');
-  for (const f of files) h.update(readFileSync(f));
-  return { n: files.length, sha1: h.digest('hex') };
+  const maps = loadMapPool(path, (bytes) => h.update(bytes));
+  return { n: maps.length, sha1: h.digest('hex') };
 }

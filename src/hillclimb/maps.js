@@ -2,16 +2,23 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 
-export function loadMapPool(path) {
-  const load = (f) => JSON.parse(readFileSync(f, 'utf8'));
+// onMapBytes can fingerprint the variant files in the exact order used for seed selection.
+export function loadMapPool(path, onMapBytes) {
+  const load = (f) => {
+    const bytes = readFileSync(f);
+    onMapBytes?.(bytes);
+    return JSON.parse(bytes.toString('utf8'));
+  };
   if (statSync(path).isDirectory()) {
     const files = readdirSync(path).filter((f) => f.endsWith('.json') && f !== 'index.json').sort();
     return files.map((f) => load(join(path, f)));
   }
-  const j = load(path);
+  const bytes = readFileSync(path);
+  const j = JSON.parse(bytes.toString('utf8'));
   if (basename(path) === 'index.json' || Array.isArray(j.variants)) {
     const list = j.variants ?? j;
     return list.map((v) => load(join(dirname(path), typeof v === 'string' ? v : v.file)));
   }
+  onMapBytes?.(bytes);
   return [j];
 }

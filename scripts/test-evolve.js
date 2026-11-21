@@ -2,30 +2,37 @@
 // End-to-end checks for evolve.js (runs tiny evolutions on maps/test-small.json as child processes, ~2-4 min):
 //  1. default flags reproduce the pre-selection-fix evolve.js (git ref --base, default 940a8f6) byte-identically:
 //     evo.jsonl after dropping the known additive fields (seconds, perf, selection, ranking[].fitSd),
-//     population.json and champions.json as they are;
+//     population.json after dropping the checkpoint metadata, and champions.json as it is;
 //  2. --panel --race (GA) and --opt cmaes (with and without --panel/--race) are deterministic for a fixed seed,
 //     independent of the thread count;
 //  3. --mod genSeconds=80: recorded in config.json / evo.jsonl / champions.json, deterministic, --resume guard.
+//  4. Pool failure/closure, invalid CLI inputs, seeded resume, and indexed map provenance.
 //   node scripts/test-evolve.js [--base <git ref>] [--keep]
-import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, rmSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { createPool } from '../src/hillclimb/pool.js';
+import { mapPoolInfo } from '../src/hillclimb/evalplan.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const base = argv.includes('--base') ? argv[argv.indexOf('--base') + 1] : '940a8f6';
-const work = join(tmpdir(), `dbd-test-evolve-${process.pid}`);
-mkdirSync(work, { recursive: true });
+const work = mkdtempSync(join(tmpdir(), 'dbd-test-evolve-'));
 let passed = 0, failed = 0;
 const ok = (c, msg) => { if (c) { passed++; console.log('  ok   ' + msg); } else { failed++; console.log('  FAIL ' + msg); } };
 
 const SMALL = ['--map', 'maps/test-small.json', '--pop', '4', '--gens', '2', '--seed', '5'];
+const evolve = 'src/hillclimb/evolve.js';
+const runArgs = (script, name, extra, threads) => [script, ...SMALL, '--threads', String(threads), '--out', join(work, name), ...extra];
 function run(script, name, extra, threads = 3) {
-  const out = join(work, name);
-  execFileSync(process.execPath, [script, ...SMALL, '--threads', String(threads), '--out', out, ...extra], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] });
-  return out;
+  execFileSync(process.execPath, runArgs(script, name, extra, threads), { cwd: root, stdio: ['ignore', 'ignore', 'inherit'], timeout: 60_000 });
+  return join(work, name);
+}
+function refuses(name, extra, message, reason, script = evolve) {
+  const result = spawnSync(process.execPath, runArgs(script, name, extra, 1), { cwd: root, encoding: 'utf8', timeout: 5_000 });
+  ok(result.status === 1 && message.test(result.stderr), reason);
 }
 const lines = (dir) => readFileSync(join(dir, 'evo.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 function strip(row) {
@@ -44,12 +51,23 @@ writeFileSync(baseScript, execFileSync('git', ['show', `${base}:src/hillclimb/ev
 try {
   for (const [name, extra] of [['plain', ['--rounds', '2']], ['flags', ['--rounds', '2', '--paired', '--reeval-top', '2', '--reeval-rounds', '2', '--carry']]]) {
     console.log(`- default identity vs ${base}: ${name}`);
-    const a = run(baseScript, `base-${name}`, extra), b = run('src/hillclimb/evolve.js', `new-${name}`, extra);
+    const a = run(baseScript, `base-${name}`, extra), b = run(evolve, `new-${name}`, extra);
     const la = lines(a), lb = lines(b);
     ok(same(la, lb, strip), 'evo.jsonl identical after dropping additive fields');
     ok(la.every((x) => !('selection' in x)) && lb.every((x) => x.selection && x.perf && x.perf.matches > 0), 'additive fields: selection + perf only in the new log');
-    ok(file(a, 'population.json') === file(b, 'population.json'), 'population.json identical');
+    const { rng, prev, ...population } = JSON.parse(file(b, 'population.json'));
+    ok(file(a, 'population.json') === JSON.stringify(population, null, 2), 'population.json identical apart from checkpoint metadata');
     ok(file(a, 'champions.json') === file(b, 'champions.json'), 'champions.json identical');
+    if (name === 'flags') {
+      const leg = [...extra, '--gens', '1'];
+      const split = run(evolve, 'split', leg);
+      run(evolve, 'split', [...leg, '--resume'], 2);
+      ok(same(lb, lines(split), noTiming), 'a seeded resume reproduces the uninterrupted generations');
+      ok(file(split, 'population.json') === file(b, 'population.json'), 'resumed population checkpoint is identical');
+    } else {
+      run(evolve, 'base-plain', ['--rounds', '2', '--gens', '0', '--resume']);
+      ok(file(a, 'population.json') === JSON.stringify(population, null, 2), 'legacy resume reads a checkpoint without RNG state');
+    }
   }
 } finally { rmSync(baseScript, { force: true }); }
 
@@ -61,7 +79,7 @@ const modes = {
 };
 for (const [name, extra] of Object.entries(modes)) {
   console.log(`- determinism: ${name}`);
-  const a = run('src/hillclimb/evolve.js', `${name}-a`, extra, 3), b = run('src/hillclimb/evolve.js', `${name}-b`, extra, 2);
+  const a = run(evolve, `${name}-a`, extra, 3), b = run(evolve, `${name}-b`, extra, 2);
   const la = lines(a), lb = lines(b);
   ok(la.length === 2 && same(la, lb, noTiming), 'evo.jsonl identical (3 vs 2 threads)');
   ok(file(a, 'champions.json') === file(b, 'champions.json'), 'champions.json identical');
@@ -85,7 +103,7 @@ for (const [name, extra] of Object.entries(modes)) {
 {
   console.log('- game modifiers: --mod genSeconds=80');
   const extra = ['--rounds', '2', '--mod', 'genSeconds=80'];
-  const a = run('src/hillclimb/evolve.js', 'mod-a', extra, 3), b = run('src/hillclimb/evolve.js', 'mod-b', extra, 2);
+  const a = run(evolve, 'mod-a', extra, 3), b = run(evolve, 'mod-b', extra, 2);
   const la = lines(a), lb = lines(b);
   ok(la.length === 2 && same(la, lb, noTiming), 'evo.jsonl identical (3 vs 2 threads)');
   ok(file(a, 'champions.json') === file(b, 'champions.json'), 'champions.json identical');
@@ -93,14 +111,88 @@ for (const [name, extra] of Object.entries(modes)) {
   ok(cfg.modifiers?.genSeconds === 80 && cfg.standard === false, 'config.json: modifiers { genSeconds: 80 }, standard: false');
   ok(la.every((r) => r.modifiers?.genSeconds === 80), 'every evo.jsonl line carries the modifiers');
   ok(ch.modifiers?.genSeconds === 80 && ch.standard === false, 'champions.json carries the modifiers');
-  const std = run('src/hillclimb/evolve.js', 'mod-std', ['--rounds', '2'], 3);
+  const std = run(evolve, 'mod-std', ['--rounds', '2'], 3);
   const cs = JSON.parse(file(std, 'config.json'));
   ok(cs.standard === true && Object.keys(cs.modifiers).length === 0 && lines(std).every((r) => !('modifiers' in r)) && !('modifiers' in JSON.parse(file(std, 'champions.json'))), 'standard run: config.json standard: true, nothing extra in evo.jsonl / champions.json');
   ok(!same(la, lines(std), noTiming), 'the modifier changes the evolution');
-  let refused = false;
-  try { execFileSync(process.execPath, ['src/hillclimb/evolve.js', ...SMALL, '--threads', '2', '--out', a, '--rounds', '2', '--resume'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] }); } catch { refused = true; }
-  ok(refused && lines(a).length === 2, '--resume without the run\'s --mod is refused (log untouched)');
+  refuses('mod-a', ['--rounds', '2', '--resume'], /started with game modifiers/, '--resume without the run\'s --mod is refused');
+  ok(lines(a).length === 2, 'modifier mismatch leaves the log untouched');
 }
+console.log('- invalid evolution requests');
+refuses('no-threads', ['--threads', '0'], /threads must be a positive integer/, 'evolution rejects zero workers');
+refuses('no-climb-threads', ['--threads', '0'], /threads must be a positive integer/, 'climb rejects zero workers', 'src/hillclimb/climb.js');
+refuses('race-step', ['--race', '--slots', '2', '--race-step', '0'], /--race-step must be/, 'a race step must make progress');
+refuses('race-max', ['--race', '--slots', '4', '--race-max', '3'], /--race-max must be/, 'race budget covers the initial slots');
+refuses('cma-sigma', ['--opt', 'cmaes', '--cma-sigma', '0'], /--cma-sigma must be/, 'CMA rejects zero initial sigma');
+refuses('cma-pop', ['--opt', 'cmaes', '--pop', '2'], /--pop must be/, 'CMA rejects sizes it would otherwise silently expand');
+const plain = join(work, 'new-plain');
+const runFiles = ['config.json', 'evo.jsonl', 'population.json', 'champions.json'];
+const plainBefore = runFiles.map((name) => file(plain, name));
+refuses('new-plain', ['--rounds', '2'], /already contains evolution results/, 'fresh runs cannot append duplicate generations');
+refuses('new-plain', ['--resume', '--opt', 'cmaes'], /same --opt/, 'resuming cannot mislabel the optimizer');
+refuses('new-plain', ['--resume', '--pop', '5'], /same --pop/, 'resuming cannot mislabel the population size');
+refuses('missing', ['--resume'], /requires a population.json/, 'resume requires a checkpoint');
+const split = join(work, 'split');
+const savedLog = file(split, 'evo.jsonl');
+writeFileSync(join(split, 'evo.jsonl'), savedLog + '{"gen":3}\n');
+refuses('split', ['--resume'], /end at different generations/, 'resume rejects a log ahead of its checkpoint');
+writeFileSync(join(split, 'evo.jsonl'), savedLog);
+ok(runFiles.every((name, i) => file(plain, name) === plainBefore[i]), 'refused commands left all run records untouched');
+
+console.log('- worker pool');
+const mapPath = join(root, 'maps', 'test-small.json');
+const poolOptions = { mapPath, hunterBrain: 'test', survivorBrain: 'test' };
+for (const [key, value] of [['threads', 0], ['threads', 1.5], ['chunk', 0], ['chunk', NaN]]) {
+  let failure;
+  try { await createPool({ ...poolOptions, threads: 1, [key]: value }).close(); } catch (error) { failure = error; }
+  ok(failure instanceof RangeError && failure.message.startsWith(key), `${key}=${value} is rejected`);
+}
+const jobs = [3, 1, 2].map((seed) => ({ seed, config: { maxMatchS: 1 }, tag: { label: `match-${seed}` } }));
+const pool = createPool({ ...poolOptions, threads: 2, chunk: 2 });
+try {
+  const [a, b] = await Promise.all([pool.run(jobs), pool.run(jobs.slice().reverse())]);
+  ok(JSON.stringify(a) === JSON.stringify(b.reverse()) && a.every((r, i) => r.seed === jobs[i].seed && r.label === jobs[i].tag.label), 'concurrent batches preserve seeded results, order and tags');
+  ok(pool.takeStats().matches === 6, 'stats include each completed job');
+} finally { await pool.close(); }
+
+const exits = join(work, 'exit-worker.mjs');
+writeFileSync(exits, 'process.exit(0);\n');
+for (const [name, options, message] of [
+  ['close', {}, /pool is closed/],
+  ['startup error', { metrics: [join(work, 'missing.mjs')] }, /missing\.mjs/],
+  ['unexpected exit', { metrics: [exits] }, /exited unexpectedly \(code 0\)/],
+]) {
+  const broken = createPool({ ...poolOptions, threads: 1, ...options });
+  const settled = Promise.allSettled([broken.run(jobs), broken.run(jobs)]);
+  const closing = name === 'close' ? broken.close() : null;
+  const results = await settled;
+  ok(results.every((r) => r.status === 'rejected' && message.test(r.reason.message)), `${name} rejects active and queued batches`);
+  ok((await Promise.allSettled([broken.run([])]))[0].status === 'rejected', `${name} rejects later runs`);
+  if (closing) ok(broken.close() === closing, 'close is idempotent');
+  await broken.close();
+}
+const dispatchPool = createPool({ ...poolOptions, threads: 1 });
+const queued = dispatchPool.run(jobs);
+const bad = dispatchPool.run([{ ...jobs[0], cannotClone: () => {} }]);
+const dispatch = await Promise.allSettled([queued, bad]);
+ok(dispatch[0].status === 'fulfilled' && dispatch[1].status === 'rejected' && dispatch[1].reason.name === 'DataCloneError',
+  'dispatch errors reject the batch promise');
+await dispatchPool.close();
+
+console.log('- map pool provenance');
+const maps = join(work, 'maps');
+mkdirSync(maps);
+const index = join(maps, 'index.json');
+writeFileSync(join(maps, 'a.json'), '{"id":"a"}');
+writeFileSync(join(maps, 'b.json'), '{"id":"b"}');
+writeFileSync(index, JSON.stringify({ variants: ['a.json', { file: 'b.json' }] }));
+const original = mapPoolInfo(index);
+ok(original.n === 2 && original.sha1 === mapPoolInfo(maps).sha1, 'directory and index fingerprint the same variants in the same order');
+writeFileSync(index, JSON.stringify(['b.json', 'a.json']));
+ok(original.sha1 !== mapPoolInfo(index).sha1, 'changing variant order changes the fingerprint');
+writeFileSync(index, JSON.stringify(['a.json', 'b.json']));
+writeFileSync(join(maps, 'b.json'), '{"id":"updated"}');
+ok(original.sha1 !== mapPoolInfo(index).sha1, 'changing an indexed variant changes the fingerprint');
 if (!argv.includes('--keep')) rmSync(work, { recursive: true, force: true });
 else console.log('runs kept in ' + work);
 console.log(`\n${passed} passed, ${failed} failed`);
