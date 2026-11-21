@@ -832,6 +832,51 @@ test('attack: 0.35 s windup, hit needs range 2.2 + facing, injured -> downed, bo
   const w = mk(); place(w.m.hunter, 8.8, 12.5); place(w.m.survivors[0], 11.8 > 0 ? 10.7 : 0, 12.5);
 });
 
+test('attack: first windup tick respects the hunter turn rate', () => {
+  const { m, ctl } = mk();
+  const H = m.hunter;
+  place(H, 30.5, 26.5); H.face = 0;
+  ctl.H = () => ({ act: 'attack', face: { x: 20, z: 26.5 } });
+  m.step();
+  ok(H.curAct === 'attack' && H.windT > 0, 'windup started on the first tick');
+  near(H.face, Math.PI / 4, 1e-9, 'the first 0.1 s tick turns 45 degrees at 450 degrees/s');
+});
+
+test('attack: a window blocks the lunge but allows a hit in range', () => {
+  for (const targetZ of [12.5, 9.72]) {
+    const { m, ctl } = mk();
+    const H = m.hunter, s = m.survivors[0];
+    place(H, 13.5, 7.55); H.face = Math.PI / 2;
+    place(s, 13.5, targetZ);
+    ctl.H = () => ({ act: 'attack', face: { x: 13.5, z: targetZ } });
+    m.step();
+    ok(!H.vault, 'the blocked lunge does not start a window vault');
+    run(m, 3);
+    ok(!H.vault && H.z < 8 && H.windT === 0 && H.cdT > 0, 'the swing resolves after four ticks on the starting side');
+    if (targetZ === 12.5) {
+      ok(m.stats.missed === 1 && s.st === HEALTHY, 'the far survivor stays out of reach');
+      ctl.H = () => ({ moveDir: { x: 0, z: 1 } });
+      run(m, 3);
+      ok(H.vault, 'normal steering into the same window starts a vault');
+    } else {
+      ok(m.stats.hits === 1 && s.st === INJURED, 'the swing hits the nearby survivor across the window');
+    }
+  }
+});
+
+test('attack: a carrying hunter can hit at carry speed', () => {
+  const { m, ctl } = mk();
+  const H = m.hunter, s = m.survivors[0], carried = m.survivors[1];
+  place(H, 30.5, 26.5); H.face = 0;
+  place(s, 32.75, 26.5);
+  H.carrying = carried.id; carried.st = CARRIED;
+  ctl.H = () => ({ act: 'attack', face: { x: 32.75, z: 26.5 } });
+  m.step();
+  near(H.x - 30.5, m.cfg.hunter.carrySpeed * m.dt, 1e-9, 'the windup step uses carry speed');
+  run(m, 3);
+  ok(s.st === INJURED && H.carrying === carried.id && carried.st === CARRIED, 'the swing hits without dropping the carried survivor');
+});
+
 test('carry / hook: pickup 2 s, hook 1.5 s, stage 1 (70 s) -> stage 2 (70 s) -> dead; stage accounting; last survivor sacrificed', () => {
   const { m, ctl } = mk({ config: { antiCamp: { enabled: false } } });   // hunter idles next to the hook: no Resolve here
   const s = m.survivors[0], hk = m.hooks[0];
